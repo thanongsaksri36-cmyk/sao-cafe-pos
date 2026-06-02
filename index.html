@@ -3694,6 +3694,8 @@ const QR = (()=>{
   function startCustomer(table){ fixedTable=!!table; qtable=table||null; stage='menu'; qcart=[]; idx=0; renderMenu(); }
   function curItems(){
     let it=STORE.get().products.filter(p=>p.available!==false&&!p.deletedAt&&!INV.outOfStock(p));
+    it=it.filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i);                 // กันซ้ำตาม id
+    it=it.filter((x,i,a)=>a.findIndex(y=>(y.name||'').trim()===(x.name||'').trim())===i);  // กันซ้ำตามชื่อ
     if(qcat!=='all') it=it.filter(p=>p.cat===qcat);
     return it;
   }
@@ -4192,7 +4194,7 @@ const BO = (()=>{
     const cats=STORE.get().categories;
     const prods=STORE.get().products.filter(p=>!p.deletedAt);
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px"><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
       <table><thead><tr><th>เมนู</th><th>หมวด</th><th>ราคา</th><th>ต้นทุน</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${prods.map(p=>`<tr>
         <td><div style="display:flex;align-items:center;gap:10px">${p.img?`<img src="${esc(p.img)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;box-shadow:var(--shadow)">`:`<span style="font-size:24px;width:40px;text-align:center">${esc(p.emoji||'☕')}</span>`}<span>${p.featured?'⭐ ':''}${esc(p.name)}</span></div></td>
@@ -4328,6 +4330,15 @@ const BO = (()=>{
     inp.click();
   }
   function toggleAvail(id){ const p=STORE.find('products',id); if(p){ p.available=!p.available; STORE.save(); render(); } }
+  function dedupeMenu(){
+    const ps=STORE.get().products.filter(p=>!p.deletedAt);
+    const seen={}, dups=[];
+    ps.forEach(p=>{ const k=(p.name||'').trim(); if(seen[k]) dups.push(p); else seen[k]=p; });
+    if(!dups.length){ UI.toast('ไม่พบเมนูซ้ำ','ok'); return; }
+    UI.confirm2('ล้างเมนูซ้ำ','พบเมนูชื่อซ้ำ '+dups.length+' รายการ จะลบตัวซ้ำออก (เก็บไว้ชื่อละ 1) ดำเนินการ?',()=>{
+      dups.forEach(p=>{ p.deletedAt=STORE.now(); }); STORE.save(); render(); UI.toast('ล้างเมนูซ้ำแล้ว '+dups.length+' รายการ · อย่าลืมกด ⬆️ อัปขึ้น cloud','ok');
+    },true);
+  }
   function toggleFeatured(id){ const p=STORE.find('products',id); if(p){ p.featured=!p.featured; p.updatedAt=STORE.now(); STORE.save(); render(); UI.toast(p.featured?'ปักหมุด '+p.name+' เป็นเมนูขายดี':'เอาออกจากขายดี','ok'); } }
 
   // ---- ตัวจัดการสูตร (Recipe / BOM editor) ----
@@ -4584,7 +4595,7 @@ const BO = (()=>{
     });
   }
   return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,restock,editIng,editMember,renderPromo,togglePromo,editPromo,editStaff,renderTables,editTable,toggleTable,delTable,
-          recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,
+          recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,dedupeMenu,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,tableQR,allTableQR};
 })();
 
@@ -4949,7 +4960,13 @@ const CLOUD = (()=>{
     const D=STORE.get(), now=STORE.now();
     const map=[['orders',D.orders],['products',D.products],['categories',D.categories],['ingredients',D.ingredients],['modifiers',D.modifiers],['members',D.members],['promos',D.promos],['staff',D.staff],['tables_',D.tables],['shifts',D.shifts],['cashlog',D.cashlog]];
     try{
-      for(const [t,arr] of map){ if(arr&&arr.length){ await client.from(t).upsert(arr.map(x=>({id:x.id,data:x,updated_at:now}))); } }
+      const master=['products','categories','ingredients','modifiers','tables_','members','promos','staff'];
+      for(const [t,arr] of map){
+        if(arr&&arr.length){ await client.from(t).upsert(arr.map(x=>({id:x.id,data:x,updated_at:now}))); }
+        if(master.includes(t)){
+          try{ const {data:ex}=await client.from(t).select('id'); const cur=new Set((arr||[]).map(x=>x.id)); const orph=(ex||[]).map(r=>r.id).filter(id=>!cur.has(id)); if(orph.length) await client.from(t).delete().in('id',orph); }catch(e){ console.error('clean',t,e); }
+        }
+      }
       await client.from('app_meta').upsert({id:'main',data:{meta:D.meta,settings:D.settings,counters:D.counters},updated_at:now});
       UI.toast('อัปข้อมูลขึ้น cloud สำเร็จ ✅','ok');
     }catch(e){ UI.toast('อัปไม่สำเร็จ: '+(e.message||e),'err'); }
@@ -4961,7 +4978,7 @@ const CLOUD = (()=>{
     try{
       const D=STORE.get();
       const ent=[['products','products'],['categories','categories'],['modifiers','modifiers'],['ingredients','ingredients'],['tables_','tables']];
-      for(const [t,key] of ent){ const {data,error}=await client.from(t).select('data'); if(!error&&data) D[key]=data.map(r=>r.data); }
+      for(const [t,key] of ent){ const {data,error}=await client.from(t).select('data'); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
       const {data:meta}=await client.from('app_meta').select('data').eq('id','main').limit(1);
       if(meta&&meta[0]){ const mm=meta[0].data; if(mm.meta)D.meta=mm.meta; if(mm.settings)D.settings=mm.settings; }
       STORE.save(); return true;
@@ -4973,7 +4990,7 @@ const CLOUD = (()=>{
       try{
         const D=STORE.get();
         const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['members','members'],['promos','promos'],['staff','staff'],['tables_','tables'],['shifts','shifts'],['cashlog','cashlog']];
-        for(const [t,key] of ent){ const {data,error}=await client.from(t).select('data'); if(!error&&data) D[key]=data.map(r=>r.data); }
+        for(const [t,key] of ent){ const {data,error}=await client.from(t).select('data'); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
         const {data:meta}=await client.from('app_meta').select('data').eq('id','main').limit(1);
         if(meta&&meta[0]){ const mm=meta[0].data; if(mm.meta)D.meta=mm.meta; if(mm.settings)D.settings=mm.settings; if(mm.counters)D.counters=mm.counters; }
         STORE.save(); UI.toast('ดึงข้อมูลสำเร็จ — กำลังรีโหลด','ok'); setTimeout(()=>location.reload(),900);
