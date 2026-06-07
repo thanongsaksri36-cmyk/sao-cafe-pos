@@ -5371,7 +5371,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.4</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5452,6 +5452,7 @@ const SETTINGS = (()=>{
       <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-top:16px">
         <h3 style="margin-bottom:14px;font-size:16px">☁️ ระบบออนไลน์ (Supabase)</h3>
         <p style="font-size:14px;margin-bottom:10px">สถานะ: <b>${CLOUD.statusText()}</b>${CLOUD.isAuthed&&CLOUD.isAuthed()?` · 🔐 ${esc(CLOUD.authEmail()||'')}`:''}</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">📡 Realtime: ${CLOUD.rtStatusText?esc(CLOUD.rtStatusText()):'-'}</p>
         ${CLOUD.isAuthed&&CLOUD.isAuthed()
           ? `<div style="background:var(--bg);border:1px solid var(--success);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">🔐 ล็อกอินบัญชีสาขาแล้ว: <b>${esc(CLOUD.authEmail())}</b> — ข้อมูลถูกกั้นตามสิทธิ์ DB <button class="sub-tab" style="color:var(--danger);margin-left:6px" onclick="SETTINGS.cloudSignOut()">ออกจากระบบ cloud</button></div>`
           : `<div style="background:var(--bg);border:1px dashed var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
@@ -5807,6 +5808,7 @@ const CLOUD = (()=>{
         try{ window.addEventListener('online',()=>{ connect(true); });                 // เน็ตกลับมา -> เชื่อม+กวาดคิว
              window.addEventListener('offline',()=>{ status='ready'; refresh(); }); }catch(e){}
         setInterval(()=>{ if(status==='online') flushQ(); else if(client) connect(true); },15000);  // กวาดคิว/เชื่อมใหม่ทุก 15 วิ
+        setInterval(()=>{ pullOrdersLite(); },8000);                                                 // ตาข่ายนิรภัยออเดอร์ QR
       }
     }catch(e){ status='error'; console.error('cloud init',e); } }
   let lastTok=null;
@@ -5815,8 +5817,8 @@ const CLOUD = (()=>{
     if(tok===lastTok) return;
     lastTok=tok;
     try{ if(client&&client.realtime&&tok) client.realtime.setAuth(tok); }catch(e){}
-    try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){}
-    rtChannel=null; subbed=false;
+    try{ Object.keys(rtChs).forEach(t=>{ try{ client.removeChannel(rtChs[t]); }catch(e){} delete rtChs[t]; }); }catch(e){}
+    subbed=false;
     if(status==='online') subscribeAll();
   }
   function setupAuth(){
@@ -5962,17 +5964,28 @@ const CLOUD = (()=>{
   // ---- Realtime: subscribe ทุกตารางหลัก + reconnect อัตโนมัติ ----
   const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','promos','suppliers','branches','shifts','cashlog','app_meta'];
   const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
-  let rtChannel=null;
-  function subscribeAll(){
-    if(!client||subbed||rtChannel) return;
+  const rtChs={}, rtErr={};                       // channel แยกต่อตาราง -> ตารางเดียวมีปัญหา ตารางอื่นยังวิ่ง
+  function subTable(t){
+    if(!client||rtChs[t]) return;
     try{
-      rtChannel=client.channel('saocafe-rt');
-      RT_TABLES.forEach(t=>rtChannel.on('postgres_changes',{event:'*',schema:'public',table:t},p=>onRemote(t,p)));
-      rtChannel.subscribe(st=>{
-        if(st==='SUBSCRIBED'){ subbed=true; }
-        else if(st==='CHANNEL_ERROR'||st==='CLOSED'||st==='TIMED_OUT'){ subbed=false; try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){} rtChannel=null; setTimeout(()=>{ if(status==='online') subscribeAll(); },3000); }  // reconnect
+      const ch=client.channel('rt-'+t);
+      ch.on('postgres_changes',{event:'*',schema:'public',table:t},p=>onRemote(t,p));
+      ch.subscribe((st,err)=>{
+        rtErr[t]=(st==='SUBSCRIBED')?'OK':(st+(err?(' '+(err.message||err)):''));
+        if(st==='CHANNEL_ERROR'||st==='CLOSED'||st==='TIMED_OUT'){
+          try{ client.removeChannel(ch); }catch(e){}
+          if(rtChs[t]===ch) delete rtChs[t];
+          setTimeout(()=>{ if(status==='online') subTable(t); },5000);
+        }
       });
-    }catch(e){ console.error('subscribe',e); subbed=false; }
+      rtChs[t]=ch;
+    }catch(e){ console.error('subscribe',t,e); rtErr[t]='EXC '+(e.message||e); }
+  }
+  function subscribeAll(){ if(!client) return; subbed=true; RT_TABLES.forEach(subTable); }
+  function rtStatusText(){
+    const bad=RT_TABLES.filter(t=>rtErr[t]&&rtErr[t]!=='OK');
+    const ok=RT_TABLES.filter(t=>rtErr[t]==='OK').length;
+    return ok+'/'+RT_TABLES.length+(bad.length?(' ⚠️ '+bad.map(t=>t+':'+rtErr[t]).join(' · ').slice(0,180)):(ok?' ✅':' …กำลังเชื่อม'));
   }
   function rerender(){ const v=NAV.cur&&NAV.cur();
     KDS.updateBadge&&KDS.updateBadge(); PENDING.updateBadge&&PENDING.updateBadge();
@@ -5984,6 +5997,21 @@ const CLOUD = (()=>{
     try{ PENDING.alertNew(); }catch(e){}
     try{ LINEN.send('🛎️ ลูกค้าสั่งผ่าน QR'+(o.table?' โต๊ะ '+o.table:'')+' · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,150)+' · รวม '+STORE.baht(o.total),'qr'); }catch(e){}
     try{ pushOrder(o); }catch(e){}
+  }
+  let _olPull=0;
+  async function pullOrdersLite(){                 // ตาข่ายนิรภัย: ออเดอร์ใหม่ต้องถึงร้านใน <=8 วิ แม้ realtime ล่ม
+    if(status!=='online'||!client||!authUser) return;
+    if(Date.now()-_olPull<7000) return; _olPull=Date.now();
+    try{
+      const since=Date.now()-10*60000;             // มองย้อน 10 นาที (กันนาฬิกาเครื่องลูกค้าเพี้ยน)
+      const {data,error}=await client.from('orders').select('data,updated_at').gte('updated_at',since);
+      if(error||!data) return;
+      const D=STORE.get(), arr=D.orders||(D.orders=[]); let chg=false;
+      data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
+        if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; chg=true; } }
+        else { o._uat=r.updated_at||0; arr.push(o); chg=true; try{ noticeQR(o); }catch(e){} } });
+      if(chg){ STORE.save(); rerender(); }
+    }catch(e){}
   }
   function onRemote(table,p){
     const o=p.new&&p.new.data; if(!o) return;
@@ -6021,7 +6049,7 @@ const CLOUD = (()=>{
   function getStatus(){ return status; }
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite};
 })();
 
 /* ============================================================
