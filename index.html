@@ -293,6 +293,42 @@ tr:hover td{background:var(--surface-2)}
   .cart{width:100%;height:46%;flex-shrink:0}
   .menu-area{height:54%}
   .row2{grid-template-columns:1fr}
+  /* ---- โหมดมือถือ: header ไม่ซ้อนเป็นแท่ง ---- */
+  header{flex-wrap:wrap;padding:6px 10px;row-gap:4px}
+  .logo{font-size:18px;letter-spacing:.5px}
+  .logo small{font-size:8px;letter-spacing:2px;margin-top:0}
+  .hdr-right{margin-left:auto;gap:8px}
+  .clock{display:none}
+  .staff-chip{padding:4px 10px;font-size:12px}
+  nav{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:6px;padding:2px 0 4px}
+  .nav-btn{flex-shrink:0;padding:8px 12px}
+  /* การ์ดเมนูพอดีจอ 3 คอลัมน์ */
+  .grid{grid-template-columns:repeat(3,1fr);gap:8px;padding:8px 10px 20px}
+  .card .thumb{height:72px}
+  .card .thumb .emoji{font-size:32px}
+  .pos-top{flex-wrap:wrap;gap:6px}
+  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
+  .tabs .tab{flex-shrink:0}
+  /* ---- ทุกหน้า: panel/ตาราง/การ์ดสรุป/ครัว/ป๊อปอัป ---- */
+  .panel{padding:12px 10px}
+  .panel-head h2{font-size:18px}
+  .panel table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
+  .cards-row{grid-template-columns:repeat(2,1fr);gap:8px}
+  .stat-card .val{font-size:18px}
+  .ticket{min-width:82vw;max-width:82vw}
+  #kdsCols{gap:10px;padding:10px}
+  .overlay{padding:8px}
+  .modal{max-width:100%!important;max-height:96vh;border-radius:14px}
+  .modal-b{padding:14px 12px}
+  .sub-tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;max-width:100%;padding-bottom:2px}
+  .sub-tabs>*{flex-shrink:0}
+  .otype{flex-shrink:0}
+  .qr-box svg,.qr-box img{max-width:78vw;height:auto}
+}
+/* จอใหญ่พิเศษ (TV/จอกว้าง): จำกัดความกว้างการ์ดเมนูให้สวย */
+@media(min-width:1600px){
+  .grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+  .panel{max-width:1500px;margin:0 auto}
 }
 .hidden{display:none!important}
 </style>
