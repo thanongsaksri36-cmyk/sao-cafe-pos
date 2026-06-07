@@ -2838,7 +2838,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -4037,6 +4037,28 @@ const QR = (()=>{
    PENDING — คิวรอชำระเงิน (Cashier) สำหรับออเดอร์ QR
    ============================================================ */
 const PENDING = (()=>{
+  // ---- 🔔 เสียงเตือนออเดอร์ QR (สร้างเสียงด้วย WebAudio ไม่ต้องมีไฟล์/เน็ต) ----
+  let unseen=0, sndTimer=null, ac=null;
+  function beep(){
+    if(STORE.get().settings.sndQR===false) return;
+    try{
+      ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+      if(ac.state==='suspended') ac.resume();
+      const t0=ac.currentTime;
+      [[988,0],[1319,.18],[988,.4],[1319,.58]].forEach(([fq,dt])=>{
+        const o=ac.createOscillator(),g=ac.createGain();
+        o.type='sine'; o.frequency.value=fq; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(.0001,t0+dt); g.gain.exponentialRampToValueAtTime(.6,t0+dt+.02); g.gain.exponentialRampToValueAtTime(.0001,t0+dt+.17);
+        o.start(t0+dt); o.stop(t0+dt+.2);
+      });
+    }catch(e){}
+  }
+  function alertNew(){                                  // ออเดอร์ QR ใหม่เข้า
+    unseen++; updateBadge(); beep();
+    try{ UI.toast('🛎️ ออเดอร์ใหม่จากลูกค้าสแกนสั่ง!','ok'); }catch(e){}
+    if(!sndTimer) sndTimer=setInterval(()=>{ if(unseen>0) beep(); else seen(); },20000);  // ดังซ้ำทุก 20 วิ จนกว่าจะเปิดดู
+  }
+  function seen(){ unseen=0; if(sndTimer){ clearInterval(sndTimer); sndTimer=null; } }
   function waitList(){ return STORE.get().orders.filter(o=>o.status==='wait_payment'&&(o.branchId||'BR-001')===STORE.bid()); }
   function openTabs(){ return STORE.get().orders.filter(o=>o.payStatus==='open'&&o.status!=='void'&&(o.branchId||'BR-001')===STORE.bid()); }
   function methodPill(m){ return m==='cash'?'<span class="pill lo">💵 เงินสด</span>':m==='transfer'?'<span class="pill ok">🏦 โอน</span>':'<span class="pill ok">📱 PromptPay</span>'; }
@@ -4058,6 +4080,7 @@ const PENDING = (()=>{
       <div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div></div>`;
   }
   function render(){
+    seen();                                             // เปิดหน้านี้ = รับทราบแล้ว หยุดเสียงซ้ำ
     const waiting=waitList().sort((a,b)=>a.createdAt-b.createdAt);
     const tabs=openTabs().sort((a,b)=>a.createdAt-b.createdAt);
     $('#pendingPanel').innerHTML=`
@@ -4139,7 +4162,7 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } }
-  return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs};
+  return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep};
 })();
 
 /* ============================================================
@@ -5378,6 +5401,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ (เมื่อรับเงินสด/ตรวจนับ · ต้องต่อ Bluetooth ESC/POS)</label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
+          <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ดังซ้ำทุก 20 วิ จนกว่าจะเปิดหน้า "รอชำระ")</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select></div>
         <p style="font-size:13px;margin-bottom:8px">สถานะ Bluetooth: <b>${PRINT.statusText()}</b></p>
         <button class="add-fab" onclick="PRINT.connectBT()">🔵 เชื่อมเครื่องพิมพ์ Bluetooth</button>
         <button class="add-fab" style="background:var(--gold)" onclick="SETTINGS.testPrint()">🧾 ทดสอบพิมพ์</button>
@@ -5442,7 +5466,7 @@ const SETTINGS = (()=>{
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
     STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   async function cloudSignIn(){
@@ -5924,6 +5948,13 @@ const CLOUD = (()=>{
     KDS.updateBadge&&KDS.updateBadge(); PENDING.updateBadge&&PENDING.updateBadge();
     if(v==='kds')KDS.render(); else if(v==='pending')PENDING.render(); else if(v==='history')HISTORY.render(); else if(v==='report')REPORT.render(); else if(v==='settings')SETTINGS.render(); else if(v==='bo'&&BO.render)BO.render(); else if(v==='pos'&&POS.render)POS.render();
   }
+  function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียวต่อออเดอร์)
+    if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid() || o.qrNotified) return;
+    o.qrNotified=true;
+    try{ PENDING.alertNew(); }catch(e){}
+    try{ LINEN.send('🛎️ ลูกค้าสั่งผ่าน QR'+(o.table?' โต๊ะ '+o.table:'')+' · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,150)+' · รวม '+STORE.baht(o.total),'qr'); }catch(e){}
+    try{ pushOrder(o); }catch(e){}
+  }
   function onRemote(table,p){
     const o=p.new&&p.new.data; if(!o) return;
     const uat=(p.new.updated_at)||Date.now();
@@ -5934,9 +5965,7 @@ const CLOUD = (()=>{
       o._uat=uat; arr[i]=o; }
     else { o._uat=uat; arr.push(o);
       // ลูกค้าสแกนสั่งเข้ามา -> แจ้ง Telegram (ครั้งเดียวต่อออเดอร์)
-      if(key==='orders' && o.channel==='qr' && (o.branchId||'BR-001')===STORE.bid() && !o.qrNotified){
-        o.qrNotified=true; try{ LINEN.send('🛎️ ลูกค้าสั่งผ่าน QR'+(o.table?' โต๊ะ '+o.table:'')+' · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,150)+' · รวม '+STORE.baht(o.total),'qr'); pushOrder(o); }catch(e){}
-      }
+      if(key==='orders') noticeQR(o);
     }
     STORE.save(); rerender();
   }
@@ -5951,7 +5980,7 @@ const CLOUD = (()=>{
         const arr=D[key]||(D[key]=[]);
         data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
           if(i>=0){ if((arr[i]._uat||0) <= (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }
-          else { o._uat=r.updated_at||0; arr.push(o); } });
+          else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
       STORE.save();
       try{ BO.dedupeMenu(true); }catch(e){}   // ล้างข้อมูลซ้ำอัตโนมัติหลัง sync (กันของเก่าใน cloud งอกกลับ)
