@@ -4053,12 +4053,32 @@ const PENDING = (()=>{
       });
     }catch(e){}
   }
-  function alertNew(){                                  // ออเดอร์ QR ใหม่เข้า
-    unseen++; updateBadge(); beep();
-    try{ UI.toast('🛎️ ออเดอร์ใหม่จากลูกค้าสแกนสั่ง!','ok'); }catch(e){}
-    if(!sndTimer) sndTimer=setInterval(()=>{ if(unseen>0) beep(); else seen(); },20000);  // ดังซ้ำทุก 20 วิ จนกว่าจะเปิดดู
+  let rounds=0;
+  function speak(){                                     // เสียงพูดไทย (Web Speech API)
+    try{
+      if(!window.speechSynthesis||!window.SpeechSynthesisUtterance) return;
+      const u=new window.SpeechSynthesisUtterance('มีออเดอร์เข้า รบกวนตรวจสอบออเดอร์ด้วยครับ');
+      u.lang='th-TH'; u.rate=1; u.volume=1;
+      const th=(window.speechSynthesis.getVoices()||[]).find(v=>(v.lang||'').toLowerCase().startsWith('th'));
+      if(th) u.voice=th;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    }catch(e){}
   }
-  function seen(){ unseen=0; if(sndTimer){ clearInterval(sndTimer); sndTimer=null; } }
+  function ring(){                                      // ติ๊งเรียกความสนใจ -> พูดไทยต่อ
+    if(STORE.get().settings.sndQR===false) return;
+    beep(); setTimeout(speak,450);
+  }
+  function alertNew(){                                  // ออเดอร์ QR ใหม่เข้า
+    unseen++; updateBadge(); rounds=1; ring();
+    try{ UI.toast('🛎️ ออเดอร์ใหม่จากลูกค้าสแกนสั่ง!','ok'); }catch(e){}
+    if(!sndTimer) sndTimer=setInterval(()=>{ if(unseen>0&&rounds<3){ rounds++; ring(); } else seen(); },20000);  // สูงสุด 3 รอบ หรือจนกว่าแตะจอ/เปิดดู
+  }
+  function seen(){
+    unseen=0; rounds=0; if(sndTimer){ clearInterval(sndTimer); sndTimer=null; }
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  }
+  try{ document.addEventListener('pointerdown',()=>{ if(unseen>0) seen(); },true); }catch(e){}   // แคชเชียร์แตะจอ = รับทราบ หยุดเสียง
+  try{ if(window.speechSynthesis) window.speechSynthesis.getVoices(); }catch(e){}                 // โหลดรายชื่อเสียงล่วงหน้า
   function waitList(){ return STORE.get().orders.filter(o=>o.status==='wait_payment'&&(o.branchId||'BR-001')===STORE.bid()); }
   function openTabs(){ return STORE.get().orders.filter(o=>o.payStatus==='open'&&o.status!=='void'&&(o.branchId||'BR-001')===STORE.bid()); }
   function methodPill(m){ return m==='cash'?'<span class="pill lo">💵 เงินสด</span>':m==='transfer'?'<span class="pill ok">🏦 โอน</span>':'<span class="pill ok">📱 PromptPay</span>'; }
@@ -5351,7 +5371,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.4</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5401,7 +5421,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ (เมื่อรับเงินสด/ตรวจนับ · ต้องต่อ Bluetooth ESC/POS)</label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
-          <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ดังซ้ำทุก 20 วิ จนกว่าจะเปิดหน้า "รอชำระ")</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select></div>
+          <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select></div>
         <p style="font-size:13px;margin-bottom:8px">สถานะ Bluetooth: <b>${PRINT.statusText()}</b></p>
         <button class="add-fab" onclick="PRINT.connectBT()">🔵 เชื่อมเครื่องพิมพ์ Bluetooth</button>
         <button class="add-fab" style="background:var(--gold)" onclick="SETTINGS.testPrint()">🧾 ทดสอบพิมพ์</button>
@@ -5789,11 +5809,21 @@ const CLOUD = (()=>{
         setInterval(()=>{ if(status==='online') flushQ(); else if(client) connect(true); },15000);  // กวาดคิว/เชื่อมใหม่ทุก 15 วิ
       }
     }catch(e){ status='error'; console.error('cloud init',e); } }
+  let lastTok=null;
+  function applyRtAuth(sess){                       // RLS กรอง realtime ตาม token ตอน subscribe -> ล็อกอินแล้วต้องสมัครช่องใหม่
+    const tok=(sess&&sess.access_token)||null;
+    if(tok===lastTok) return;
+    lastTok=tok;
+    try{ if(client&&client.realtime&&tok) client.realtime.setAuth(tok); }catch(e){}
+    try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){}
+    rtChannel=null; subbed=false;
+    if(status==='online') subscribeAll();
+  }
   function setupAuth(){
     if(!client||!client.auth) return;
     try{
-      client.auth.getSession().then(({data})=>{ authUser=(data&&data.session&&data.session.user)||null; refresh(); }).catch(()=>{});
-      client.auth.onAuthStateChange((_ev,sess)=>{ authUser=(sess&&sess.user)||null; refresh(); });
+      client.auth.getSession().then(({data})=>{ authUser=(data&&data.session&&data.session.user)||null; applyRtAuth(data&&data.session); refresh(); }).catch(()=>{});
+      client.auth.onAuthStateChange((_ev,sess)=>{ authUser=(sess&&sess.user)||null; applyRtAuth(sess); refresh(); });
     }catch(e){ console.error('setupAuth',e); }
   }
   function isAuthed(){ return !!authUser; }
@@ -5934,13 +5964,13 @@ const CLOUD = (()=>{
   const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
   let rtChannel=null;
   function subscribeAll(){
-    if(!client||subbed) return;
+    if(!client||subbed||rtChannel) return;
     try{
       rtChannel=client.channel('saocafe-rt');
       RT_TABLES.forEach(t=>rtChannel.on('postgres_changes',{event:'*',schema:'public',table:t},p=>onRemote(t,p)));
       rtChannel.subscribe(st=>{
         if(st==='SUBSCRIBED'){ subbed=true; }
-        else if(st==='CHANNEL_ERROR'||st==='CLOSED'||st==='TIMED_OUT'){ subbed=false; try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){} setTimeout(()=>{ if(status==='online') subscribeAll(); },3000); }  // reconnect
+        else if(st==='CHANNEL_ERROR'||st==='CLOSED'||st==='TIMED_OUT'){ subbed=false; try{ if(rtChannel) client.removeChannel(rtChannel); }catch(e){} rtChannel=null; setTimeout(()=>{ if(status==='online') subscribeAll(); },3000); }  // reconnect
       });
     }catch(e){ console.error('subscribe',e); subbed=false; }
   }
