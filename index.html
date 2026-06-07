@@ -2838,7 +2838,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -3502,8 +3502,9 @@ const PAY = (()=>{
     if(member) MEMBER.earn(member,order); // สะสมแต้ม
     if(st){ st.sales=(st.sales||0)+s.total; } // ยอดต่อพนักงาน
     SHIFT.recordSale(order);           // บันทึกเข้ากะ
-    if(order.method==='promptpay') LINEN.send('📱 รับชำระสแกน '+STORE.baht(order.total)+' · บิล '+order.no+' · เช็คเงินเข้าบัญชี','payqr');
-    else if(order.method==='transfer') LINEN.send('🏦 รับชำระโอน '+STORE.baht(order.total)+' · บิล '+order.no+' · เช็คเงินเข้าบัญชี','paytransfer');
+    if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(order),'sale');
+    else if(order.method==='promptpay') LINEN.send(LINEN.saleMsg(order),'payqr');
+    else if(order.method==='transfer') LINEN.send(LINEN.saleMsg(order),'paytransfer');
     CLOUD.pushOrder(order);
     STORE.save();
     UI.close('payOverlay');
@@ -4054,16 +4055,29 @@ const PENDING = (()=>{
     }catch(e){}
   }
   let rounds=0;
+  let thVoice=null;
+  function loadVoices(){
+    try{
+      const vs=(window.speechSynthesis&&window.speechSynthesis.getVoices())||[];
+      thVoice=vs.find(v=>(v.lang||'').toLowerCase().replace('_','-').startsWith('th'))||null;
+    }catch(e){}
+  }
+  try{ if(window.speechSynthesis){ loadVoices(); window.speechSynthesis.onvoiceschanged=loadVoices; } }catch(e){}
   function speak(){                                     // เสียงพูดไทย (Web Speech API)
     try{
       if(!window.speechSynthesis||!window.SpeechSynthesisUtterance) return;
-      const u=new window.SpeechSynthesisUtterance('มีออเดอร์เข้า รบกวนตรวจสอบออเดอร์ด้วยครับ');
-      u.lang='th-TH'; u.rate=1; u.volume=1;
-      const th=(window.speechSynthesis.getVoices()||[]).find(v=>(v.lang||'').toLowerCase().startsWith('th'));
-      if(th) u.voice=th;
-      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      loadVoices();
+      window.speechSynthesis.cancel();
+      setTimeout(()=>{ try{
+        const u=new window.SpeechSynthesisUtterance('มีออเดอร์เข้า รบกวนตรวจสอบออเดอร์ด้วยครับ');
+        u.lang=(thVoice&&thVoice.lang)||'th-TH'; if(thVoice) u.voice=thVoice;
+        u.rate=1; u.volume=1; u.pitch=1;
+        window.speechSynthesis.resume(); window.speechSynthesis.speak(u);
+      }catch(e){} },150);                               // Chrome กลืนเสียงถ้า speak ติด cancel ทันที
     }catch(e){}
   }
+  function voiceInfo(){ loadVoices(); return thVoice?('✅ มีเสียงพูดไทย: '+thVoice.name):'⚠️ เครื่องนี้ไม่มีเสียงพูดไทย — จะได้ยินแค่ติ๊ง (ดูวิธีเพิ่มในคู่มือ/แชต)'; }
+  function testVoice(){ ring(); }
   function ring(){                                      // ติ๊งเรียกความสนใจ -> พูดไทยต่อ
     if(STORE.get().settings.sndQR===false) return;
     beep(); setTimeout(speak,450);
@@ -4114,6 +4128,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total;
     INV.deduct(o); STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
+    if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('รับเงินแล้ว ส่งเข้าครัว '+(o.table?'โต๊ะ '+o.table:o.no),'ok');
   }
   function settle(id){
@@ -4143,6 +4158,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     o.method=method; o.payStatus='paid'; o.paid=o.total; if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
     STORE.save(); CLOUD.pushOrder(o); UI.close('genOverlay'); updateBadge(); render();
+    if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('ปิดบิลแล้ว '+(o.table?'โต๊ะ '+o.table:o.no)+' · '+STORE.baht(o.total),'ok');
   }
   function cancel(id){
@@ -4151,7 +4167,7 @@ const PENDING = (()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
       if(o.payStatus==='open'||o.status==='preparing'||o.status==='ready'){ (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); }); }
       o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
-      LINEN.send('🗑️ ยกเลิกบิล '+o.no+' · '+STORE.baht(o.total)+' · ไม่ชำระ','voided');
+      LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     },true);
   }
   function moveTable(id){
@@ -4182,7 +4198,7 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } }
-  return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep};
+  return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo};
 })();
 
 /* ============================================================
@@ -5256,7 +5272,7 @@ const SHIFT = (()=>{
     UI.ask('เปิดกะ',[{key:'cash',label:'เงินตั้งต้นในลิ้นชัก (บาท)',type:'number',value:''}],(o)=>{
       const _sh={id:STORE.uuid(),staffId:AUTH.get().id,openCash:STORE.toSatang(o.cash),closeCash:null,openedAt:STORE.now(),closedAt:null,expected:0,diff:0,branchId:STORE.bid()}; STORE.get().shifts.push(_sh); CLOUD.pushItem('shifts',_sh);
       STORE.save(); render(); UI.toast('เปิดกะแล้ว','ok');
-      LINEN.send('🔓 เปิดกะ · เงินตั้งต้น '+STORE.baht(STORE.toSatang(o.cash))+' · โดย '+((AUTH.get()||{}).name||'-'),'open');
+      LINEN.send('🔓 เปิดกะ\n'+LINEN.SEP+'\n💼 เงินตั้งต้น: '+STORE.baht(STORE.toSatang(o.cash))+'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'open');
     });
   }
   function cashMove(type){
@@ -5267,7 +5283,7 @@ const SHIFT = (()=>{
       const amt=STORE.toSatang(o.amt); if(amt<=0){ UI.toast('จำนวนไม่ถูกต้อง','err'); return; }
       const sh=active();
       const _cm={id:STORE.uuid(),type,amount:amt,note:o.note,staffId:AUTH.get().id,at:STORE.now(),shiftId:sh.id,branchId:STORE.bid()}; STORE.get().cashlog.push(_cm); CLOUD.pushItem('cashlog',_cm);
-      if(type==='out') LINEN.send('💸 เบิกเงินออก '+STORE.baht(amt)+(o.note?' · '+o.note:'')+' · โดย '+((AUTH.get()||{}).name||'-'),'cashout');
+      if(type==='out') LINEN.send('💸 เบิกเงินออก!\n'+LINEN.SEP+'\n💰 จำนวน: '+STORE.baht(amt)+'\n📝 เหตุผล: '+(o.note||'-')+'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'cashout');
       STORE.save(); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
@@ -5280,8 +5296,8 @@ const SHIFT = (()=>{
       const counted=STORE.toSatang(o.count); const diff=counted-expected;
       sh.closeCash=counted; sh.closedAt=STORE.now(); sh.expected=expected; sh.diff=diff; STORE.save(); CLOUD.pushItem('shifts',sh);
       UI.confirm2('ปิดกะสำเร็จ',`ควรมี ${STORE.baht(expected)}\nนับได้ ${STORE.baht(counted)}\nส่วนต่าง ${diff===0?'พอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
-      const _td=new Date().toDateString(), _ords=STORE.get().orders.filter(x=>x.status!=='void'&&x.method!=='unpaid'&&(x.branchId||'BR-001')===STORE.bid()&&new Date(x.createdAt).toDateString()===_td);
-      LINEN.send('🔒 ปิดกะ · ควรมี '+STORE.baht(expected)+' · นับได้ '+STORE.baht(counted)+' · '+(diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+' · โดย '+((AUTH.get()||{}).name||'-')+'\n📊 ยอดขายวันนี้ '+STORE.baht(_ords.reduce((a,b)=>a+b.total,0))+' · '+_ords.length+' บิล','shift');
+      LINEN.send('🔒 ปิดกะ\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(expected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'shift');
+      LINEN.send(LINEN.daySummary(),'shift');
       render();
     });
   }
@@ -5359,7 +5375,7 @@ const SHIFT = (()=>{
     UI.close('genOverlay');
     PAY.printDocs([countSlipHtml(STORE.get().cashlog[STORE.get().cashlog.length-1])]);   // พิมพ์ใบสรุปทุกครั้ง
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
-    LINEN.send('🔍 ตรวจนับเงิน · นับได้ '+STORE.baht(counted)+' · ควรมี '+STORE.baht(_ccExpected)+' · '+(diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+' · โดย '+_ccName,'count');
+    LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
   return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms};
 })();
@@ -5371,7 +5387,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.5</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.7</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5421,7 +5437,8 @@ const SETTINGS = (()=>{
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ (เมื่อรับเงินสด/ตรวจนับ · ต้องต่อ Bluetooth ESC/POS)</label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
-          <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select></div>
+          <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select>
+            <div style="margin-top:6px;font-size:12px;color:var(--muted)">${esc(PENDING.voiceInfo?PENDING.voiceInfo():'')} <button class="sub-tab" style="margin-left:8px" onclick="PENDING.testVoice()">🔊 ทดสอบเสียงเตือน</button></div></div>
         <p style="font-size:13px;margin-bottom:8px">สถานะ Bluetooth: <b>${PRINT.statusText()}</b></p>
         <button class="add-fab" onclick="PRINT.connectBT()">🔵 เชื่อมเครื่องพิมพ์ Bluetooth</button>
         <button class="add-fab" style="background:var(--gold)" onclick="SETTINGS.testPrint()">🧾 ทดสอบพิมพ์</button>
@@ -5434,6 +5451,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>💬 Chat ID ของสาขานี้ (เลขของเจ้าของสาขา · ของใครของมัน)</label><input id="setTgChat" value="${esc(cb.tgChat||'')}" placeholder="เช่น 123456789" autocomplete="off"></div>
         <div class="field"><label>เลือกเหตุการณ์ที่ให้แจ้ง</label>
           <div style="display:flex;flex-direction:column;gap:7px;font-size:14px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tgEvSale" ${(s.tgEvents||{}).sale!==false?'checked':''} style="width:18px;height:18px"> 🛒 ขายได้ (แจ้งทุกบิลที่ปิดขาย)</label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tgEvShift" ${(s.tgEvents||{}).shift!==false?'checked':''} style="width:18px;height:18px"> 🔒 ปิดกะ (พร้อมยอดขาด/เกิน)</label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tgEvCount" ${(s.tgEvents||{}).count!==false?'checked':''} style="width:18px;height:18px"> 🔍 ตรวจนับเงินระหว่างวัน</label>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tgEvCashout" ${(s.tgEvents||{}).cashout!==false?'checked':''} style="width:18px;height:18px"> 💸 เบิกเงินออก/ซื้อของ</label>
@@ -5480,7 +5498,7 @@ const SETTINGS = (()=>{
   function save(){
     const m=STORE.get().meta, s=STORE.get().settings;
     m.shopName=$('#setShop').value; m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim();
-    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
+    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
@@ -5553,7 +5571,7 @@ function voidOrder(oid){
       // คืนสต็อกวัตถุดิบกลับเมื่อยกเลิก/คืนเงิน
       (ord.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); });
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
-      LINEN.send('🗑️ ยกเลิก/คืนเงินบิล '+ord.no+' · '+STORE.baht(ord.total)+' · เหตุผล: '+(o.reason||'-')+' · โดย '+((AUTH.get()||{}).name||'-'),'voided');
+      LINEN.send(LINEN.voidMsg(ord,o.reason),'voided');
       CLOUD.pushOrder(ord); KDS.updateBadge(); if(NAV.cur()==='history') HISTORY.render(); UI.toast('ยกเลิก/คืนเงินแล้ว','ok');
     });
   });
@@ -5615,6 +5633,56 @@ const SPLIT = (()=>{
    LINEN — แจ้งเตือน LINE เจ้าของสาขา (ผ่าน Supabase Edge Function)
    ============================================================ */
 const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเดียว ใช้ทุกสาขา · Chat ID แยกต่อสาขา)
+  const SEP='━━━━━━━━━━━━━━';
+  const thDT=ts=>{ const d=new Date(ts||Date.now()); return d.getDate()+'/'+(d.getMonth()+1)+'/'+(d.getFullYear()+543)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2); };
+  const hhmm=ts=>{ const d=new Date(ts); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); };
+  const payName=m=>m==='cash'?'เงินสด':m==='promptpay'?'สแกน PromptPay':m==='transfer'?'โอนเงิน':(m||'-');
+  function saleMsg(o){
+    const n=(o.items||[]).reduce((a,b)=>a+(b.qty||1),0);
+    return '🛒 ขายได้!\n'+SEP
+      +'\n🧾 บิล: '+(o.no||'-')
+      +'\n📦 จำนวน: '+n+' รายการ'
+      +'\n💰 ยอด: '+STORE.baht(o.total)
+      +'\n💳 ชำระ: '+payName(o.method)
+      +'\n👤 พนักงาน: '+(o.staffName||(AUTH.get()||{}).name||'-')
+      +'\n🕐 '+thDT(o.closedAt||o.createdAt);
+  }
+  function voidMsg(o,reason){
+    return '⚠️ ยกเลิกบิล!\n'+SEP
+      +'\n🧾 บิล: '+(o.no||'-')
+      +'\n💸 ยอดที่ยกเลิก: '+STORE.baht(o.total)
+      +'\n📝 เหตุผล: '+(reason||o.voidReason||'-')
+      +'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')
+      +'\n🕐 '+thDT(Date.now());
+  }
+  function qrMsg(o){
+    return '🛎️ ลูกค้าสแกนสั่ง!\n'+SEP
+      +'\n🪑 โต๊ะ: '+(o.table||'กลับบ้าน')
+      +'\n'+(o.items||[]).map(i=>'• '+i.qty+'× '+i.name).join('\n').slice(0,400)
+      +'\n💰 รวม: '+STORE.baht(o.total)
+      +'\n🕐 '+thDT(o.createdAt);
+  }
+  function daySummary(){
+    const td=new Date().toDateString();
+    const all=STORE.get().orders.filter(x=>(x.branchId||'BR-001')===STORE.bid()&&new Date(x.createdAt).toDateString()===td);
+    const ok=all.filter(x=>x.status!=='void'&&x.payStatus!=='open'&&x.method&&x.method!=='unpaid');
+    const voided=all.filter(x=>x.status==='void');
+    const tot=ok.reduce((a,b)=>a+b.total,0);
+    const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer');
+    const times=ok.map(x=>x.createdAt).sort((a,b)=>a-b);
+    const cnt={}; ok.forEach(x=>(x.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
+    const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    return '📊 สรุปยอดขายประจำวัน\n'+SEP
+      +'\n📅 '+thDT(Date.now()).split(' ')[0]
+      +(times.length?'\n⏰ เวลาขาย: '+hhmm(times[0])+' → '+hhmm(times[times.length-1]):'')
+      +'\n\n💰 ยอดขายรวม: '+STORE.baht(tot)
+      +'\n📦 จำนวนบิล: '+ok.length+' บิล'
+      +(ok.length?'\n📈 เฉลี่ย: '+STORE.baht(Math.round(tot/ok.length))+'/บิล':'')
+      +'\n\n💵 เงินสด: '+STORE.baht(cash.reduce((a,b)=>a+b.total,0))+' ('+cash.length+' บิล)'
+      +'\n📱 QR/โอน: '+STORE.baht(qrtr.reduce((a,b)=>a+b.total,0))+' ('+qrtr.length+' บิล)'
+      +'\n❌ ยกเลิก: '+voided.length+' บิล'
+      +'\n\n🏆 เมนูขายดีวันนี้:'+(top.length?top.map((t,i)=>'\n'+(i+1)+'. '+t[0]+' ×'+t[1]).join(''):'\n- ไม่มีข้อมูล');
+  }
   function token(){ return ((STORE.get().settings||{}).tgToken||'').trim(); }
   function chat(){ const b=STORE.curBranch()||{}; return (b.tgChat||'').trim(); }
   async function send(text,ev){
@@ -5645,7 +5713,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
       .forEach(o=>{ o.slowNotified=true; STORE.save(); CLOUD.pushOrder(o);
         send('⏰ ออเดอร์ '+o.no+(o.table?' โต๊ะ '+o.table:'')+' ค้างครัวเกิน '+mins+' นาที · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,200),'slow'); });
   }
-  return {send,test,slowScan};
+  return {send,test,slowScan,saleMsg,voidMsg,qrMsg,daySummary,thDT,SEP};
 })();
 
 /* ============================================================
@@ -5995,7 +6063,7 @@ const CLOUD = (()=>{
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid() || o.qrNotified) return;
     o.qrNotified=true;
     try{ PENDING.alertNew(); }catch(e){}
-    try{ LINEN.send('🛎️ ลูกค้าสั่งผ่าน QR'+(o.table?' โต๊ะ '+o.table:'')+' · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,150)+' · รวม '+STORE.baht(o.total),'qr'); }catch(e){}
+    try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
     try{ pushOrder(o); }catch(e){}
   }
   let _olPull=0;
