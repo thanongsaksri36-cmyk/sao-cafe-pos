@@ -4590,25 +4590,28 @@ const BO = (()=>{
       const cg={}; cats.forEach(c=>{ const k=(c.name||'').trim(); (cg[k]=cg[k]||[]).push(c); });
       Object.values(cg).forEach(g=>{ if(g.length<2) return;
         g.sort((a,b)=>(D.products||[]).filter(p=>p.cat===b.id&&alive(p)).length-(D.products||[]).filter(p=>p.cat===a.id&&alive(p)).length);
-        const keep=g[0];
+        const keep=g[0]; touch('categories',keep);
         g.slice(1).forEach(c=>{ (D.products||[]).forEach(p=>{ if(p.cat===c.id){ p.cat=keep.id; touch('products',p); } }); c.deletedAt=STORE.now(); touch('categories',c); nCat++; });
       });
       // --- เมนู: เก็บตัวที่มีสูตร/รูป (สมบูรณ์สุด) ---
       const ps=(D.products||[]).filter(p=>inB(p)&&alive(p));
       const pg={}; ps.forEach(p=>{ const k=(p.name||'').trim(); (pg[k]=pg[k]||[]).push(p); });
       Object.values(pg).forEach(g=>{ if(g.length<2) return;
-        g.sort((a,b)=>(((b.recipe||[]).length?2:0)+(b.img?1:0))-(((a.recipe||[]).length?2:0)+(a.img?1:0)));
+        g.sort((a,b)=>((((b.recipe||[]).length?2:0)+(b.img?1:0))-(((a.recipe||[]).length?2:0)+(a.img?1:0))) || ((a.createdAt||0)-(b.createdAt||0)));
+        touch('products',g[0]);   // push ตัวที่เก็บขึ้น cloud ด้วย (กัน cloud เหลือแต่ตัวถูกลบ)
         g.slice(1).forEach(p=>{ p.deletedAt=STORE.now(); touch('products',p); nProd++; });
       });
       // --- วัตถุดิบ: เก็บตัวแรก + ชี้สูตรกลับมาตัวหลัก ---
       const igs=(D.ingredients||[]).filter(i=>inB(i)&&alive(i));
       const ig={}; igs.forEach(i=>{ const k=(i.name||'').trim(); (ig[k]=ig[k]||[]).push(i); });
       Object.values(ig).forEach(g=>{ if(g.length<2) return;
-        g.sort((a,b)=>(b.stock||0)-(a.stock||0)); const keep=g[0];
+        g.sort((a,b)=>((b.stock||0)-(a.stock||0)) || ((a.createdAt||0)-(b.createdAt||0))); const keep=g[0]; touch('ingredients',keep);
         g.slice(1).forEach(i=>{ (D.products||[]).forEach(p=>{ let ch=false; (p.recipe||[]).forEach(r=>{ if(r.ingredientId===i.id){ r.ingredientId=keep.id; ch=true; } }); if(ch) touch('products',p); }); i.deletedAt=STORE.now(); touch('ingredients',i); nIng++; });
       });
       // --- โต๊ะ / โปร / ซัพพลายเออร์: เก็บตัวแรก ---
-      const dedupe=(arr,tbl,keyFn,onDup)=>{ const m={}; (arr||[]).filter(x=>inB(x)&&alive(x)).forEach(x=>{ const k=keyFn(x); if(m[k]){ x.deletedAt=STORE.now(); touch(tbl,x); onDup&&onDup(x,m[k]); } else m[k]=x; }); };
+      const dedupe=(arr,tbl,keyFn,onDup)=>{ const grp={}; (arr||[]).filter(x=>inB(x)&&alive(x)).forEach(x=>{ const k=keyFn(x); (grp[k]=grp[k]||[]).push(x); });
+        Object.values(grp).forEach(g2=>{ if(g2.length<2) return; g2.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); const kp=g2[0]; touch(tbl,kp);
+          g2.slice(1).forEach(x=>{ x.deletedAt=STORE.now(); touch(tbl,x); onDup&&onDup(x,kp); }); }); };
       dedupe(D.tables,'tables_',t=>(t.name||'').trim(),()=>{nTab++;});
       dedupe(D.promos,'promos',p=>(p.code||'').trim(),()=>{nPromo++;});
       dedupe(D.suppliers,'suppliers',sp=>(sp.name||'').trim(),(dup,keep)=>{ (D.ingredients||[]).forEach(i=>{ if(i.supplierId===dup.id){ i.supplierId=keep.id; touch('ingredients',i); } }); nSup++; });
@@ -4617,8 +4620,8 @@ const BO = (()=>{
       Object.values(sg).forEach(g=>{ if(g.length<2) return;
         const me=(AUTH.get()||{}).id;
         const score=x=>(x.id===me?8:0)+(x.hq?4:0)+(x.active?2:0)+(((x.sales||0)>0)?1:0);
-        g.sort((a,b)=>score(b)-score(a));
-        const keepSt=g[0];
+        g.sort((a,b)=>(score(b)-score(a)) || ((a.createdAt||0)-(b.createdAt||0)));
+        const keepSt=g[0]; touch('staff',keepSt);
         g.slice(1).forEach(x=>{ if(x.hq) keepSt.hq=true; keepSt.sales=(keepSt.sales||0)+(x.sales||0); x.deletedAt=STORE.now(); x.active=false; touch('staff',x); touch('staff',keepSt); nStaff++; });
       });
     });
