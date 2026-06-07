@@ -5814,20 +5814,35 @@ const CLOUD = (()=>{
   }
   async function flushQ(){
     if(status!=='online'||!client) return;
-    const rest=[]; for(const j of loadQ()){ try{ await client.from(j.table).upsert(j.row); }catch(e){ rest.push(j); } }
+    const rest=[];
+    for(const j of loadQ()){
+      try{
+        const r = (!authUser && j.table==='orders') ? await client.from(j.table).insert(j.row) : await client.from(j.table).upsert(j.row);
+        if(r && r.error && r.error.code!=='23505') rest.push(j);
+      }catch(e){ rest.push(j); }
+    }
     saveQ(rest);
   }
   function pendingCount(){ return loadQ().length; }
   // ---- ส่งออเดอร์ขึ้น cloud (เข้าคิวถ้าออฟไลน์/ล้มเหลว ไม่หาย) ----
   async function pushOrder(o){
     if(!o) return; o._uat=Date.now(); const row={id:o.id,data:o,updated_at:o._uat};
-    if(status==='online'&&client){ try{ await client.from('orders').upsert(row); return; }catch(e){ console.error('pushOrder',e); } }
+    if(status==='online'&&client){
+      try{
+        const r = authUser ? await client.from('orders').upsert(row) : await client.from('orders').insert(row);  // anon มีสิทธิ์แค่ insert
+        if(!r || !r.error) return;
+        if(!authUser && r.error.code==='23505') return;   // มีอยู่แล้ว = ถือว่าสำเร็จ
+        console.error('pushOrder',r.error);
+      }catch(e){ console.error('pushOrder',e); }
+    }
     enqueue('orders',row);
   }
   // ---- ส่งข้อมูล master (เมนู/สต็อก/พนักงาน...) ขึ้น cloud เมื่อมีการแก้ -> สาขาอื่นเห็นทันที ----
   async function pushItem(table,obj){
     if(!obj) return; obj._uat=Date.now(); const row={id:obj.id,data:obj,updated_at:obj._uat};
-    if(status==='online'&&client){ try{ await client.from(table).upsert(row); return; }catch(e){ console.error('pushItem',table,e); } }
+    if(status==='online'&&client){
+      try{ const r=await client.from(table).upsert(row); if(!r||!r.error) return; console.error('pushItem',table,r.error); }catch(e){ console.error('pushItem',table,e); }
+    }
     enqueue(table,row);
   }
   // ---- เลขรันบิล atomic ฝั่ง server (กันเลขซ้ำเมื่อหลายเครื่องในสาขาเดียว) ----
