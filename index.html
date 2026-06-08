@@ -47,6 +47,10 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .clock{font-variant-numeric:tabular-nums}
 .staff-chip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);padding:5px 11px;border-radius:20px;color:#fff;font-size:12px}
 .staff-chip .av{width:22px;height:22px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.ham-btn{display:none;background:rgba(255,255,255,.1);color:#fff;font-size:20px;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0}
+.cart-fab{display:none;position:relative;background:var(--gold);color:#fff;font-size:18px;width:42px;height:42px;border-radius:12px;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 10px rgba(166,124,61,.4)}
+.cfab-badge{position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;min-width:19px;height:19px;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.drawer-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:55}
 
 /* ---------- Views ---------- */
 .view{flex:1;overflow:hidden;display:none}
@@ -294,27 +298,7 @@ tr:hover td{background:var(--surface-2)}
   .grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
 }
 @media(max-width:680px){
-  .view.active{flex-direction:column}
-  .cart{width:100%;height:46%;flex-shrink:0}
-  .menu-area{height:54%}
   .row2{grid-template-columns:1fr}
-  /* ---- โหมดมือถือ: header ไม่ซ้อนเป็นแท่ง ---- */
-  header{flex-wrap:wrap;padding:6px 10px;row-gap:4px}
-  .logo{font-size:18px;letter-spacing:.5px}
-  .logo small{font-size:8px;letter-spacing:2px;margin-top:0}
-  .hdr-right{margin-left:auto;gap:8px}
-  .clock{display:none}
-  .staff-chip{padding:4px 10px;font-size:12px}
-  nav{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:6px;padding:2px 0 4px}
-  .nav-btn{flex-shrink:0;padding:8px 12px}
-  /* การ์ดเมนูพอดีจอ 3 คอลัมน์ */
-  .grid{grid-template-columns:repeat(3,1fr);gap:8px;padding:8px 10px 20px}
-  .card .thumb{height:72px}
-  .card .thumb .emoji{font-size:32px}
-  .pos-top{flex-wrap:wrap;gap:6px}
-  .tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch}
-  .tabs .tab{flex-shrink:0}
-  /* ---- ทุกหน้า: panel/ตาราง/การ์ดสรุป/ครัว/ป๊อปอัป ---- */
   .panel{padding:12px 10px}
   .panel-head h2{font-size:18px}
   .panel table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch}
@@ -336,37 +320,50 @@ tr:hover td{background:var(--surface-2)}
   .panel{max-width:1500px;margin:0 auto}
 }
 /* ===== iPad / แท็บเล็ตแนวตั้ง (681–1024px): เมนูบน-ตะกร้าล่าง ปุ่มใหญ่นิ้วแตะ ===== */
-@media(min-width:681px) and (max-width:1024px){
-  /* หัวจอกระชับ: โลโก้เล็กลง + แถบเมนูแถวเดียวเลื่อนแนวนอน ไม่ล้นหลายแถว */
-  header{padding:8px 14px;flex-wrap:wrap;row-gap:6px}
-  .logo{font-size:24px}
-  .logo small{font-size:9px;letter-spacing:3px}
-  .hdr-right{margin-left:auto}
+/* ===== มือถือ + iPad (≤1024px): ☰ เมนูหลัก drawer · หมวดแถบซ้าย · ตะกร้าป๊อป ===== */
+@media(max-width:1024px){
+  .ham-btn{display:flex}
+  .cart-fab{display:flex}
+  header{padding:8px 12px;gap:10px}
+  .brand{flex:1}
+  .logo{font-size:21px;letter-spacing:.5px}
+  .logo small{font-size:8px;letter-spacing:2px;margin-top:0}
   .clock{display:none}
-  nav{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:7px;padding:2px 0 2px}
-  nav::-webkit-scrollbar{height:0}
-  .nav-btn{flex-shrink:0;padding:9px 14px;font-size:13px}
+  .hdr-right{gap:8px}
+  #branchChip span:not(.av){display:none}
+  /* เมนูหลัก = drawer ซ้าย เปิดด้วย ☰ */
+  nav{position:fixed;top:0;left:0;height:100vh;width:232px;background:var(--green);flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:62px 12px 18px;z-index:60;transform:translateX(-100%);transition:transform .25s var(--ease);overflow-y:auto;box-shadow:4px 0 24px rgba(0,0,0,.25)}
+  body.nav-open nav{transform:translateX(0)}
+  nav .nav-btn{width:100%;justify-content:flex-start;font-size:15px;padding:13px 16px;border-radius:12px}
   nav .nav-btn span.lbl{display:inline}
-  /* หน้าขาย: เมนูบน (สูงกว่า) ตะกร้าล่าง */
-  .view.active{flex-direction:column}
-  .menu-area{flex:1 1 auto;height:auto;min-height:0}
-  .cart{width:100%!important;height:40vh;flex-shrink:0;box-shadow:0 -4px 18px rgba(27,58,47,.12)}
-  .grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;padding:12px 18px 20px}
-  .card .thumb{height:100px}
-  .card .nm{font-size:15px}
-  .card .pr{font-size:17px}
-  .tab{padding:10px 20px;font-size:14px}
-  .otype button{padding:8px 15px;font-size:14px}
-  .qbtn{width:32px;height:32px;font-size:18px}
-  /* ปุ่มในตะกร้า: กระชับ ไม่อ้วนเกิน วางเป็น 2 คอลัมน์ให้แน่น */
-  .cart-actions{grid-template-columns:1fr 1fr;gap:8px;padding:0 14px 10px}
-  .btn{padding:12px;font-size:14px}
-  .btn-pay{padding:15px;font-size:16px}
-  /* หน้าหลังร้าน/รายงาน */
-  .cards-row{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
-  .panel{padding:20px 22px}
-  .modal{max-width:90vw}
+  /* ตะกร้า = drawer ขวา เปิดด้วยปุ่มตะกร้า */
+  .cart{position:fixed;top:0;right:0;height:100vh;width:min(380px,86vw)!important;z-index:60;transform:translateX(100%);transition:transform .25s var(--ease);box-shadow:-6px 0 26px rgba(0,0,0,.22)}
+  body.cart-open .cart{transform:translateX(0)}
+  body.nav-open .drawer-back,body.cart-open .drawer-back{display:block}
+  /* หน้าขาย: หมวด=แถบซ้าย · เมนู=เต็มที่เหลือ */
+  .view.active{flex-direction:row}
+  .menu-area{flex:1;display:grid;grid-template-columns:94px 1fr;grid-template-rows:auto 1fr;grid-template-areas:"top top" "cats grid";min-height:0}
+  .pos-top{grid-area:top}
+  .tabs{grid-area:cats;flex-direction:column;flex-wrap:nowrap;overflow-y:auto;gap:8px;padding:10px 8px;background:var(--surface-2);border-right:1px solid var(--line)}
+  .tabs::-webkit-scrollbar{width:0}
+  .tab{flex-shrink:0;width:100%;text-align:center;padding:12px 6px;font-size:12px;border-radius:13px;line-height:1.3}
+  .grid{grid-area:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:12px 14px 24px}
+  .card .thumb{height:92px}
+  /* หน้าอื่น */
+  .cards-row{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
   .panel table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .modal{max-width:92vw}
+}
+/* ===== เฉพาะมือถือเล็ก (≤680px): แถบหมวดแคบลง เมนู 2 คอลัมน์ ===== */
+@media(max-width:680px){
+  .menu-area{grid-template-columns:74px 1fr}
+  .tabs{padding:8px 5px;gap:6px}
+  .tab{padding:10px 4px;font-size:11px}
+  .grid{grid-template-columns:repeat(2,1fr);gap:9px;padding:10px 11px 22px}
+  .card .thumb{height:78px}
+  .staff-chip{padding:4px 8px;font-size:12px}
+  #staffChip span:not(.av){display:none}
+  nav{width:80vw}
 }
 .hidden{display:none!important}
 </style>
@@ -375,6 +372,7 @@ tr:hover td{background:var(--surface-2)}
 <div class="app">
   <!-- ===== HEADER ===== -->
   <header>
+    <button class="ham-btn" id="hamBtn" onclick="UI.toggleNav()" aria-label="เมนูหลัก">☰</button>
     <div class="brand">
       <div class="logo">SAO CAFE<small>ขาว คาเฟ่</small></div>
     </div>
@@ -385,8 +383,10 @@ tr:hover td{background:var(--surface-2)}
       <button class="staff-chip" id="staffChip" onclick="AUTH.lock()">
         <span class="av" id="staffAv">?</span><span id="staffName">—</span>
       </button>
+      <button class="cart-fab" id="cartFab" onclick="UI.toggleCart()" aria-label="ตะกร้า">🛒<span class="cfab-badge hidden" id="cartFabBadge">0</span></button>
     </div>
   </header>
+  <div class="drawer-back" id="drawerBack" onclick="UI.closeDrawers()"></div>
 
   <!-- ===== POS VIEW ===== -->
   <section class="view active" id="v-pos">
@@ -3115,7 +3115,10 @@ const UI = (()=>{
       close('genOverlay'); onOk(out);
     };
   }
-  return {toast,open,close,confirm2,ask};
+  function toggleNav(){ document.body.classList.toggle('nav-open'); document.body.classList.remove('cart-open'); }
+  function toggleCart(){ document.body.classList.toggle('cart-open'); document.body.classList.remove('nav-open'); }
+  function closeDrawers(){ document.body.classList.remove('nav-open','cart-open'); }
+  return {toast,open,close,confirm2,ask,toggleNav,toggleCart,closeDrawers};
 })();
 
 /* ============================================================
@@ -3141,6 +3144,7 @@ const NAV = (()=>{
   }
   function go(k){
     cur=k;
+    try{ UI.closeDrawers(); }catch(e){}
     $$('.view').forEach(v=>v.classList.remove('active'));
     $('#v-'+k).classList.add('active');
     $$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.k===k));
@@ -3268,7 +3272,9 @@ const POS = (()=>{
   }
   function renderCart(){
     persistCart();
-    $('#cartCnt').textContent=cart.reduce((s,c)=>s+c.qty,0);
+    const _cn=cart.reduce((s,c)=>s+c.qty,0);
+    $('#cartCnt').textContent=_cn;
+    const _fb=$('#cartFabBadge'); if(_fb){ _fb.textContent=_cn; _fb.classList.toggle('hidden',_cn===0); }
     renderHolds();
     if(!cart.length){
       $('#cartItems').innerHTML=`<div class="empty"><div class="ic">🛒</div>ยังไม่มีรายการ<br><small>แตะเมนูเพื่อเพิ่ม</small></div>`;
@@ -5425,7 +5431,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.9</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.0</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
