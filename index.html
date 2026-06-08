@@ -337,21 +337,32 @@ tr:hover td{background:var(--surface-2)}
 }
 /* ===== iPad / แท็บเล็ตแนวตั้ง (681–1024px): เมนูบน-ตะกร้าล่าง ปุ่มใหญ่นิ้วแตะ ===== */
 @media(min-width:681px) and (max-width:1024px){
+  /* หัวจอกระชับ: โลโก้เล็กลง + แถบเมนูแถวเดียวเลื่อนแนวนอน ไม่ล้นหลายแถว */
+  header{padding:8px 14px;flex-wrap:wrap;row-gap:6px}
+  .logo{font-size:24px}
+  .logo small{font-size:9px;letter-spacing:3px}
+  .hdr-right{margin-left:auto}
+  .clock{display:none}
+  nav{order:3;width:100%;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:7px;padding:2px 0 2px}
+  nav::-webkit-scrollbar{height:0}
+  .nav-btn{flex-shrink:0;padding:9px 14px;font-size:13px}
+  nav .nav-btn span.lbl{display:inline}
+  /* หน้าขาย: เมนูบน (สูงกว่า) ตะกร้าล่าง */
   .view.active{flex-direction:column}
   .menu-area{flex:1 1 auto;height:auto;min-height:0}
-  .cart{width:100%!important;height:43vh;flex-shrink:0;box-shadow:0 -4px 18px rgba(27,58,47,.12)}
-  .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;padding:12px 18px 22px}
-  .card .thumb{height:96px}
+  .cart{width:100%!important;height:40vh;flex-shrink:0;box-shadow:0 -4px 18px rgba(27,58,47,.12)}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;padding:12px 18px 20px}
+  .card .thumb{height:100px}
   .card .nm{font-size:15px}
   .card .pr{font-size:17px}
-  nav .nav-btn span.lbl{display:inline}
-  .nav-btn{padding:10px 15px;font-size:14px}
-  .tab{padding:11px 22px;font-size:15px}
-  .otype button{padding:9px 16px;font-size:14px}
+  .tab{padding:10px 20px;font-size:14px}
+  .otype button{padding:8px 15px;font-size:14px}
   .qbtn{width:32px;height:32px;font-size:18px}
-  .citem .cline{gap:10px}
-  .btn{padding:15px;font-size:15px}
-  .btn-pay{padding:17px;font-size:17px}
+  /* ปุ่มในตะกร้า: กระชับ ไม่อ้วนเกิน วางเป็น 2 คอลัมน์ให้แน่น */
+  .cart-actions{grid-template-columns:1fr 1fr;gap:8px;padding:0 14px 10px}
+  .btn{padding:12px;font-size:14px}
+  .btn-pay{padding:15px;font-size:16px}
+  /* หน้าหลังร้าน/รายงาน */
   .cards-row{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
   .panel{padding:20px 22px}
   .modal{max-width:90vw}
@@ -5414,7 +5425,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.8</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v6.9</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
