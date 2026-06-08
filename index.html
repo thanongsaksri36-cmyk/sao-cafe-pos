@@ -47,7 +47,8 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .clock{font-variant-numeric:tabular-nums}
 .staff-chip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);padding:5px 11px;border-radius:20px;color:#fff;font-size:12px}
 .staff-chip .av{width:22px;height:22px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
-.ham-btn{display:none;background:rgba(255,255,255,.1);color:#fff;font-size:20px;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0}
+.ham-btn{display:none;position:relative;background:rgba(255,255,255,.1);color:#fff;font-size:20px;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0}
+.ham-badge{position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:10px;font-weight:700;min-width:17px;height:17px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 3px}
 .cart-fab{display:none;position:relative;background:var(--gold);color:#fff;font-size:18px;width:42px;height:42px;border-radius:12px;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 10px rgba(166,124,61,.4)}
 .cfab-badge{position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;min-width:19px;height:19px;border-radius:10px;display:flex;align-items:center;justify-content:center;padding:0 4px}
 .drawer-back{display:none;position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:55}
@@ -191,7 +192,7 @@ tr:hover td{background:var(--surface-2)}
 .add-fab{padding:10px 18px;border-radius:var(--r-btn);background:var(--green);color:#fff;font-size:14px;font-weight:600}
 
 /* ---------- Overlays / Modal ---------- */
-.overlay{position:fixed;inset:0;background:rgba(15,36,25,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
+.overlay{position:fixed;inset:0;background:rgba(15,36,25,.55);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:80;padding:20px}
 .overlay.show{display:flex}
 .modal{background:var(--surface);border-radius:18px;width:100%;max-width:440px;max-height:90vh;overflow-y:auto;box-shadow:var(--shadow-lg);animation:pop .25s var(--ease)}
 .modal.wide{max-width:560px}
@@ -347,8 +348,13 @@ tr:hover td{background:var(--surface-2)}
   .tabs{grid-area:cats;flex-direction:column;flex-wrap:nowrap;overflow-y:auto;gap:8px;padding:10px 8px;background:var(--surface-2);border-right:1px solid var(--line)}
   .tabs::-webkit-scrollbar{width:0}
   .tab{flex-shrink:0;width:100%;text-align:center;padding:12px 6px;font-size:12px;border-radius:13px;line-height:1.3}
-  .grid{grid-area:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;padding:12px 14px 24px}
-  .card .thumb{height:92px}
+  .grid{grid-area:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px;padding:12px 14px 24px;align-content:start}
+  .card{min-height:0}
+  .card .thumb{height:90px}
+  .card .thumb .emoji{font-size:38px}
+  .card .info{padding:8px 11px 10px}
+  .card .nm{font-size:13.5px;min-height:34px;line-height:1.25}
+  .card .pr{font-size:16px;margin-top:2px}
   /* หน้าอื่น */
   .cards-row{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
   .panel table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -360,7 +366,11 @@ tr:hover td{background:var(--surface-2)}
   .tabs{padding:8px 5px;gap:6px}
   .tab{padding:10px 4px;font-size:11px}
   .grid{grid-template-columns:repeat(2,1fr);gap:9px;padding:10px 11px 22px}
-  .card .thumb{height:78px}
+  .card .thumb{height:74px}
+  .card .thumb .emoji{font-size:30px}
+  .card .info{padding:7px 9px 9px}
+  .card .nm{font-size:12px;min-height:30px;line-height:1.2}
+  .card .pr{font-size:14px}
   .staff-chip{padding:4px 8px;font-size:12px}
   #staffChip span:not(.av){display:none}
   nav{width:80vw}
@@ -372,7 +382,7 @@ tr:hover td{background:var(--surface-2)}
 <div class="app">
   <!-- ===== HEADER ===== -->
   <header>
-    <button class="ham-btn" id="hamBtn" onclick="UI.toggleNav()" aria-label="เมนูหลัก">☰</button>
+    <button class="ham-btn" id="hamBtn" onclick="UI.toggleNav()" aria-label="เมนูหลัก">☰<span class="ham-badge hidden" id="hamBadge"></span></button>
     <div class="brand">
       <div class="logo">SAO CAFE<small>ขาว คาเฟ่</small></div>
     </div>
@@ -3084,7 +3094,7 @@ const UI = (()=>{
     const t=$('#toast'); t.textContent=msg; t.className='show'+(type?' '+type:'');
     clearTimeout(toastT); toastT=setTimeout(()=>t.className='',2200);
   }
-  function open(id){ $('#'+id).classList.add('show'); }
+  function open(id){ try{ closeDrawers(); }catch(e){} $('#'+id).classList.add('show'); }
   function close(id){ $('#'+id).classList.remove('show'); }
   function confirm2(title,msg,onYes,danger){
     $('#genModal').innerHTML=`
@@ -3118,7 +3128,13 @@ const UI = (()=>{
   function toggleNav(){ document.body.classList.toggle('nav-open'); document.body.classList.remove('cart-open'); }
   function toggleCart(){ document.body.classList.toggle('cart-open'); document.body.classList.remove('nav-open'); }
   function closeDrawers(){ document.body.classList.remove('nav-open','cart-open'); }
-  return {toast,open,close,confirm2,ask,toggleNav,toggleCart,closeDrawers};
+  function updateHamBadge(){
+    const b=$('#hamBadge'); if(!b) return; let n=0;
+    try{ n+=KDS.active().length; }catch(e){}
+    try{ n+=PENDING.waitList().length+PENDING.openTabs().length; }catch(e){}
+    b.textContent=n; b.classList.toggle('hidden',n===0);
+  }
+  return {toast,open,close,confirm2,ask,toggleNav,toggleCart,closeDrawers,updateHamBadge};
 })();
 
 /* ============================================================
@@ -3874,6 +3890,7 @@ const KDS = (()=>{
   function updateBadge(){
     const n=active().length, b=$('#kdsBdg');
     if(b){ b.textContent=n; b.classList.toggle('hidden',n===0); }
+    try{ UI.updateHamBadge(); }catch(e){}
   }
   function tick(){ if(NAV.cur()==='kds') $$('.tmr').forEach(el=>{ const at=+el.dataset.at; el.textContent=mmss((STORE.now()-at)/60000); }); }
   return {render,toggleItem,setStatus,updateBadge,tick,active,serveSlip,serveSlipHtml};
@@ -4241,7 +4258,7 @@ const PENDING = (()=>{
     src.status='void'; src.voidReason='รวมบิลไปโต๊ะ '+(target.table||target.no); src.closedAt=STORE.now();
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
-  function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } }
+  function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } try{ UI.updateHamBadge(); }catch(e){} }
   return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo};
 })();
 
@@ -5431,7 +5448,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.0</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.2</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
