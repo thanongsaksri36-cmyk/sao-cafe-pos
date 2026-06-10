@@ -5449,7 +5449,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.5</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.6</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5487,6 +5487,7 @@ const SETTINGS = (()=>{
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
               เลือกเอง: สีหลัก <input type="color" id="setColPrimary" value="${((STORE.curBranch()||{}).brandColors||{}).primary||'#1B3A2F'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
               สีเน้น <input type="color" id="setColAccent" value="${((STORE.curBranch()||{}).brandColors||{}).accent||'#A67C3D'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
+              พื้นหลัง <input type="color" id="setColBg" value="${((STORE.curBranch()||{}).brandColors||{}).bg||'#F5F0E6'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
               <button type="button" class="sub-tab" onclick="SETTINGS.applyCustomColor()">ใช้สีนี้</button>
               <button type="button" class="sub-tab" style="color:var(--danger)" onclick="SETTINGS.resetColor()">คืนค่าเริ่มต้น</button>
             </div>
@@ -5617,21 +5618,23 @@ const SETTINGS = (()=>{
   function applyTheme(){ document.documentElement.setAttribute('data-theme',STORE.get().settings.theme||'light'); }
   function shade(hex,pct){ try{ hex=hex.replace('#',''); if(hex.length===3) hex=hex.split('').map(c=>c+c).join(''); let r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16); const f=x=>Math.max(0,Math.min(255,Math.round(x+(pct/100)*255))); return '#'+[f(r),f(g),f(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }catch(e){ return hex; } }
   function colorPresets(){ return [
-    {id:'coffee',name:'เขียวกาแฟ',primary:'#1B3A2F',dark:'#0F2419',accent:'#A67C3D',light:'#C9A55C'},
-    {id:'navy',name:'น้ำเงินธุรกิจ',primary:'#1E3A5F',dark:'#122740',accent:'#C9A24B',light:'#E0C074'},
-    {id:'wine',name:'แดงอบอุ่น',primary:'#7A2E2E',dark:'#511E1E',accent:'#C8842B',light:'#E0AB5C'},
-    {id:'purple',name:'ม่วงพรีเมียม',primary:'#3C2A5C',dark:'#281A3F',accent:'#B08D57',light:'#CBAE7E'},
-    {id:'mint',name:'เขียวมินต์',primary:'#1F6E5A',dark:'#134236',accent:'#E0A93B',light:'#F0C76A'},
-    {id:'black',name:'ดำ-ทอง หรู',primary:'#262626',dark:'#131313',accent:'#C2A14D',light:'#DCC57E'}
+    {id:'coffee',name:'เขียวกาแฟ',primary:'#1B3A2F',dark:'#0F2419',accent:'#A67C3D',light:'#C9A55C',bg:'#F5F0E6'},
+    {id:'navy',name:'น้ำเงินธุรกิจ',primary:'#1E3A5F',dark:'#122740',accent:'#C9A24B',light:'#E0C074',bg:'#EEF2F7'},
+    {id:'wine',name:'แดงอบอุ่น',primary:'#7A2E2E',dark:'#511E1E',accent:'#C8842B',light:'#E0AB5C',bg:'#F7EFEC'},
+    {id:'purple',name:'ม่วงพรีเมียม',primary:'#3C2A5C',dark:'#281A3F',accent:'#B08D57',light:'#CBAE7E',bg:'#F2EEF7'},
+    {id:'mint',name:'เขียวมินต์',primary:'#1F6E5A',dark:'#134236',accent:'#E0A93B',light:'#F0C76A',bg:'#EAF4F0'},
+    {id:'black',name:'ดำ-ทอง หรู',primary:'#262626',dark:'#131313',accent:'#C2A14D',light:'#DCC57E',bg:'#F2F1EE'}
   ]; }
   function applyBrandColor(){
     const c=(STORE.curBranch()||{}).brandColors, root=document.documentElement.style;
-    const keys=['--green','--green-dark','--gold','--gold-light'];
+    const keys=['--green','--green-dark','--gold','--gold-light','--cream','--surface-2'];
     if(c&&c.primary){
       root.setProperty('--green',c.primary);
       root.setProperty('--green-dark',c.dark||shade(c.primary,-12));
       root.setProperty('--gold',c.accent||'#A67C3D');
       root.setProperty('--gold-light',c.light||shade(c.accent||'#A67C3D',14));
+      if(c.bg){ root.setProperty('--cream',c.bg); root.setProperty('--surface-2',shade(c.bg,3)); }
+      else { root.removeProperty('--cream'); root.removeProperty('--surface-2'); }
     } else { keys.forEach(k=>root.removeProperty(k)); }
   }
   function canColor(){ return (AUTH.isHQ&&AUTH.isHQ())||((AUTH.get()||{}).role==='owner'); }
@@ -5641,8 +5644,8 @@ const SETTINGS = (()=>{
     cb.brandColors=c; STORE.save(); try{ CLOUD.pushItem('branches',cb); }catch(e){}   // ซิงค์เฉพาะสาขานี้ ไม่แตะสาขาอื่น
     applyBrandColor(); render(); UI.toast('เปลี่ยนสีสาขานี้แล้ว ✅','ok');
   }
-  function pickColor(id){ const p=colorPresets().find(x=>x.id===id); if(p) saveBranchColor({id:p.id,primary:p.primary,dark:p.dark,accent:p.accent,light:p.light}); }
-  function applyCustomColor(){ const pr=$('#setColPrimary'),ac=$('#setColAccent'); if(!pr||!ac) return; saveBranchColor({id:'custom',primary:pr.value,accent:ac.value,dark:shade(pr.value,-12),light:shade(ac.value,14)}); }
+  function pickColor(id){ const p=colorPresets().find(x=>x.id===id); if(p) saveBranchColor({id:p.id,primary:p.primary,dark:p.dark,accent:p.accent,light:p.light,bg:p.bg}); }
+  function applyCustomColor(){ const pr=$('#setColPrimary'),ac=$('#setColAccent'),bgv=$('#setColBg'); if(!pr||!ac) return; saveBranchColor({id:'custom',primary:pr.value,accent:ac.value,dark:shade(pr.value,-12),light:shade(ac.value,14),bg:bgv?bgv.value:undefined}); }
   function resetColor(){ if(!canColor()){ UI.toast('เฉพาะผู้ดูแล/เจ้าของ','err'); return; } const cb=STORE.curBranch(); if(cb){ delete cb.brandColors; STORE.save(); try{ CLOUD.pushItem('branches',cb); }catch(e){} } applyBrandColor(); render(); UI.toast('คืนสีเริ่มต้นแล้ว','ok'); }
   function backup(){
     const blob=new Blob([JSON.stringify(STORE.get(),null,2)],{type:'application/json'});
