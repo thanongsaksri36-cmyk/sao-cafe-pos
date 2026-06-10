@@ -471,6 +471,9 @@ tr:hover td{background:var(--surface-2)}
   <section class="view" id="v-settings">
     <div class="panel" id="setPanel"></div>
   </section>
+  <section class="view" id="v-ai">
+    <div class="panel" id="aiPanel"></div>
+  </section>
 </div>
 
 <!-- ===== OVERLAYS ===== -->
@@ -3148,6 +3151,7 @@ const NAV = (()=>{
     {k:'pending',label:'รอชำระ',icon:'📥',perm:'pos'},
     {k:'qr',label:'QR ลูกค้า',icon:'📱',perm:'pos'},
     {k:'report',label:'รายงาน',icon:'📊',perm:'report'},
+    {k:'ai',label:'ผู้ช่วย AI',icon:'🤖',perm:'report'},
     {k:'history',label:'ประวัติบิล',icon:'📜',perm:'report'},
     {k:'bo',label:'หลังร้าน',icon:'⚙️',perm:'bo_menu'},
     {k:'shift',label:'กะ/เงินสด',icon:'💰',perm:'shift'},
@@ -3169,6 +3173,7 @@ const NAV = (()=>{
     if(k==='kds') KDS.render();
     if(k==='qr') QR.render();
     if(k==='report') REPORT.render();
+    if(k==='ai') AI.render();
     if(k==='history') HISTORY.render();
     if(k==='pending') PENDING.render();
     if(k==='bo') BO.render();
@@ -5449,7 +5454,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.6</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.7</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6244,6 +6249,78 @@ const CUSTOMER = (()=>{
     QR.startCustomer(table);
   }
   return {start};
+})();
+
+const AI = (()=>{
+  let msgs=[], busy=false;
+  const baht=s=>Math.round((s||0)/100);
+  function ctx(){
+    const bid=STORE.bid(), now=Date.now(), DAY=86400000;
+    const ords=STORE.get().orders.filter(o=>(o.branchId||'BR-001')===bid && o.status!=='void' && o.method && o.method!=='unpaid');
+    const sum=a=>a.reduce((x,o)=>x+(o.total||0),0);
+    const inD=d=>ords.filter(o=>now-o.createdAt<=d*DAY);
+    const today=ords.filter(o=>new Date(o.createdAt).toDateString()===new Date().toDateString());
+    const d7=inD(7), d30=inD(30);
+    const map={};
+    d30.forEach(o=>(o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId)||{}; const rev=((it.base||0)+(it.modPrice||0))*it.qty, cost=(p.cost||0)*it.qty; (map[it.name]=map[it.name]||{q:0,rev:0,cost:0}); map[it.name].q+=it.qty; map[it.name].rev+=rev; map[it.name].cost+=cost; }));
+    const menus=Object.entries(map).map(([n,d])=>({name:n,qty:d.q,rev:d.rev,margin:d.rev?Math.round((d.rev-d.cost)/d.rev*100):0}));
+    const top=menus.slice().sort((a,b)=>b.qty-a.qty).slice(0,8).map(m=>({เมนู:m.name,ขายได้:m.qty,ยอดบาท:baht(m.rev),มาร์จิน:m.margin+'%'}));
+    const slow=menus.slice().sort((a,b)=>a.qty-b.qty).slice(0,5).map(m=>({เมนู:m.name,ขายได้:m.qty,มาร์จิน:m.margin+'%'}));
+    const low=STORE.scoped('ingredients').filter(i=>i.stock<i.parLevel&&!i.deletedAt).map(i=>i.name+' เหลือ '+i.stock+(i.unit||''));
+    let cash=0,qr=0; d30.forEach(o=>{ if(o.method==='cash')cash+=o.total; else qr+=o.total; });
+    return {
+      สาขา:(STORE.curBranch()||{}).name||'-',
+      วันนี้:{ยอดขายบาท:baht(sum(today)),จำนวนบิล:today.length},
+      ย้อนหลัง7วัน:{ยอดขายบาท:baht(sum(d7)),จำนวนบิล:d7.length},
+      ย้อนหลัง30วัน:{ยอดขายบาท:baht(sum(d30)),จำนวนบิล:d30.length,เฉลี่ยต่อบิล:d30.length?baht(sum(d30)/d30.length):0},
+      เมนูขายดี:top, เมนูขายช้า:slow,
+      วัตถุดิบใกล้หมด:low.length?low:['—'],
+      การชำระเงิน30วัน:{เงินสดบาท:baht(cash),QRหรือโอนบาท:baht(qr)},
+      จำนวนสมาชิก:(STORE.get().members||[]).length
+    };
+  }
+  async function askGemini(key,q){
+    const sys='คุณคือที่ปรึกษาการตลาด+วิเคราะห์ยอดขายของร้านกาแฟไทย ตอบสั้น กระชับ เป็นภาษาไทย ใช้เฉพาะตัวเลขจากข้อมูล JSON ที่ให้ ห้ามแต่งตัวเลขเอง เวลาแนะนำโปรโมชั่นให้อิงมาร์จิน/เมนูขายช้า/การจับคู่เมนู และทำได้จริงไม่ขาดทุน ปิดท้ายคำแนะนำโปรโมชั่นด้วยการบอกให้เจ้าของกดยืนยันเองก่อนใช้จริง';
+    const prompt=sys+'\n\nข้อมูลร้าน (JSON):\n'+JSON.stringify(ctx())+'\n\nคำถามเจ้าของร้าน: '+q;
+    const body={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.5}};
+    const models=['gemini-2.0-flash','gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash-lite'];
+    let lastErr='';
+    for(const model of models){ for(let a=0;a<3;a++){ try{
+      const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key);
+      const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(res.status===503||res.status===429){ lastErr='โมเดลคนเยอะ('+res.status+')'; await new Promise(r=>setTimeout(r,1200*(a+1))); continue; }
+      if(!res.ok){ const t=await res.text(); lastErr='HTTP '+res.status+' '+t.slice(0,120); break; }
+      const j=await res.json(); let parts=(((j.candidates||[])[0]||{}).content||{}).parts; return (parts&&parts[0]?parts[0].text:'').trim()||'(ไม่มีคำตอบ)';
+    }catch(e){ lastErr=e.message||String(e); await new Promise(r=>setTimeout(r,800)); } } }
+    throw new Error(lastErr||'เรียก AI ไม่สำเร็จ');
+  }
+  const QUICK=['ยอดขายวันนี้เป็นไง','เมนูไหนขายดี/ขายช้า','ช่วยแนะนำโปรโมชั่นเพิ่มยอด','วัตถุดิบอะไรใกล้หมด','เมนูไหนกำไรดีสุด'];
+  function render(){
+    const key=(STORE.get().settings.geminiKey||'').trim();
+    $('#aiPanel').innerHTML=`
+      <div class="panel-head"><h2>🤖 ผู้ช่วย AI ร้าน</h2><span style="font-size:12px;color:var(--muted)">วิเคราะห์จากข้อมูลสาขา ${esc((STORE.curBranch()||{}).name||'')}</span></div>
+      ${!key?`<div class="stat-card" style="border-left:5px solid var(--warn)">⚠️ ยังไม่ได้ใส่ Gemini API Key — ไปที่ ตั้งค่า → 🤖 Gemini API Key ก่อนใช้งาน<br><small style="color:var(--muted)">สมัครฟรีที่ Google AI Studio</small></div>`:''}
+      <div id="aiChat" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">${msgs.length?msgs.map(m=>bubble(m)).join(''):'<div class="empty" style="padding:30px"><div class="ic">🤖</div>ถามอะไรก็ได้เกี่ยวกับร้าน<br><small>เช่น ยอดขาย เมนูขายดี หรือขอให้ช่วยคิดโปรโมชั่น</small></div>'}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${QUICK.map(q=>`<button class="sub-tab" onclick="AI.send('${esc(q)}')">${esc(q)}</button>`).join('')}</div>
+      <div style="display:flex;gap:8px"><input id="aiInput" placeholder="พิมพ์คำถาม..." style="flex:1;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:14px;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter')AI.sendInput()"><button class="btn btn-pay" style="padding:13px 22px" onclick="AI.sendInput()">${busy?'...':'ส่ง'}</button></div>`;
+    const c=$('#aiChat'); if(c) c.scrollTop=c.scrollHeight;
+  }
+  function bubble(m){
+    const me=m.role==='user';
+    return `<div style="align-self:${me?'flex-end':'flex-start'};max-width:88%;background:${me?'var(--green)':'var(--surface)'};color:${me?'#fff':'var(--text)'};border:1px solid ${me?'var(--green)':'var(--line)'};border-radius:14px;padding:11px 14px;font-size:14px;line-height:1.55;white-space:pre-wrap;box-shadow:var(--shadow)">${esc(m.text)}</div>`;
+  }
+  function sendInput(){ const el=$('#aiInput'); if(!el) return; const v=el.value.trim(); if(v) send(v); }
+  async function send(q){
+    if(busy) return;
+    const key=(STORE.get().settings.geminiKey||'').trim();
+    if(!key){ UI.toast('ใส่ Gemini API Key ก่อน (ตั้งค่า → 🤖)','err'); return; }
+    msgs.push({role:'user',text:q}); busy=true; render();
+    msgs.push({role:'ai',text:'🤖 กำลังคิด...'}); render();
+    try{ const ans=await askGemini(key,q); msgs[msgs.length-1]={role:'ai',text:ans}; }
+    catch(e){ msgs[msgs.length-1]={role:'ai',text:'❌ '+(e.message||e)}; }
+    busy=false; render();
+  }
+  return {render,send,sendInput};
 })();
 
 const APP = (()=>{
