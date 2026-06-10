@@ -5454,7 +5454,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.3</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.4</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6351,11 +6351,11 @@ const AI = (()=>{
     const c=$('#aiChat'); if(c) c.scrollTop=c.scrollHeight;
   }
   function renderChat(){ const c=$('#aiChat'); if(c){ c.innerHTML=msgs.length?msgs.map(bubble).join(''):''; c.scrollTop=c.scrollHeight; } }
-  function mdLight(t){ let h=esc(t); h=h.replace(/\*\*([^*]+?)\*\*/g,'<b>$1</b>'); h=h.replace(/(^|\n)\s*[\*\-]\s+/g,'$1• '); h=h.replace(/(^|\n)\s*#{1,4}\s*/g,'$1'); return h; }
+  function mdLight(t){ let h=esc(t); h=h.replace(/\*\*([^*]+?)\*\*/g,'<b>$1</b>'); h=h.replace(/(^|\n)\s*[\*\-]\s+/g,'$1• '); h=h.replace(/(^|\n)\s*#{1,4}\s*/g,'$1'); h=h.replace(/\*\*/g,''); h=h.replace(/\*(?=\S)/g,''); return h; }
   function bubble(m){
     const me=m.role==='user';
     const body=me?esc(m.text):mdLight(m.text);
-    return `<div style="align-self:${me?'flex-end':'flex-start'};max-width:88%;background:${me?'var(--green)':'var(--surface)'};color:${me?'#fff':'var(--text)'};border:1px solid ${me?'var(--green)':'var(--line)'};border-radius:14px;padding:11px 14px;font-size:14px;line-height:1.6;white-space:pre-wrap;box-shadow:var(--shadow)">${body}</div>`;
+    return `<div style="align-self:${me?'flex-end':'flex-start'};max-width:88%;background:${me?'var(--green)':'var(--surface)'};color:${me?'#fff':'var(--text)'};border:1px solid ${me?'var(--green)':'var(--line)'};border-radius:14px;padding:11px 14px;font-size:14px;line-height:1.6;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;box-shadow:var(--shadow)">${body}</div>`;
   }
   function sendInput(){ const el=$('#aiInput'); if(!el) return; const v=el.value.trim(); if(v) send(v); }
   async function send(q){
