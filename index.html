@@ -385,7 +385,7 @@ tr:hover td{background:var(--surface-2)}
   <header>
     <button class="ham-btn" id="hamBtn" onclick="UI.toggleNav()" aria-label="เมนูหลัก">☰<span class="ham-badge hidden" id="hamBadge"></span></button>
     <div class="brand">
-      <div class="logo">SAO CAFE<small>ขาว คาเฟ่</small></div>
+      <div class="logo" id="brandLogo">SAO CAFE<small>ขาว คาเฟ่</small></div>
     </div>
     <nav id="nav"></nav>
     <div class="hdr-right">
@@ -482,7 +482,7 @@ tr:hover td{background:var(--surface-2)}
 
 <!-- ===== LOCK SCREEN ===== -->
 <div id="lockScreen">
-  <div class="lock-logo">SAO CAFE<small>ขาว คาเฟ่</small></div>
+  <div class="lock-logo" id="lockLogo">SAO CAFE<small>ขาว คาเฟ่</small></div>
   <div class="lock-staff" id="lockStaff"></div>
   <div class="pindots" id="lockDots"></div>
   <div class="pinpad" id="lockPad"></div>
@@ -2881,7 +2881,7 @@ const STORE = (()=>{
       {id:uuid(),code:'HAPPY',type:'happyhour',value:20,minSpend:0,activeDays:[1,2,3,4,5],startTime:'14:00',endTime:'17:00',active:true}
     ];
     return {
-      meta:{version:VERSION,shopName:'SAO CAFE',branchId:'BR-001',branchName:'สาขาสำนักงานใหญ่',currentBranchId:'BR-001',vatRate:7,vatIncluded:true,serviceCharge:0,currency:'THB',promptpayId:'0812345678',taxId:'',address:'',orderBaseUrl:'',logo:''},
+      meta:{version:VERSION,shopName:'SAO CAFE',brandSub:'ขาว คาเฟ่',branchId:'BR-001',branchName:'สาขาสำนักงานใหญ่',currentBranchId:'BR-001',vatRate:7,vatIncluded:true,serviceCharge:0,currency:'THB',promptpayId:'0812345678',taxId:'',address:'',orderBaseUrl:'',logo:''},
       categories:cats, products, modifiers:[sizeOpt,sweetOpt,extraOpt], ingredients:ings,
       orders:[], holds:[], members, promos, staff, shifts:[], cashlog:[],
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
@@ -5449,12 +5449,13 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.3</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
           <div style="font-size:12px;color:var(--muted);background:var(--bg);padding:8px 10px;border-radius:8px;margin-bottom:10px">📍 กำลังตั้งค่าสาขา: <b>${esc(cb.name||'-')}</b> · ชื่อร้าน/โลโก้ = ใช้ร่วมทุกสาขา · ชื่อสาขา/PromptPay/ภาษี/ที่อยู่ = เฉพาะสาขานี้</div>
           <div class="field"><label>ชื่อร้าน (แบรนด์ · ใช้ร่วมทุกสาขา)</label><input id="setShop" value="${esc(m.shopName)}"></div>
+          <div class="field"><label>คำโปรย/ชื่อรอง (ใต้โลโก้ · เว้นว่างได้)</label><input id="setBrandSub" value="${esc(m.brandSub||'')}" placeholder="เช่น ขาว คาเฟ่"></div>
           <div class="field"><label>ชื่อสาขานี้</label><input id="setBranch" value="${esc(cb.name||'')}"></div>
           <div class="field"><label>โลโก้ร้าน (แสดงบนใบเสร็จ/ใบครัว)</label><div style="display:flex;align-items:center;gap:10px"><div id="logoPrev" style="width:64px;height:64px;border:1px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg)">${m.logo?`<img src="${m.logo}" style="max-width:100%;max-height:100%">`:'<span style="font-size:11px;color:var(--muted)">ไม่มี</span>'}</div><button type="button" class="btn-ghost" onclick="SETTINGS.pickLogo()">📷 เลือกรูป</button>${m.logo?`<button type="button" class="btn-ghost" onclick="SETTINGS.clearLogo()">🗑 ลบ</button>`:''}</div></div>
           <div class="field"><label>PromptPay ID ของสาขานี้ (เบอร์/เลขบัตร)</label><input id="setPP" value="${esc(cb.promptpayId||'')}"></div>
@@ -5478,6 +5479,18 @@ const SETTINGS = (()=>{
           </div>
           <div class="field"><label>รูปแบบ VAT</label><select id="setVatInc"><option value="1" ${m.vatIncluded?'selected':''}>รวมในราคาแล้ว</option><option value="0" ${!m.vatIncluded?'selected':''}>บวกเพิ่มจากราคา</option></select></div>
           <div class="field"><label>ธีม</label><select id="setTheme"><option value="light" ${s.theme==='light'?'selected':''}>สว่าง (Light)</option><option value="dark" ${s.theme==='dark'?'selected':''}>มืด (Dark)</option></select></div>
+          ${(AUTH.isHQ&&AUTH.isHQ())||((AUTH.get()||{}).role==='owner')?`
+          <div class="field"><label>🎨 สีแบรนด์ของสาขานี้ (เฉพาะผู้ดูแล/เจ้าของ · ไม่กระจายไปสาขาอื่น)</label>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
+              ${SETTINGS.colorPresets().map(p=>`<button type="button" onclick="SETTINGS.pickColor('${p.id}')" style="padding:9px 6px;border-radius:10px;border:2px solid ${ (((STORE.curBranch()||{}).brandColors||{}).id===p.id)?'var(--gold)':'var(--line)'};background:${p.primary};color:#fff;font-size:12px;cursor:pointer;font-family:'Prompt'"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${p.accent};margin-right:4px;vertical-align:middle"></span>${p.name}</button>`).join('')}
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
+              เลือกเอง: สีหลัก <input type="color" id="setColPrimary" value="${((STORE.curBranch()||{}).brandColors||{}).primary||'#1B3A2F'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
+              สีเน้น <input type="color" id="setColAccent" value="${((STORE.curBranch()||{}).brandColors||{}).accent||'#A67C3D'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
+              <button type="button" class="sub-tab" onclick="SETTINGS.applyCustomColor()">ใช้สีนี้</button>
+              <button type="button" class="sub-tab" style="color:var(--danger)" onclick="SETTINGS.resetColor()">คืนค่าเริ่มต้น</button>
+            </div>
+          </div>`:''}
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
           <div class="field"><label>🔒 ล็อกหน้าจออัตโนมัติเมื่อไม่ใช้งาน</label>
@@ -5559,7 +5572,7 @@ const SETTINGS = (()=>{
   }
   function save(){
     const m=STORE.get().meta, s=STORE.get().settings;
-    m.shopName=$('#setShop').value; m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim();
+    m.shopName=$('#setShop').value; { const bs=$('#setBrandSub'); if(bs) m.brandSub=bs.value.trim(); } m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim(); try{ APP.applyBrand(); }catch(e){}
     const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
@@ -5602,6 +5615,35 @@ const SETTINGS = (()=>{
   }
   function toggleKey(){ const el=$('#setGemini'); if(el) el.type=(el.type==='password'?'text':'password'); }
   function applyTheme(){ document.documentElement.setAttribute('data-theme',STORE.get().settings.theme||'light'); }
+  function shade(hex,pct){ try{ hex=hex.replace('#',''); if(hex.length===3) hex=hex.split('').map(c=>c+c).join(''); let r=parseInt(hex.slice(0,2),16),g=parseInt(hex.slice(2,4),16),b=parseInt(hex.slice(4,6),16); const f=x=>Math.max(0,Math.min(255,Math.round(x+(pct/100)*255))); return '#'+[f(r),f(g),f(b)].map(x=>x.toString(16).padStart(2,'0')).join(''); }catch(e){ return hex; } }
+  function colorPresets(){ return [
+    {id:'coffee',name:'เขียวกาแฟ',primary:'#1B3A2F',dark:'#0F2419',accent:'#A67C3D',light:'#C9A55C'},
+    {id:'navy',name:'น้ำเงินธุรกิจ',primary:'#1E3A5F',dark:'#122740',accent:'#C9A24B',light:'#E0C074'},
+    {id:'wine',name:'แดงอบอุ่น',primary:'#7A2E2E',dark:'#511E1E',accent:'#C8842B',light:'#E0AB5C'},
+    {id:'purple',name:'ม่วงพรีเมียม',primary:'#3C2A5C',dark:'#281A3F',accent:'#B08D57',light:'#CBAE7E'},
+    {id:'mint',name:'เขียวมินต์',primary:'#1F6E5A',dark:'#134236',accent:'#E0A93B',light:'#F0C76A'},
+    {id:'black',name:'ดำ-ทอง หรู',primary:'#262626',dark:'#131313',accent:'#C2A14D',light:'#DCC57E'}
+  ]; }
+  function applyBrandColor(){
+    const c=(STORE.curBranch()||{}).brandColors, root=document.documentElement.style;
+    const keys=['--green','--green-dark','--gold','--gold-light'];
+    if(c&&c.primary){
+      root.setProperty('--green',c.primary);
+      root.setProperty('--green-dark',c.dark||shade(c.primary,-12));
+      root.setProperty('--gold',c.accent||'#A67C3D');
+      root.setProperty('--gold-light',c.light||shade(c.accent||'#A67C3D',14));
+    } else { keys.forEach(k=>root.removeProperty(k)); }
+  }
+  function canColor(){ return (AUTH.isHQ&&AUTH.isHQ())||((AUTH.get()||{}).role==='owner'); }
+  function saveBranchColor(c){
+    if(!canColor()){ UI.toast('เฉพาะผู้ดูแล/เจ้าของ','err'); return; }
+    const cb=STORE.curBranch(); if(!cb){ UI.toast('ไม่พบสาขา','err'); return; }
+    cb.brandColors=c; STORE.save(); try{ CLOUD.pushItem('branches',cb); }catch(e){}   // ซิงค์เฉพาะสาขานี้ ไม่แตะสาขาอื่น
+    applyBrandColor(); render(); UI.toast('เปลี่ยนสีสาขานี้แล้ว ✅','ok');
+  }
+  function pickColor(id){ const p=colorPresets().find(x=>x.id===id); if(p) saveBranchColor({id:p.id,primary:p.primary,dark:p.dark,accent:p.accent,light:p.light}); }
+  function applyCustomColor(){ const pr=$('#setColPrimary'),ac=$('#setColAccent'); if(!pr||!ac) return; saveBranchColor({id:'custom',primary:pr.value,accent:ac.value,dark:shade(pr.value,-12),light:shade(ac.value,14)}); }
+  function resetColor(){ if(!canColor()){ UI.toast('เฉพาะผู้ดูแล/เจ้าของ','err'); return; } const cb=STORE.curBranch(); if(cb){ delete cb.brandColors; STORE.save(); try{ CLOUD.pushItem('branches',cb); }catch(e){} } applyBrandColor(); render(); UI.toast('คืนสีเริ่มต้นแล้ว','ok'); }
   function backup(){
     const blob=new Blob([JSON.stringify(STORE.get(),null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='saocafe_backup_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
@@ -5620,7 +5662,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,backup,restore,applyTheme,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -5784,7 +5826,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
 const BRANCH = (()=>{
   function list(){ return STORE.get().branches||[]; }
   function cur(){ return STORE.curBranch(); }
-  function renderChip(){ const b=cur(); const el=$('#branchName'); if(el) el.textContent=b?b.name:'—'; const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
+  function renderChip(){ try{ SETTINGS.applyBrandColor(); }catch(e){} const b=cur(); const el=$('#branchName'); if(el) el.textContent=b?b.name:'—'; const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
   function typeTh(t){ return t==='franchise'?'แฟรนไชส์':'เจ้าของเอง'; }
   function switcher(){
     if(!AUTH.isHQ()){ UI.toast('สลับสาขาได้เฉพาะผู้ดูแลระบบ (HQ) — ตั้งได้ที่ พนักงาน → ดูได้ทุกสาขา','err'); return; }
@@ -6204,8 +6246,10 @@ const CUSTOMER = (()=>{
 const APP = (()=>{
   function init(){
     STORE.load();
+    applyBrand();
     CLOUD.init();
     SETTINGS.applyTheme();
+    try{ SETTINGS.applyBrandColor(); }catch(e){}
     // โหมดลูกค้า: เปิดจาก QR ที่โต๊ะ (?t=T5) -> เข้าหน้าสั่งเลย ไม่ต้องใส่ PIN
     const params=new URLSearchParams(location.search);
     if(params.get('order')==='1'||params.get('t')){ const _b=params.get('b'); if(_b) STORE.setBid(_b); CUSTOMER.start(params.get('t')||''); return; }
@@ -6224,6 +6268,14 @@ const APP = (()=>{
     let lastAct=Date.now();
     ['mousedown','keydown','touchstart','click'].forEach(ev=>document.addEventListener(ev,()=>{lastAct=Date.now();},true));
     setInterval(()=>{ const t=STORE.get().settings.sessionTimeoutMin||0; if(t>0 && AUTH.get() && $('#lockScreen').classList.contains('hide') && Date.now()-lastAct>t*60000){ AUTH.lock(); UI.toast('ล็อกหน้าจ ออัตโนมัติ (ไม่ได้ใช้งาน)','ok'); } },20000);
+  }
+  function applyBrand(){
+    const m=(STORE.get()||{}).meta||{};
+    const big=esc(m.shopName||'SAO CAFE'), sub=esc(m.brandSub||'');
+    const sm=sub?('<small>'+sub+'</small>'):'';
+    const hl=document.getElementById('brandLogo'); if(hl) hl.innerHTML=big+sm;
+    const ll=document.getElementById('lockLogo'); if(ll) ll.innerHTML=big+sm;
+    try{ document.title=(m.shopName||'SAO CAFE')+' — ระบบ POS ร้านกาแฟ'; }catch(e){}
   }
   function tickClock(){ $('#clock').textContent=new Date().toLocaleTimeString('th-TH'); }
   function bindKeys(){
@@ -6249,7 +6301,7 @@ const APP = (()=>{
       if(e.key==='Enter'&&$('#payOverlay').classList.contains('show')){ PAY.complete(); }
     });
   }
-  return {init};
+  return {init,applyBrand};
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
