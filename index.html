@@ -5454,7 +5454,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.7</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v7.9</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6268,33 +6268,52 @@ const AI = (()=>{
     const slow=menus.slice().sort((a,b)=>a.qty-b.qty).slice(0,5).map(m=>({เมนู:m.name,ขายได้:m.qty,มาร์จิน:m.margin+'%'}));
     const low=STORE.scoped('ingredients').filter(i=>i.stock<i.parLevel&&!i.deletedAt).map(i=>i.name+' เหลือ '+i.stock+(i.unit||''));
     let cash=0,qr=0; d30.forEach(o=>{ if(o.method==='cash')cash+=o.total; else qr+=o.total; });
+    // ยอดขายแยกตามช่วงเวลา (ชั่วโมง) + วันในสัปดาห์ จาก 30 วันล่าสุด
+    const byHour={}, byDow={}, dowName=['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์','เสาร์'];
+    d30.forEach(o=>{ const dt=new Date(o.createdAt), h=dt.getHours(), w=dt.getDay();
+      (byHour[h]=byHour[h]||{b:0,n:0}); byHour[h].b+=o.total; byHour[h].n++;
+      (byDow[w]=byDow[w]||{b:0,n:0}); byDow[w].b+=o.total; byDow[w].n++; });
+    const hours=Object.keys(byHour).sort((a,b)=>a-b).map(h=>({ช่วงเวลา:('0'+h).slice(-2)+':00-'+('0'+(+h+1)).slice(-2)+':00',ยอดบาท:baht(byHour[h].b),บิล:byHour[h].n}));
+    const dows=Object.keys(byDow).sort((a,b)=>byDow[b].b-byDow[a].b).map(w=>({วัน:dowName[w],ยอดบาท:baht(byDow[w].b),บิล:byDow[w].n}));
     return {
       สาขา:(STORE.curBranch()||{}).name||'-',
       วันนี้:{ยอดขายบาท:baht(sum(today)),จำนวนบิล:today.length},
       ย้อนหลัง7วัน:{ยอดขายบาท:baht(sum(d7)),จำนวนบิล:d7.length},
       ย้อนหลัง30วัน:{ยอดขายบาท:baht(sum(d30)),จำนวนบิล:d30.length,เฉลี่ยต่อบิล:d30.length?baht(sum(d30)/d30.length):0},
+      ยอดขายรายชั่วโมง30วัน:hours.length?hours:['ยังไม่มีข้อมูล'],
+      ยอดขายรายวันในสัปดาห์30วัน:dows.length?dows:['ยังไม่มีข้อมูล'],
       เมนูขายดี:top, เมนูขายช้า:slow,
       วัตถุดิบใกล้หมด:low.length?low:['—'],
       การชำระเงิน30วัน:{เงินสดบาท:baht(cash),QRหรือโอนบาท:baht(qr)},
       จำนวนสมาชิก:(STORE.get().members||[]).length
     };
   }
-  async function askGemini(key,q){
+  async function askStream(key,q,onChunk){
     const sys='คุณคือที่ปรึกษาการตลาด+วิเคราะห์ยอดขายของร้านกาแฟไทย ตอบสั้น กระชับ เป็นภาษาไทย ใช้เฉพาะตัวเลขจากข้อมูล JSON ที่ให้ ห้ามแต่งตัวเลขเอง เวลาแนะนำโปรโมชั่นให้อิงมาร์จิน/เมนูขายช้า/การจับคู่เมนู และทำได้จริงไม่ขาดทุน ปิดท้ายคำแนะนำโปรโมชั่นด้วยการบอกให้เจ้าของกดยืนยันเองก่อนใช้จริง';
     const prompt=sys+'\n\nข้อมูลร้าน (JSON):\n'+JSON.stringify(ctx())+'\n\nคำถามเจ้าของร้าน: '+q;
-    const body={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.5}};
-    const models=['gemini-2.0-flash','gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash-lite'];
+    const body={contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.5,maxOutputTokens:700}};
+    const models=['gemini-2.0-flash-lite','gemini-2.0-flash','gemini-flash-latest','gemini-2.5-flash'];   // เร็วสุดก่อน
+    const canStream=(typeof window!=='undefined'&&window.ReadableStream&&typeof TextDecoder!=='undefined');
     let lastErr='';
-    for(const model of models){ for(let a=0;a<3;a++){ try{
-      const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent?key='+encodeURIComponent(key);
+    for(const model of models){ for(let a=0;a<2;a++){ try{
+      const verb=canStream?'streamGenerateContent?alt=sse&':'generateContent?';
+      const url='https://generativelanguage.googleapis.com/v1beta/models/'+model+':'+verb+'key='+encodeURIComponent(key);
       const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(res.status===503||res.status===429){ lastErr='โมเดลคนเยอะ('+res.status+')'; await new Promise(r=>setTimeout(r,1200*(a+1))); continue; }
+      if(res.status===503||res.status===429){ lastErr='โมเดลคนเยอะ('+res.status+')'; await new Promise(r=>setTimeout(r,1000*(a+1))); continue; }
       if(!res.ok){ const t=await res.text(); lastErr='HTTP '+res.status+' '+t.slice(0,120); break; }
-      const j=await res.json(); let parts=(((j.candidates||[])[0]||{}).content||{}).parts; return (parts&&parts[0]?parts[0].text:'').trim()||'(ไม่มีคำตอบ)';
-    }catch(e){ lastErr=e.message||String(e); await new Promise(r=>setTimeout(r,800)); } } }
+      if(canStream && res.body && res.body.getReader){
+        const reader=res.body.getReader(), dec=new TextDecoder(); let buf='',full='';
+        while(true){ const ch=await reader.read(); if(ch.done) break; buf+=dec.decode(ch.value,{stream:true});
+          let nl; while((nl=buf.indexOf('\n'))>=0){ const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1);
+            if(line.indexOf('data:')===0){ const js=line.slice(5).trim(); if(js&&js!=='[DONE]'){ try{ const jj=JSON.parse(js); const pt=(((jj.candidates||[])[0]||{}).content||{}).parts; const pc=pt&&pt[0]?pt[0].text:''; if(pc){ full+=pc; onChunk&&onChunk(full); } }catch(e){} } } } }
+        if(full.trim()) return full.trim(); lastErr='ไม่มีคำตอบ';
+      } else {
+        const j=await res.json(); const pt=(((j.candidates||[])[0]||{}).content||{}).parts; const full=(pt&&pt[0]?pt[0].text:'').trim(); if(full){ onChunk&&onChunk(full); return full; } lastErr='ไม่มีคำตอบ';
+      }
+    }catch(e){ lastErr=e.message||String(e); await new Promise(r=>setTimeout(r,700)); } } }
     throw new Error(lastErr||'เรียก AI ไม่สำเร็จ');
   }
-  const QUICK=['ยอดขายวันนี้เป็นไง','เมนูไหนขายดี/ขายช้า','ช่วยแนะนำโปรโมชั่นเพิ่มยอด','วัตถุดิบอะไรใกล้หมด','เมนูไหนกำไรดีสุด'];
+  const QUICK=['ยอดขายวันนี้เป็นไง','ช่วงเวลาไหนขายดีสุด','เมนูไหนขายดี/ขายช้า','ช่วยแนะนำโปรโมชั่นเพิ่มยอด','วัตถุดิบอะไรใกล้หมด','เมนูไหนกำไรดีสุด'];
   function render(){
     const key=(STORE.get().settings.geminiKey||'').trim();
     $('#aiPanel').innerHTML=`
@@ -6305,6 +6324,7 @@ const AI = (()=>{
       <div style="display:flex;gap:8px"><input id="aiInput" placeholder="พิมพ์คำถาม..." style="flex:1;padding:13px 14px;border:1px solid var(--line);border-radius:12px;font-size:14px;background:var(--surface);color:var(--text)" onkeydown="if(event.key==='Enter')AI.sendInput()"><button class="btn btn-pay" style="padding:13px 22px" onclick="AI.sendInput()">${busy?'...':'ส่ง'}</button></div>`;
     const c=$('#aiChat'); if(c) c.scrollTop=c.scrollHeight;
   }
+  function renderChat(){ const c=$('#aiChat'); if(c){ c.innerHTML=msgs.length?msgs.map(bubble).join(''):''; c.scrollTop=c.scrollHeight; } }
   function bubble(m){
     const me=m.role==='user';
     return `<div style="align-self:${me?'flex-end':'flex-start'};max-width:88%;background:${me?'var(--green)':'var(--surface)'};color:${me?'#fff':'var(--text)'};border:1px solid ${me?'var(--green)':'var(--line)'};border-radius:14px;padding:11px 14px;font-size:14px;line-height:1.55;white-space:pre-wrap;box-shadow:var(--shadow)">${esc(m.text)}</div>`;
@@ -6314,10 +6334,11 @@ const AI = (()=>{
     if(busy) return;
     const key=(STORE.get().settings.geminiKey||'').trim();
     if(!key){ UI.toast('ใส่ Gemini API Key ก่อน (ตั้งค่า → 🤖)','err'); return; }
-    msgs.push({role:'user',text:q}); busy=true; render();
-    msgs.push({role:'ai',text:'🤖 กำลังคิด...'}); render();
-    try{ const ans=await askGemini(key,q); msgs[msgs.length-1]={role:'ai',text:ans}; }
-    catch(e){ msgs[msgs.length-1]={role:'ai',text:'❌ '+(e.message||e)}; }
+    msgs.push({role:'user',text:q});
+    msgs.push({role:'ai',text:'🤖 กำลังคิด...'});
+    busy=true; render();
+    try{ await askStream(key,q,(full)=>{ msgs[msgs.length-1].text=full; renderChat(); }); }
+    catch(e){ msgs[msgs.length-1].text='❌ '+(e.message||e); }
     busy=false; render();
   }
   return {render,send,sendInput};
