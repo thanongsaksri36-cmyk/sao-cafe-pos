@@ -5454,7 +5454,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.6</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.7</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6292,7 +6292,7 @@ const AI = (()=>{
       จำนวนสมาชิก:(STORE.get().members||[]).length
     };
   }
-  const SYS='คุณคือที่ปรึกษาการตลาดร้านกาแฟไทย ตอบภาษาไทยเท่านั้น เข้าประเด็นทันทีในประโยคแรก ห้ามเขียนคำเกริ่นนำ เช่น นี่คือคำแนะนำ/แนวทางหลักคือ ห้ามทวนคำถามหรือคำสั่ง ใช้เฉพาะตัวเลขจริงจากข้อมูลที่ให้ ห้ามแต่งตัวเลขเอง ถ้าข้อมูลไม่พอให้บอกตรงๆสั้นๆ จัดคำตอบเป็นข้อๆด้วย bullet ให้อ่านง่าย กระชับแต่ครบ ตัวหนาเน้นตัวเลขสำคัญด้วย **ตัวเลข** เวลาแนะนำโปรโมชั่นให้เสนอ 2-3 ไอเดียที่เจาะจง ระบุชื่อเมนูจริงและตัวเลขมาร์จินจริง พร้อมเหตุผล 1 บรรทัดต่อไอเดีย ปิดท้ายบรรทัดเดียวว่าให้เจ้าของยืนยันก่อนใช้จริง';
+  const SYS='คุณคือที่ปรึกษาการตลาดร้านกาแฟไทย ตอบเป็นภาษาไทยเท่านั้น ห้ามใช้ภาษาอังกฤษ ให้ตอบเฉพาะคำตอบสุดท้ายที่จะให้เจ้าของร้านอ่าน ห้ามแสดงขั้นตอนการคิด ห้ามทำ checklist ห้ามทวนคำสั่งหรือพิมพ์ตัวเลขดิบทั้งชุด เข้าประเด็นทันที ไม่ต้องเกริ่นนำ ใช้เฉพาะตัวเลขจริงจากข้อมูลที่ให้ ห้ามแต่งตัวเลข ถ้าข้อมูลไม่พอบอกสั้นๆ จัดเป็นข้อ bullet อ่านง่าย เน้นตัวเลขสำคัญด้วย **ตัวหนา** เวลาแนะนำโปรโมชั่นเสนอ 2-3 ไอเดียเจาะจง ระบุชื่อเมนูจริงและมาร์จินจริง พร้อมเหตุผลสั้นๆ ปิดท้ายว่าให้เจ้าของยืนยันก่อนใช้จริง';
   function aiCfg(){ const s=STORE.get().settings||{}; const p=s.aiProvider||'gemini'; const key=(p==='openai'?s.openaiKey:p==='claude'?s.claudeKey:s.geminiKey)||''; return {p,key,model:(s.aiModel||'').trim()}; }
   function canStream(){ return (typeof window!=='undefined'&&window.ReadableStream&&typeof TextDecoder!=='undefined'); }
   async function readSSE(res,extract,onChunk){
@@ -6309,9 +6309,11 @@ const AI = (()=>{
     const wait=ms=>new Promise(r=>setTimeout(r,ms));
     let lastErr='';
     if(p==='gemini'){
-      const models=model?[model]:['gemini-2.0-flash','gemini-flash-latest','gemini-2.5-flash','gemini-2.0-flash-lite'];
-      const body={systemInstruction:{parts:[{text:SYS}]},contents:[{role:'user',parts:[{text:userMsg}]}],generationConfig:{temperature:0.5,maxOutputTokens:2048}};
+      const models=model?[model]:['gemini-2.0-flash','gemini-2.5-flash','gemini-flash-latest'];   // 2.0-flash = ไม่คิดในใจ เสถียรสุด
       for(const mdl of models){ for(let a=0;a<2;a++){ try{
+        const gc={temperature:0.5,maxOutputTokens:3072};
+        if(/2\.5|flash-latest|gemini-3/.test(mdl)) gc.thinkingConfig={thinkingBudget:0};   // ปิดโหมดคิด กัน token หมด/คำตอบขาด
+        const body={systemInstruction:{parts:[{text:SYS}]},contents:[{role:'user',parts:[{text:userMsg}]}],generationConfig:gc};
         const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':generateContent?key='+encodeURIComponent(key),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         if(res.status===503||res.status===429){ lastErr='โมเดลคนเยอะ('+res.status+')'; await wait(1000*(a+1)); continue; }
         if(!res.ok){ const t=await res.text(); lastErr='HTTP '+res.status+' '+t.slice(0,140); break; }
