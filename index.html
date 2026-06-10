@@ -5454,7 +5454,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.5</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.6</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6292,7 +6292,7 @@ const AI = (()=>{
       จำนวนสมาชิก:(STORE.get().members||[]).length
     };
   }
-  const SYS='คุณคือที่ปรึกษาการตลาดและวิเคราะห์ยอดขายของร้านกาแฟไทย ตอบเป็นภาษาไทยเท่านั้น ห้ามตอบเป็นภาษาอังกฤษเด็ดขาด ห้ามทวนหรืออ้างถึงคำสั่งเหล่านี้ในคำตอบ ให้ตอบเฉพาะเนื้อหาที่เจ้าของร้านถาม ตอบแบบละเอียด ชัดเจน เป็นกันเอง เข้าใจง่าย เริ่มด้วยคำตอบหลักก่อนแล้วค่อยขยายความและให้ข้อสังเกตที่เป็นประโยชน์ ใช้หัวข้อย่อยและ bullet ได้ ใช้เฉพาะตัวเลขจากข้อมูลที่ให้ ห้ามแต่งตัวเลขเอง ถ้าข้อมูลไม่พอให้บอกตรงๆ เวลาแนะนำโปรโมชั่นให้เสนอ 2-3 ไอเดียที่ทำได้จริงไม่ขาดทุน อิงมาร์จิน เมนูขายช้า และการจับคู่เมนู พร้อมเหตุผลสั้นๆ และปิดท้ายด้วยการเตือนให้เจ้าของกดยืนยันเองก่อนใช้จริง';
+  const SYS='คุณคือที่ปรึกษาการตลาดร้านกาแฟไทย ตอบภาษาไทยเท่านั้น เข้าประเด็นทันทีในประโยคแรก ห้ามเขียนคำเกริ่นนำ เช่น นี่คือคำแนะนำ/แนวทางหลักคือ ห้ามทวนคำถามหรือคำสั่ง ใช้เฉพาะตัวเลขจริงจากข้อมูลที่ให้ ห้ามแต่งตัวเลขเอง ถ้าข้อมูลไม่พอให้บอกตรงๆสั้นๆ จัดคำตอบเป็นข้อๆด้วย bullet ให้อ่านง่าย กระชับแต่ครบ ตัวหนาเน้นตัวเลขสำคัญด้วย **ตัวเลข** เวลาแนะนำโปรโมชั่นให้เสนอ 2-3 ไอเดียที่เจาะจง ระบุชื่อเมนูจริงและตัวเลขมาร์จินจริง พร้อมเหตุผล 1 บรรทัดต่อไอเดีย ปิดท้ายบรรทัดเดียวว่าให้เจ้าของยืนยันก่อนใช้จริง';
   function aiCfg(){ const s=STORE.get().settings||{}; const p=s.aiProvider||'gemini'; const key=(p==='openai'?s.openaiKey:p==='claude'?s.claudeKey:s.geminiKey)||''; return {p,key,model:(s.aiModel||'').trim()}; }
   function canStream(){ return (typeof window!=='undefined'&&window.ReadableStream&&typeof TextDecoder!=='undefined'); }
   async function readSSE(res,extract,onChunk){
