@@ -45,6 +45,10 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .nav-btn .bdg{background:var(--danger);color:#fff;border-radius:10px;font-size:10px;padding:0 6px;min-width:16px;text-align:center}
 .hdr-right{display:flex;align-items:center;gap:14px;font-size:12px;color:var(--gold-light)}
 .clock{font-variant-numeric:tabular-nums}
+.sync-chip{font-size:11px;font-weight:600;padding:3px 9px;border-radius:12px;background:rgba(255,255,255,.1);white-space:nowrap}
+.sync-chip.ok{background:rgba(62,124,79,.3);color:#cdeccf}
+.sync-chip.warn{background:rgba(217,150,43,.32);color:#f0d9a8}
+.sync-chip.no{background:rgba(179,58,58,.3);color:#f0bcbc}
 .staff-chip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);padding:5px 11px;border-radius:20px;color:#fff;font-size:12px}
 .staff-chip .av{width:22px;height:22px;border-radius:50%;background:var(--gold);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
 .ham-btn{display:none;position:relative;background:rgba(255,255,255,.1);color:#fff;font-size:20px;width:40px;height:40px;border-radius:10px;align-items:center;justify-content:center;flex-shrink:0}
@@ -391,6 +395,7 @@ tr:hover td{background:var(--surface-2)}
     <div class="hdr-right">
       <button class="staff-chip" id="branchChip" onclick="BRANCH.switcher()" title="สลับสาขา"><span class="av">🏢</span><span id="branchName">—</span></button>
       <span class="clock" id="clock">--:--:--</span>
+      <span class="sync-chip" id="syncChip" title="สถานะการซิงค์ข้อมูลขึ้น cloud">…</span>
       <button class="staff-chip" id="staffChip" onclick="AUTH.lock()">
         <span class="av" id="staffAv">?</span><span id="staffName">—</span>
       </button>
@@ -4272,7 +4277,7 @@ const PENDING = (()=>{
    9. REPORT — daily sales, top items, gross profit, X/Z, export
    ============================================================ */
 const REPORT = (()=>{
-  let period='today', branchFilter=null;
+  let period='today', branchFilter=null, cFrom='', cTo='';
   function isHQ(){ return AUTH.isHQ(); }
   function curBF(){ if(branchFilter===null) branchFilter=STORE.bid(); if(!isHQ()) branchFilter=STORE.bid(); return branchFilter; }
   function inBranch(o){ const bf=curBF(); return bf==='all'?true:(o.branchId||'BR-001')===bf; }
@@ -4282,6 +4287,7 @@ const REPORT = (()=>{
     if(period==='today') return d.toDateString()===now.toDateString();
     if(period==='week'){ const diff=(now-d)/86400000; return diff<=7; }
     if(period==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+    if(period==='custom'){ if(!cFrom||!cTo) return true; const ts=o.createdAt, f=new Date(cFrom+'T00:00:00').getTime(), t=new Date(cTo+'T23:59:59.999').getTime(); return ts>=f&&ts<=t; }
     return true;
   }
   function sales(){ return STORE.get().orders.filter(o=>o.status!=='void'&&o.method!=='unpaid'&&inPeriod(o)&&inBranch(o)); }
@@ -4300,6 +4306,7 @@ const REPORT = (()=>{
     const fixedMonthly=(STORE.get().settings.fixedCosts||[]).filter(fc=> curBF()==='all'?true:(fc.branchId||'BR-001')===curBF()).reduce((a,b)=>a+(b.amount||0),0);
     let days=1;
     if(period==='today') days=1; else if(period==='week') days=7; else if(period==='month') days=30;
+    else if(period==='custom'&&cFrom&&cTo){ days=Math.max(1,Math.round((new Date(cTo)-new Date(cFrom))/86400000)+1); }
     else { const ds=orders.map(o=>o.createdAt); days=ds.length?Math.max(1,Math.ceil((Date.now()-Math.min(...ds))/86400000)):1; }
     const fixedShare=Math.round(fixedMonthly/30*days);
     const netProfit=profit-fixedShare;
@@ -4319,6 +4326,7 @@ const REPORT = (()=>{
       <div class="panel-head"><h2>📊 รายงานการขาย</h2>
         <div class="sub-tabs">
           ${[['today','วันนี้'],['week','7 วัน'],['month','เดือนนี้'],['all','ทั้งหมด']].map(([k,t])=>`<button class="sub-tab ${period===k?'active':''}" onclick="REPORT.setPeriod('${k}')">${t}</button>`).join('')}
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="repFrom" value="${cFrom}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"> ถึง <input type="date" id="repTo" value="${cTo}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"></span>
           <button class="add-fab" onclick="REPORT.exportCSV()">⬇️ Export CSV</button>
           <button class="add-fab" onclick="REPORT.exportAccounting()">⬇️ Export บัญชี</button>
           <button class="add-fab" style="background:var(--gold)" onclick="REPORT.zReport()">🧾 Z-Report</button>
@@ -4419,6 +4427,7 @@ const REPORT = (()=>{
     return `<table><thead><tr><th>เมนู</th><th>ขาย</th><th>ยอด</th><th>ต้นทุน</th><th>กำไร</th><th>Margin</th></tr></thead><tbody>${rows.map(([nm,d])=>{const pf=d.rev-d.cost;const mg=d.rev?Math.round(pf/d.rev*100):0;return `<tr><td>${esc(nm)}</td><td>${d.q}</td><td>${STORE.baht(d.rev)}</td><td>${STORE.baht(d.cost)}</td><td style="color:var(--success);font-weight:600">${STORE.baht(pf)}</td><td><span class="pill ${mg>=50?'ok':mg>=30?'lo':'no'}">${mg}%</span></td></tr>`;}).join('')}</tbody></table>`;
   }
   function setPeriod(p){ period=p; render(); }
+  function setCustom(){ const f=$('#repFrom').value, t=$('#repTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; render(); } }
   function setBranch(b){ branchFilter=b; render(); }
   function exportCSV(){
     const orders=sales();
@@ -4462,15 +4471,19 @@ const REPORT = (()=>{
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sao_accounting_'+period+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
     UI.toast('ดาวน์โหลดไฟล์บัญชีแล้ว (เปิดใน Excel/FlowAccount ได้)','ok');
   }
-  return {render,setPeriod,setBranch,exportCSV,exportAccounting,zReport};
+  return {render,setPeriod,setCustom,setBranch,exportCSV,exportAccounting,zReport};
 })();
 
 /* ============================================================
    HISTORY — ประวัติบิล + ยกเลิก/คืนเงิน + พิมพ์ซ้ำ
    ============================================================ */
 const HISTORY = (()=>{
-  let period='today', q='';
-  function inP(o){ const d=new Date(o.createdAt),n=new Date(); if(period==='today')return d.toDateString()===n.toDateString(); if(period==='week')return (n-d)/86400000<=7; return true; }
+  let period='today', q='', cFrom='', cTo='';
+  function inP(o){ const d=new Date(o.createdAt),n=new Date();
+    if(period==='today')return d.toDateString()===n.toDateString();
+    if(period==='week')return (n-d)/86400000<=7;
+    if(period==='custom'){ if(!cFrom||!cTo) return true; const ts=o.createdAt, f=new Date(cFrom+'T00:00:00').getTime(), t=new Date(cTo+'T23:59:59.999').getTime(); return ts>=f&&ts<=t; }
+    return true; }
   function render(){
     let orders=STORE.get().orders.filter(o=>inP(o)&&(o.branchId||'BR-001')===STORE.bid());
     if(q) orders=orders.filter(o=>(o.no||'').toLowerCase().includes(q));
@@ -4479,6 +4492,7 @@ const HISTORY = (()=>{
       <div class="panel-head"><h2>📜 ประวัติบิล</h2>
         <div class="sub-tabs">
           ${[['today','วันนี้'],['week','7 วัน'],['all','ทั้งหมด']].map(([k,t])=>`<button class="sub-tab ${period===k?'active':''}" onclick="HISTORY.setPeriod('${k}')">${t}</button>`).join('')}
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="hisFrom" value="${cFrom}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"> ถึง <input type="date" id="hisTo" value="${cTo}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"></span>
         </div></div>
       <div class="field" style="max-width:280px"><input placeholder="ค้นหาเลขบิล เช่น 001" oninput="HISTORY.search(this.value)"></div>
       <table><thead><tr><th>บิล</th><th>เวลา</th><th>ประเภท</th><th>พนักงาน</th><th>ยอด</th><th>เวลาทำ</th><th>สถานะ</th><th></th></tr></thead><tbody>
@@ -4497,10 +4511,11 @@ const HISTORY = (()=>{
       </tbody></table>`;
   }
   function setPeriod(p){ period=p; render(); }
+  function setCustom(){ const f=$('#hisFrom').value, t=$('#hisTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; render(); } }
   function search(v){ q=v.trim().toLowerCase(); render(); }
   function receipt(id){ const o=STORE.find('orders',id); if(o) PAY.receipt(o); }
   function voidIt(id){ voidOrder(id); }
-  return {render,setPeriod,search,receipt,voidIt};
+  return {render,setPeriod,setCustom,search,receipt,voidIt};
 })();
 
 /* ============================================================
@@ -5454,7 +5469,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.7</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v8.9</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5555,7 +5570,7 @@ const SETTINGS = (()=>{
       <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-top:16px">
         <h3 style="margin-bottom:14px;font-size:16px">☁️ ระบบออนไลน์ (Supabase)</h3>
         <p style="font-size:14px;margin-bottom:10px">สถานะ: <b>${CLOUD.statusText()}</b>${CLOUD.isAuthed&&CLOUD.isAuthed()?` · 🔐 ${esc(CLOUD.authEmail()||'')}`:''}</p>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">📡 Realtime: ${CLOUD.rtStatusText?esc(CLOUD.rtStatusText()):'-'}</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">📡 Realtime: ${CLOUD.rtStatusText?esc(CLOUD.rtStatusText()):'-'} · 📦 คิวรอซิงค์: <b>${CLOUD.pendingCount?CLOUD.pendingCount():0}</b> รายการ</p>
         ${CLOUD.isAuthed&&CLOUD.isAuthed()
           ? `<div style="background:var(--bg);border:1px solid var(--success);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">🔐 ล็อกอินบัญชีสาขาแล้ว: <b>${esc(CLOUD.authEmail())}</b> — ข้อมูลถูกกั้นตามสิทธิ์ DB <button class="sub-tab" style="color:var(--danger);margin-left:6px" onclick="SETTINGS.cloudSignOut()">ออกจากระบบ cloud</button></div>`
           : `<div style="background:var(--bg);border:1px dashed var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
@@ -6398,11 +6413,23 @@ const APP = (()=>{
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
     setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); },5000);
+    updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
     bindKeys();
     // ล็อกหน้าจ ออัตโนมัติเมื่อไม่มีการใช้งานตามเวลาที่ตั้งไว้
     let lastAct=Date.now();
     ['mousedown','keydown','touchstart','click'].forEach(ev=>document.addEventListener(ev,()=>{lastAct=Date.now();},true));
     setInterval(()=>{ const t=STORE.get().settings.sessionTimeoutMin||0; if(t>0 && AUTH.get() && $('#lockScreen').classList.contains('hide') && Date.now()-lastAct>t*60000){ AUTH.lock(); UI.toast('ล็อกหน้าจ ออัตโนมัติ (ไม่ได้ใช้งาน)','ok'); } },20000);
+  }
+  function updateSyncChip(){
+    const el=$('#syncChip'); if(!el) return;
+    let st='off',q=0; try{ st=CLOUD.getStatus(); q=CLOUD.pendingCount?CLOUD.pendingCount():0; }catch(e){}
+    let txt,cls='';
+    if(q>0){ txt='🟠 รอซิงค์ '+q; cls='warn'; }
+    else if(st==='online'){ txt='🟢 ซิงค์ครบ'; cls='ok'; }
+    else if(st==='connecting'){ txt='🟡 กำลังเชื่อม'; }
+    else if(st==='error'){ txt='🔴 เชื่อมไม่ได้'; cls='no'; }
+    else { txt='⚪ ออฟไลน์'; }
+    el.textContent=txt; el.className='sync-chip '+cls;
   }
   function applyBrand(){
     const m=(STORE.get()||{}).meta||{};
@@ -6436,7 +6463,7 @@ const APP = (()=>{
       if(e.key==='Enter'&&$('#payOverlay').classList.contains('show')){ PAY.complete(); }
     });
   }
-  return {init,applyBrand};
+  return {init,applyBrand,updateSyncChip};
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
