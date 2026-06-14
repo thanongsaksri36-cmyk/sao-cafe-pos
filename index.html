@@ -27,8 +27,8 @@
   --shadow:0 2px 12px rgba(0,0,0,.4); --shadow-lg:0 8px 28px rgba(0,0,0,.55);
 }
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Prompt',sans-serif;-webkit-tap-highlight-color:transparent}
-body{background:var(--cream);color:var(--text);height:100vh;overflow:hidden;transition:background .25s var(--ease),color .25s var(--ease)}
-.app{display:flex;flex-direction:column;height:100vh}
+body{background:var(--cream);color:var(--text);height:100vh;height:100dvh;overflow:hidden;transition:background .25s var(--ease),color .25s var(--ease)}
+.app{display:flex;flex-direction:column;height:100vh;height:100dvh}
 button{font-family:'Prompt';cursor:pointer;border:none}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
@@ -307,7 +307,7 @@ tr:hover td{background:var(--surface-2)}
 .qrc-dot{width:8px;height:8px;border-radius:50%;background:var(--line);transition:.2s}
 .qrc-dot.on{background:var(--gold);width:22px;border-radius:5px}
 .qrc-counter{text-align:center;font-size:12px;color:var(--muted);flex-shrink:0;padding-bottom:4px}
-.qrc-bar{padding:14px 16px calc(14px + env(safe-area-inset-bottom));background:var(--surface);box-shadow:0 -3px 18px rgba(0,0,0,.1);flex-shrink:0}
+.qrc-bar{padding:14px 16px calc(18px + env(safe-area-inset-bottom));background:var(--surface);box-shadow:0 -3px 18px rgba(0,0,0,.1);flex-shrink:0}
 .qrc-checkout{width:100%;background:var(--gold);color:#fff;border-radius:18px;padding:16px;font-size:17px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px}
 .qrc-checkout:active{transform:scale(.98)}
 
@@ -2910,7 +2910,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -4006,7 +4006,7 @@ const QR = (()=>{
   function renderBar(){
     const bar=$('#qrcBar'); if(!bar) return;
     const cnt=qcart.reduce((s,c)=>s+c.qty,0), tot=qcart.reduce((s,c)=>s+c.price*c.qty,0);
-    bar.innerHTML=cnt?`<div class="qrc-bar"><button class="qrc-checkout" onclick="QR.checkout()">🛒 สั่งเลย · ${cnt} รายการ · ${STORE.baht(tot)}</button></div>`:'';
+    bar.innerHTML=cnt?`<div class="qrc-bar"><button class="qrc-checkout" onclick="QR.checkout()">🛒 ดูตะกร้า · ${cnt} รายการ · ${STORE.baht(tot)}</button></div>`:'';
   }
   function cat(c){ qcat=c; idx=0; renderMenu(); }
   function add(id){
@@ -4056,16 +4056,90 @@ const QR = (()=>{
         <button class="btn btn-ghost" style="width:100%" onclick="QR.checkout()">← กลับไปตะกร้า</button>
       </div>`;
   }
+  function uploadSlip(method){
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+    inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
+      r.onload=(e)=>{ const img=new Image(); img.onload=async()=>{
+        const max=1100; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h);
+        const b64=cv.toDataURL('image/jpeg',0.8);
+        const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+        $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:50px"><div style="font-size:60px">🔍</div><h2 style="margin:14px 0">กำลังตรวจสลิป...</h2><p style="color:var(--muted)">รอสักครู่</p></div>`;
+        try{
+          const res=await CLOUD.invokeFn('slipok-verify',{amount:sub,image:b64,branchId:STORE.bid()});
+          if(res&&res.ok){ submitVerified(method,res); }
+          else { slipFailed(method,(res&&res.reason)||'ตรวจสลิปไม่ผ่าน'); }
+        }catch(err){ slipFailed(method, err.message||'ตรวจสลิปไม่สำเร็จ'); }
+      }; img.onerror=()=>{ UI.toast('ไฟล์รูปไม่ถูกต้อง','err'); payBy(method); }; img.src=e.target.result; };
+      r.readAsDataURL(file); };
+    inp.click();
+  }
+  async function submitVerified(method,info){
+    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _rno=await CLOUD.nextNo('receipt');
+    const order={
+      id:STORE.uuid(),no:'#Q'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
+      type:'dine-in',table:qtable||'',
+      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
+      subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:sub,change:0,
+      status:'preparing',payStatus:'paid',slipVerified:true,slipRef:(info&&info.ref)||'',
+      memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
+    };
+    STORE.get().orders.push(order); STORE.bcounter().orderNo++;
+    INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
+    try{ LINEN.send('✅ ลูกค้าสแกนสั่ง+โอนผ่าน (ตรวจสลิปอัตโนมัติ) '+order.no+(order.table?' โต๊ะ '+order.table:'')+' · '+STORE.baht(order.total),'qr'); }catch(e){}
+    stage='done';
+    $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:40px">
+      <div style="font-size:80px">✅</div>
+      <h2 style="font-family:'Playfair Display',serif;margin:14px 0;color:var(--success)">สั่งสินค้าเรียบร้อย!</h2>
+      <p style="font-size:20px">ออเดอร์ <b style="color:var(--gold)">${esc(order.no)}</b>${order.table?' · โต๊ะ '+esc(order.table):''}</p>
+      <p style="color:var(--muted);margin:10px 0 26px">ตรวจสลิปผ่านแล้ว กำลังเข้าครัว 🍳<br>ยอดรวม <b>${STORE.baht(order.total)}</b></p>
+      <button class="qrc-checkout" style="max-width:240px;margin:0 auto" onclick="QR.render()">สั่งเพิ่ม</button>
+    </div>`;
+  }
+  function slipFailed(method,reason){
+    $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:36px">
+      <div style="font-size:64px">⚠️</div>
+      <h2 style="margin:12px 0;color:var(--warn)">ตรวจสลิปอัตโนมัติไม่ผ่าน</h2>
+      <p style="color:var(--muted);margin-bottom:8px">${esc(reason)}</p>
+      <p style="font-size:14px;margin-bottom:22px">ไม่เป็นไรครับ กดปุ่มด้านล่างเพื่อส่งให้พนักงานตรวจสลิปด้วยตนเอง</p>
+      <button class="qrc-checkout" style="max-width:280px;margin:0 auto" onclick="QR.submitOrder('${method}')">ส่งให้พนักงานตรวจ →</button>
+      <button class="btn btn-ghost" style="width:100%;max-width:280px;margin:10px auto 0" onclick="QR.uploadSlip('${method}')">📎 ลองแนบสลิปใหม่</button>
+    </div>`;
+  }
+  function saveQR(){
+    const box=$('#qrSaveBox'); if(!box){ UI.toast('ไม่พบ QR','err'); return; }
+    const dl=(url,name)=>{ const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); UI.toast('บันทึกรูป QR แล้ว ✅','ok'); };
+    const img=box.querySelector('img');
+    if(img&&img.src){ dl(img.src,'promptpay-qr.png'); return; }
+    const svg=box.querySelector('svg'); if(!svg){ UI.toast('ไม่พบ QR','err'); return; }
+    try{
+      const xml=new XMLSerializer().serializeToString(svg);
+      const url64='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(xml)));
+      const im=new Image();
+      im.onload=()=>{ try{ const sz=620, cv=document.createElement('canvas'); cv.width=sz; cv.height=sz; const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,sz,sz); ctx.drawImage(im,0,0,sz,sz); dl(cv.toDataURL('image/png'),'promptpay-qr.png'); }catch(e){ UI.toast('บันทึกไม่สำเร็จ ลองกดค้างที่รูป','err'); } };
+      im.onerror=()=>UI.toast('บันทึกไม่สำเร็จ ลองกดค้างที่รูป','err');
+      im.src=url64;
+    }catch(e){ UI.toast('บันทึกไม่สำเร็จ ลองกดค้างที่รูป','err'); }
+  }
   function payBy(method){
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0), m=STORE.get().meta;
     if(method==='promptpay'||method==='transfer'){
       $('#qrRoot').innerHTML=`
         <div class="qrc-head"><div class="qn">${method==='promptpay'?'สแกนจ่าย':'โอนเงิน'}</div><small>ยอด ${STORE.baht(sub)}</small></div>
         <div style="flex:1;overflow-y:auto;padding:20px;text-align:center;max-width:420px;margin:0 auto;width:100%">
-          <div class="qr-box">${PAY.promptpayQR(sub)}</div>
+          <div class="qr-box" id="qrSaveBox">${PAY.promptpayQR(sub)}</div>
           <p style="margin:12px 0">${STORE.get().settings.promptpayQrImg?'<b style="color:var(--warn)">⚠️ กรุณากรอกยอด</b> ':'PromptPay: <b>'+esc(m.promptpayId)+'</b><br>'}โอน <b>${STORE.baht(sub)}</b>${STORE.get().settings.promptpayQrImg?' เอง':''}</p>
-          <p style="color:var(--muted);font-size:13px;margin-bottom:18px">โอนเสร็จกดปุ่มด้านล่าง พนักงานจะตรวจสอบและส่งเข้าครัว</p>
-          <button class="qrc-checkout" onclick="QR.submitOrder('${method}')">✅ ฉันชำระเงินแล้ว</button>
+          <button class="btn btn-gold" style="width:100%;margin-bottom:6px" onclick="QR.saveQR()">💾 บันทึกรูป QR ไว้สแกนจ่าย</button>
+          <p style="color:var(--muted);font-size:11px;margin-bottom:14px">หรือกดค้างที่รูป QR เพื่อบันทึก</p>
+          ${STORE.get().settings.slipVerify?`
+            <p style="color:var(--muted);font-size:13px;margin-bottom:10px">โอนเสร็จ แนบสลิป ระบบตรวจให้อัตโนมัติ ✨</p>
+            <button class="qrc-checkout" onclick="QR.uploadSlip('${method}')">📎 แนบสลิป · ตรวจอัตโนมัติ</button>
+            <button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="QR.submitOrder('${method}')">หรือ กดแจ้งให้พนักงานตรวจเอง</button>
+          `:`
+            <p style="color:var(--muted);font-size:13px;margin-bottom:18px">โอนเสร็จกดปุ่มด้านล่าง พนักงานจะตรวจสอบและส่งเข้าครัว</p>
+            <button class="qrc-checkout" onclick="QR.submitOrder('${method}')">✅ ฉันชำระเงินแล้ว</button>
+          `}
           <button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="QR.toPay()">← เลือกวิธีอื่น</button>
         </div>`;
     } else { submitOrder('cash'); }
@@ -4115,7 +4189,7 @@ const QR = (()=>{
       <button class="qrc-checkout" style="max-width:240px;margin:0 auto" onclick="QR.render()">สั่งเพิ่ม</button>
     </div>`;
   }
-  return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,submitOrder,confirmOrder,submitOpenTab,startCustomer};
+  return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,saveQR,uploadSlip,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
 })();
 
 /* ============================================================
@@ -5481,7 +5555,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.0</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.2</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5530,6 +5604,7 @@ const SETTINGS = (()=>{
           </div>`:''}
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
+          <div class="field"><label>🧾 ตรวจสลิปอัตโนมัติ (SlipOK · ต้องตั้ง Edge Function ก่อน)</label><select id="setSlipVerify"><option value="0" ${!s.slipVerify?'selected':''}>ปิด (พนักงานตรวจเอง)</option><option value="1" ${s.slipVerify?'selected':''}>เปิด (ลูกค้าแนบสลิป ระบบตรวจให้)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">เปิดแล้วลูกค้าโอน→แนบสลิป→ผ่านเข้าครัวอัตโนมัติ · ไม่ผ่าน→ส่งพนักงานตรวจมือ</div></div>
           <div class="field"><label>🔒 ล็อกหน้าจออัตโนมัติเมื่อไม่ใช้งาน</label>
             <select id="setSession">${[['0','ไม่ล็อกอัตโนมัติ'],['10','10 นาที'],['30','30 นาที'],['60','1 ชั่วโมง'],['240','4 ชั่วโมง'],['720','12 ชั่วโมง']].map(([v,t])=>`<option value="${v}" ${String(s.sessionTimeoutMin||0)===v?'selected':''}>${t}</option>`).join('')}</select></div>
           <div class="field"><label>หรือกำหนดเอง (นาที · เว้นว่าง = ใช้ด้านบน)</label><input id="setSessionCustom" type="number" min="0" placeholder="เช่น 45" value="${[0,10,30,60,240,720].includes(s.sessionTimeoutMin)?'':(s.sessionTimeoutMin||'')}"></div>
@@ -5613,7 +5688,7 @@ const SETTINGS = (()=>{
     const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
-    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
+    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value; { const sv=$('#setSlipVerify'); if(sv) s.slipVerify=sv.value==='1'; }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
@@ -6260,7 +6335,8 @@ const CLOUD = (()=>{
   function getStatus(){ return status; }
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite};
+  async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,invokeFn};
 })();
 
 /* ============================================================
