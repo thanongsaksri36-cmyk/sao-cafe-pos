@@ -2964,7 +2964,7 @@ const STORE = (()=>{
   }
   function scoped(key){ const b=bid(); return (DB[key]||[]).filter(x=> (x.branchId||'BR-001')===b ); }
   function bcounter(){ if(!DB.branchCounters) DB.branchCounters={}; const b=bid(); if(!DB.branchCounters[b]) DB.branchCounters[b]={orderNo:1,receiptNo:1}; return DB.branchCounters[b]; }
-  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; m.slipVerify=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify))||false; return m; }
+  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
   function ensureHQ(data){
     try{
       const alive=(data.staff||[]).filter(x=>!x.deletedAt&&x.active!==false);
@@ -5577,7 +5577,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.8</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.9</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
