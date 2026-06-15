@@ -2964,7 +2964,7 @@ const STORE = (()=>{
   }
   function scoped(key){ const b=bid(); return (DB[key]||[]).filter(x=> (x.branchId||'BR-001')===b ); }
   function bcounter(){ if(!DB.branchCounters) DB.branchCounters={}; const b=bid(); if(!DB.branchCounters[b]) DB.branchCounters[b]={orderNo:1,receiptNo:1}; return DB.branchCounters[b]; }
-  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; return m; }
+  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; m.slipVerify=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify))||false; return m; }
   function ensureHQ(data){
     try{
       const alive=(data.staff||[]).filter(x=>!x.deletedAt&&x.active!==false);
@@ -4133,7 +4133,7 @@ const QR = (()=>{
           <p style="margin:12px 0">${m.promptpayQrImg?'<b style="color:var(--warn)">⚠️ กรุณากรอกยอด</b> ':'PromptPay: <b>'+esc(m.promptpayId)+'</b><br>'}โอน <b>${STORE.baht(sub)}</b>${m.promptpayQrImg?' เอง':''}</p>
           <button class="btn btn-gold" style="width:100%;margin-bottom:6px" onclick="QR.saveQR()">💾 บันทึกรูป QR ไว้สแกนจ่าย</button>
           <p style="color:var(--muted);font-size:11px;margin-bottom:14px">หรือกดค้างที่รูป QR เพื่อบันทึก</p>
-          ${STORE.get().settings.slipVerify?`
+          ${m.slipVerify?`
             <p style="color:var(--muted);font-size:13px;margin-bottom:10px">โอนเสร็จ แนบสลิป ระบบตรวจให้อัตโนมัติ ✨</p>
             <button class="qrc-checkout" onclick="QR.uploadSlip('${method}')">📎 แนบสลิป · ตรวจอัตโนมัติ</button>
             <button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="QR.submitOrder('${method}')">หรือ กดแจ้งให้พนักงานตรวจเอง</button>
@@ -5556,7 +5556,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.4</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5689,7 +5689,7 @@ const SETTINGS = (()=>{
     const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
-    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value; { const sv=$('#setSlipVerify'); if(sv) s.slipVerify=sv.value==='1'; }
+    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value; { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
