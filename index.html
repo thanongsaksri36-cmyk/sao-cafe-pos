@@ -4083,7 +4083,7 @@ const QR = (()=>{
   }
   let _slipImg='';
   function uploadSlip(method){
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
       r.onload=(e)=>{ const img=new Image(); img.onload=async()=>{
         const max=1100; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
@@ -4101,7 +4101,7 @@ const QR = (()=>{
     inp.click();
   }
   function attachManual(method){
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
       r.onload=(e)=>{ const img=new Image(); img.onload=()=>{
         const max=900; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
@@ -5074,7 +5074,7 @@ const BO = (()=>{
     },true);
   }
   function movePhoto(id){
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
       r.onload=(e)=>{ const img=new Image(); img.onload=()=>{ const max=900; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc); const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h); const m=(STORE.get().stockmoves||[]).find(x=>x.id===id); if(m){ m.photo=cv.toDataURL('image/jpeg',0.7); STORE.save(); render(); UI.toast('แนบรูปบิลแล้ว','ok'); } }; img.src=e.target.result; };
       r.readAsDataURL(file); };
@@ -5126,7 +5126,7 @@ const BO = (()=>{
   function aiBill(){
     const key=(STORE.get().settings.geminiKey||'').trim();
     if(!key){ UI.toast('ใส่ Gemini API Key ก่อน (ตั้งค่า → 🤖)','err'); return; }
-    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+    const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
       r.onload=(e)=>{ const img=new Image(); img.onload=async()=>{
         const max=1200; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
@@ -5647,7 +5647,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.12</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.13</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
