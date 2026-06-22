@@ -3712,14 +3712,38 @@ const PAY = (()=>{
     w.document.write(`<html><head><title>พิมพ์</title><style>@page{size:${mm} auto;margin:0}body{font-family:'Courier New','TH Sarabun New',monospace;font-size:${fs};width:${mm};margin:0 auto}.receipt{width:100%;margin:0}.rdiv{border-top:1px dashed #000;margin:8px 0}table{width:100%;border-collapse:collapse}td{padding:2px 0;font-size:${fs}}.rc{text-align:center}.rtot{font-weight:700}h3{font-size:16px;text-align:center;margin:0}img,svg{max-width:100%}</style></head><body>${body}</body></html>`);
     w.document.close(); w.focus(); setTimeout(()=>{ try{ w.print(); w.onafterprint=()=>{try{w.close();}catch(e){}}; setTimeout(()=>{try{w.close();}catch(e){}},2000); }catch(e){} },300);
   }
+  function rcptHtml(order){   // สร้าง HTML ใบเสร็จจากออเดอร์โดยตรง (พิมพ์ได้แม้ไม่ได้เปิดหน้าใบเสร็จ เช่น ตรวจสลิปผ่านอัตโนมัติ)
+    const m=STORE.binfo(), items=order.items||[];
+    const rows=items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`; }).join('');
+    return `<div class="receipt">
+        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
+        <div class="rdiv"></div>
+        <div>เลขที่: ${esc(order.no)} · ${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[order.type]||''}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
+        <div>พนักงาน: ${esc(order.staffName||'')} · ${new Date(order.createdAt).toLocaleString('th-TH')}</div>
+        <div class="rdiv"></div>
+        <table><tbody>${rows}</tbody></table>
+        <div class="rdiv"></div>
+        <table><tbody>
+          <tr><td>ยอดรวม</td><td style="text-align:right">${STORE.baht(order.subtotal)}</td></tr>
+          ${order.discount>0?`<tr><td>ส่วนลด</td><td style="text-align:right">-${STORE.baht(order.discount)}</td></tr>`:''}
+          ${order.service>0?`<tr><td>Service</td><td style="text-align:right">${STORE.baht(order.service)}</td></tr>`:''}
+          ${order.vat>0?`<tr><td>VAT ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(order.vat)}</td></tr>`:''}
+          <tr class="rtot"><td>สุทธิ</td><td style="text-align:right">${STORE.baht(order.total)}</td></tr>
+          <tr><td>รับ (${order.method})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
+        </tbody></table>
+        <div class="rdiv"></div>
+        <div class="rc">${esc(m.shopName)} · ขอบคุณค่ะ<br>${esc(STORE.get().settings.receiptFooter)}</div>
+      </div>`;
+  }
   function autoPrint(order){
     const st=STORE.get().settings; if(!st.autoPrint) return;
     if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order); return; }
-    const docs=[]; const r=$('#rcptPrint'); if(r&&r.outerHTML) docs.push(r.outerHTML);   // ใบเสร็จ
-    if(st.kdsServeSlip) docs.push(KDS.serveSlipHtml(order));                              // + ใบครัว (รวมพิมพ์ครั้งเดียว)
-    setTimeout(()=>printDocs(docs),400);
+    const docs=[rcptHtml(order)];                          // ใบเสร็จ (สร้างจากออเดอร์ตรง ๆ)
+    if(st.kdsServeSlip) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
+    setTimeout(()=>printDocs(docs),200);
   }
-  return {open,setMethod,cash,quickCash,complete,print,printDocs,receipt,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
+  return {open,setMethod,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
 })();
 
 /* ============================================================
@@ -4057,13 +4081,14 @@ const QR = (()=>{
         <button class="btn btn-ghost" style="width:100%" onclick="QR.checkout()">← กลับไปตะกร้า</button>
       </div>`;
   }
+  let _slipImg='';
   function uploadSlip(method){
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const r=new FileReader();
       r.onload=(e)=>{ const img=new Image(); img.onload=async()=>{
         const max=1100; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
         const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h);
-        const b64=cv.toDataURL('image/jpeg',0.8);
+        const b64=cv.toDataURL('image/jpeg',0.8); _slipImg=b64;
         const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
         $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:50px"><div style="font-size:60px">🔍</div><h2 style="margin:14px 0">กำลังตรวจสลิป...</h2><p style="color:var(--muted)">รอสักครู่</p></div>`;
         try{
@@ -4088,6 +4113,7 @@ const QR = (()=>{
     inp.click();
   }
   async function submitVerified(method,info,slipImg){
+    _slipImg='';
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _rno=await CLOUD.nextNo('receipt');
     const order={
@@ -4136,7 +4162,7 @@ const QR = (()=>{
     }catch(e){ UI.toast('บันทึกไม่สำเร็จ ลองกดค้างที่รูป','err'); }
   }
   function payBy(method){
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0), m=STORE.binfo();
+    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0), m=STORE.binfo(); _slipImg='';
     if(method==='promptpay'||method==='transfer'){
       $('#qrRoot').innerHTML=`
         <div class="qrc-head"><div class="qn">${method==='promptpay'?'สแกนจ่าย':'โอนเงิน'}</div><small>ยอด ${STORE.baht(sub)}</small></div>
@@ -4177,18 +4203,19 @@ const QR = (()=>{
   }
   async function submitOrder(method,slipImg){
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _slip=(slipImg||_slipImg||''); _slipImg='';
     const _rno=await CLOUD.nextNo('receipt');
     const order={
       id:STORE.uuid(),no:'#Q'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
       subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:0,change:0,
-      status:'wait_payment',payStatus:method==='cash'?'wait_cash':'wait_verify',slipImg:slipImg||'',
+      status:'wait_payment',payStatus:method==='cash'?'wait_cash':'wait_verify',slipImg:_slip,
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
     STORE.get().orders.push(order); STORE.bcounter().orderNo++;
     STORE.save(); CLOUD.pushOrder(order); PENDING.updateBadge();
-    stage='done'; renderTrack(order,method,!!slipImg);
+    stage='done'; renderTrack(order,method,!!_slip);
   }
   function renderTrack(order,method,hasSlip){
     const open=method==='open';
@@ -4308,6 +4335,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total;
     INV.deduct(o); STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
+    try{ PAY.autoPrint(o); }catch(e){}
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('รับเงินแล้ว ส่งเข้าครัว '+(o.table?'โต๊ะ '+o.table:o.no),'ok');
   }
@@ -5619,7 +5647,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.11</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.12</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6346,11 +6374,12 @@ const CLOUD = (()=>{
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
     if(o.qrNotified || _qrNoticed.has(o.id)) return;
     _qrNoticed.add(o.id); o.qrNotified=true;
-    const needs=(o.status==='wait_payment')||(o.payStatus==='open'&&o.status!=='void'&&o.status!=='done');
+    const needs=(o.status!=='void'&&o.status!=='done');   // ออเดอร์ QR ใหม่ทุกสถานะที่ยังทำงาน -> แจ้งพนักงาน (รวมตรวจสลิปผ่านเข้าครัว)
     const fresh=(Date.now()-(o.createdAt||0))<10*60000;   // เฉพาะออเดอร์เพิ่งเข้า กันเสียงเด้งตอน sync/reconnect ของเก่า
     if(needs&&fresh){
       try{ PENDING.alertNew(); }catch(e){}
       try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
+      try{ if(o.payStatus==='paid') PAY.autoPrint(o); }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
       try{ pushOrder(o); }catch(e){}
     }
   }
