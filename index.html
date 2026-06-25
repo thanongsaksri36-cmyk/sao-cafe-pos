@@ -3863,7 +3863,11 @@ const INV = (()=>{
   }
   function outOfStock(product){
     if(!product.recipe||!product.recipe.length) return false;
-    return product.recipe.some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); return ig&&ig.stock<r.qty; });
+    return product.recipe.some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return false;
+      // นับว่า "หมด" เฉพาะวัตถุดิบที่ตั้งสต็อกไว้จริง (มี par/ซื้อ/คงเหลือ > 0) — ของที่ยังไม่ตั้งสต็อก = ขายได้ปกติ
+      const tracked=(ig.parLevel>0)||(ig.purchaseQty>0)||(ig.stock>0);
+      return tracked && ig.stock<r.qty;
+    });
   }
   function deduct(order){
     order.items.forEach(it=>{
@@ -5658,7 +5662,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.14</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.15</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
