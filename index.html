@@ -4696,7 +4696,7 @@ const BO = (()=>{
     const cats=STORE.scoped('categories');
     const prods=STORE.scoped('products').filter(p=>!p.deletedAt);
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" style="background:var(--danger);color:#fff" onclick="BO.clearMenu()">🗑️ ล้างเมนูเดิม</button><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" style="background:var(--danger);color:#fff" onclick="BO.clearMenu()">🗑️ ล้างเมนูเดิม</button><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.manageMods()">⚙️ จัดการตัวเลือก</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
       <table><thead><tr><th>เมนู</th><th>หมวด</th><th>ราคา</th><th>ต้นทุน</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${prods.map(p=>`<tr>
         <td><div style="display:flex;align-items:center;gap:10px">${p.img?`<img src="${esc(p.img)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;box-shadow:var(--shadow)">`:`<span style="font-size:24px;width:40px;text-align:center">${esc(p.emoji||'☕')}</span>`}<span>${p.featured?'⭐ ':''}${esc(p.name)}</span></div></td>
@@ -4708,11 +4708,97 @@ const BO = (()=>{
           <button class="sub-tab" onclick="BO.toggleAvail('${p.id}')">${p.available?'ปิดขาย':'เปิดขาย'}</button>
           <button class="sub-tab" onclick="BO.toggleFeatured('${p.id}')">${p.featured?'★ เลิกปักหมุด':'☆ ปักหมุดขายดี'}</button><button class="sub-tab" onclick="BO.toggleHideFeatured('${p.id}')">${p.hideFeatured?'👁️ แสดงในขายดี':'🚫 ซ่อนจากขายดี'}</button>
           <button class="sub-tab" onclick="BO.recipe('${p.id}')">🧪 สูตร${p.recipe&&p.recipe.length?' ('+p.recipe.length+')':''}</button>
-          <button class="sub-tab" onclick="BO.uploadImg('${p.id}')">🖼️ รูป</button>
+          <button class="sub-tab" onclick="BO.prodMods('${p.id}')">🎚️ ตัวเลือก${p.options&&p.options.length?' ('+p.options.length+')':''}</button><button class="sub-tab" onclick="BO.uploadImg('${p.id}')">🖼️ รูป</button>
           <button class="sub-tab" onclick="BO.editProduct('${p.id}')">แก้ไข</button>
           <button class="sub-tab" style="color:var(--danger)" onclick="BO.delProduct('${p.id}')">ลบ</button>
         </td></tr>`).join('')}
       </tbody></table>`;
+  }
+  let modDraft=null;
+  function manageMods(){
+    const mods=STORE.scoped('modifiers').filter(m=>!m.deletedAt);
+    $('#genModal').className='modal wide';
+    $('#genModal').innerHTML=`
+      <div class="modal-h"><h3>⚙️ จัดการตัวเลือกเสริม</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">กลุ่มตัวเลือก เช่น อุณหภูมิ/ความหวาน/ท็อปปิ้ง · ตั้งราคาเพิ่มได้ · เลือกใส่เมนูไหนที่ปุ่ม 🎚️ ตัวเลือก ของแต่ละเมนู</p>
+        ${mods.length?mods.map(m=>`<div class="stat-card" style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <div><b>${esc(m.name)}</b> <span class="pill lo">${m.type==='multi'?'เลือกหลายอย่าง':'เลือกเดียว'}${m.required?' · บังคับ':''}</span></div>
+            <div style="white-space:nowrap"><button class="sub-tab" onclick="BO.editMod('${m.id}')">แก้ไข</button><button class="sub-tab" style="color:var(--danger)" onclick="BO.delMod('${m.id}')">ลบ</button></div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-top:6px">${(m.options||[]).map(o=>esc(o.name)+(o.price?' +'+STORE.baht(o.price):'')).join(' · ')||'(ยังไม่มีตัวเลือกย่อย)'}</div>
+        </div>`).join(''):'<div class="empty" style="padding:18px">ยังไม่มีกลุ่มตัวเลือก กด "+ เพิ่มกลุ่ม"</div>'}
+      </div>
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="BO.editMod()">+ เพิ่มกลุ่ม</button></div>`;
+    UI.open('genOverlay');
+  }
+  function editMod(id){
+    const m=id?STORE.find('modifiers',id):null;
+    modDraft = m ? JSON.parse(JSON.stringify(m)) : {id:STORE.uuid(),name:'',type:'single',required:false,options:[{name:'',price:0}],branchId:STORE.bid(),_new:true};
+    if(!modDraft.options||!modDraft.options.length) modDraft.options=[{name:'',price:0}];
+    renderEditMod();
+  }
+  function renderEditMod(){
+    $('#genModal').className='modal wide';
+    $('#genModal').innerHTML=`
+      <div class="modal-h"><h3>${modDraft._new?'เพิ่มกลุ่มตัวเลือก':'แก้ไขกลุ่มตัวเลือก'}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <div class="field"><label>ชื่อกลุ่ม</label><input id="modName" value="${esc(modDraft.name)}" placeholder="เช่น อุณหภูมิ, ท็อปปิ้ง" oninput="BO.modSet('name',this.value)"></div>
+        <div class="row2">
+          <div class="field"><label>ชนิด</label><select onchange="BO.modSet('type',this.value)"><option value="single" ${modDraft.type==='single'?'selected':''}>เลือกได้อย่างเดียว</option><option value="multi" ${modDraft.type==='multi'?'selected':''}>เลือกได้หลายอย่าง</option></select></div>
+          <div class="field"><label>บังคับเลือก</label><select onchange="BO.modSet('required',this.value==='1')"><option value="0" ${!modDraft.required?'selected':''}>ไม่บังคับ</option><option value="1" ${modDraft.required?'selected':''}>บังคับเลือก</option></select></div>
+        </div>
+        <label style="font-size:12px;color:var(--muted);font-weight:500">ตัวเลือกย่อย + ราคาเพิ่ม (บาท · 0 = ไม่เพิ่ม)</label>
+        ${modDraft.options.map((o,i)=>`<div style="display:flex;gap:8px;margin:6px 0;align-items:center">
+          <input value="${esc(o.name)}" placeholder="เช่น เย็น" style="flex:2;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)" oninput="BO.modOpt(${i},'name',this.value)">
+          <input type="number" value="${o.price?o.price/100:''}" placeholder="+บาท" style="flex:1;max-width:110px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)" oninput="BO.modOpt(${i},'price',this.value)">
+          <button class="x" onclick="BO.modDelOpt(${i})">×</button>
+        </div>`).join('')}
+        <button class="btn-ghost" style="padding:8px 14px;border-radius:8px;font-size:13px" onclick="BO.modAddOpt()">+ ตัวเลือกย่อย</button>
+      </div>
+      <div class="modal-f"><button class="btn-ghost" onclick="BO.manageMods()">← กลับ</button><button class="btn-gold" onclick="BO.modSave()">💾 บันทึก</button></div>`;
+    UI.open('genOverlay');
+  }
+  function modSet(k,v){ if(modDraft) modDraft[k]=v; }
+  function modOpt(i,k,v){ if(!modDraft) return; modDraft.options[i][k]= (k==='price')?Math.round((parseFloat(v)||0)*100):v; }
+  function modAddOpt(){ modDraft.options.push({name:'',price:0}); renderEditMod(); }
+  function modDelOpt(i){ modDraft.options.splice(i,1); if(!modDraft.options.length) modDraft.options=[{name:'',price:0}]; renderEditMod(); }
+  function modSave(){
+    const nm=(($('#modName')&&$('#modName').value)||modDraft.name||'').trim(); if(!nm){ UI.toast('ใส่ชื่อกลุ่ม','err'); return; }
+    modDraft.name=nm; modDraft.options=modDraft.options.filter(o=>(o.name||'').trim());
+    if(!modDraft.options.length){ UI.toast('ใส่ตัวเลือกย่อยอย่างน้อย 1 อัน','err'); return; }
+    const isNew=modDraft._new; delete modDraft._new;
+    const ex=STORE.find('modifiers',modDraft.id);
+    if(ex){ Object.assign(ex,modDraft); } else { (STORE.get().modifiers||(STORE.get().modifiers=[])).push(modDraft); }
+    STORE.save(); try{CLOUD.pushItem('modifiers',modDraft);}catch(e){} manageMods(); render(); UI.toast('บันทึกตัวเลือกแล้ว','ok');
+  }
+  function delMod(id){
+    const m=STORE.find('modifiers',id); if(!m) return;
+    const used=STORE.scoped('products').filter(p=>!p.deletedAt&&(p.options||[]).includes(id)).length;
+    UI.confirm2('ลบกลุ่มตัวเลือก','ลบ "'+m.name+'"?'+(used?' · มี '+used+' เมนูใช้อยู่ (จะถูกเอาออก)':''),()=>{
+      m.deletedAt=STORE.now();
+      STORE.scoped('products').forEach(p=>{ if((p.options||[]).includes(id)){ p.options=p.options.filter(x=>x!==id); try{CLOUD.pushItem('products',p);}catch(e){} } });
+      STORE.save(); try{CLOUD.pushItem('modifiers',m);}catch(e){} manageMods(); render(); UI.toast('ลบแล้ว','ok');
+    },true);
+  }
+  function prodMods(id){
+    const p=STORE.find('products',id); if(!p) return; p.options=p.options||[];
+    const mods=STORE.scoped('modifiers').filter(m=>!m.deletedAt);
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`
+      <div class="modal-h"><h3>🎚️ ตัวเลือกของ ${esc(p.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">ติ๊กกลุ่มตัวเลือกที่ใช้กับเมนูนี้ (กดสลับเปิด/ปิด)</p>
+        ${mods.length?`<div class="opt-chips">${mods.map(m=>`<button class="opt-chip ${p.options.includes(m.id)?'sel':''}" onclick="BO.prodModToggle('${p.id}','${m.id}')">${esc(m.name)}</button>`).join('')}</div>`:'<div class="empty" style="padding:14px">ยังไม่มีกลุ่มตัวเลือก<br><small>สร้างที่ ⚙️ จัดการตัวเลือก ก่อน</small></div>'}
+      </div>
+      <div class="modal-f"><button class="btn-gold" onclick="UI.close('genOverlay')">เสร็จ</button></div>`;
+    UI.open('genOverlay');
+  }
+  function prodModToggle(pid,mid){
+    const p=STORE.find('products',pid); if(!p) return; p.options=p.options||[];
+    if(p.options.includes(mid)) p.options=p.options.filter(x=>x!==mid); else p.options.push(mid);
+    p.updatedAt=STORE.now(); STORE.save(); try{CLOUD.pushItem('products',p);}catch(e){} prodMods(pid); render();
   }
   function clearMenu(){
     const np=STORE.scoped('products').filter(p=>!p.deletedAt).length;
@@ -5501,7 +5587,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,clearMenu,importMenu,applyImport,exportMenu,
+  return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -5673,7 +5759,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.16</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.17</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
