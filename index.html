@@ -4681,7 +4681,7 @@ const BO = (()=>{
     const cats=STORE.scoped('categories');
     const prods=STORE.scoped('products').filter(p=>!p.deletedAt);
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" style="background:var(--danger);color:#fff" onclick="BO.clearMenu()">🗑️ ล้างเมนูเดิม</button><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
       <table><thead><tr><th>เมนู</th><th>หมวด</th><th>ราคา</th><th>ต้นทุน</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${prods.map(p=>`<tr>
         <td><div style="display:flex;align-items:center;gap:10px">${p.img?`<img src="${esc(p.img)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;box-shadow:var(--shadow)">`:`<span style="font-size:24px;width:40px;text-align:center">${esc(p.emoji||'☕')}</span>`}<span>${p.featured?'⭐ ':''}${esc(p.name)}</span></div></td>
@@ -4698,6 +4698,17 @@ const BO = (()=>{
           <button class="sub-tab" style="color:var(--danger)" onclick="BO.delProduct('${p.id}')">ลบ</button>
         </td></tr>`).join('')}
       </tbody></table>`;
+  }
+  function clearMenu(){
+    const np=STORE.scoped('products').filter(p=>!p.deletedAt).length;
+    const nc=STORE.scoped('categories').filter(p=>!p.deletedAt).length;
+    UI.confirm2('ล้างเมนูเดิมทั้งหมด?','ลบเมนู '+np+' รายการ + '+nc+' หมวด + ตัวเลือก + วัตถุดิบ ของสาขานี้ทั้งหมด (ใช้ก่อนนำเข้าเมนูใหม่) · กู้คืนไม่ได้',()=>{
+      const t=STORE.now();
+      ['products','categories','modifiers','ingredients'].forEach(function(key){
+        STORE.scoped(key).forEach(function(x){ if(!x.deletedAt){ x.deletedAt=t; try{CLOUD.pushItem(key,x);}catch(e){} } });
+      });
+      STORE.save(); render(); UI.toast('ล้างเมนูเดิมแล้ว · พร้อมนำเข้าเมนูใหม่','ok');
+    },true);
   }
   function importMenu(){
     const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
@@ -5475,7 +5486,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,importMenu,applyImport,exportMenu,
+  return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -5647,7 +5658,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.13</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.14</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
