@@ -405,14 +405,13 @@ tr:hover td{background:var(--surface-2)}
   /* บังคับดำสนิท + ตัวหนา — เครื่องพิมพ์ความร้อนพิมพ์สีเทา/ฟอนต์เส้นบางออกมาจางมาก */
   #printHost,#printHost *{color:#000!important;opacity:1!important;text-shadow:none!important;filter:none!important;
     font-family:'Sarabun','TH Sarabun New','Tahoma','Segoe UI',Arial,sans-serif!important;
-    font-weight:700!important;-webkit-font-smoothing:none;letter-spacing:.1px}
+    -webkit-font-smoothing:none;letter-spacing:.1px}
   #printHost{background:#fff!important;line-height:1.45;margin:0 auto}
   #printHost .receipt{width:100%;margin:0}
   #printHost .rdiv{border-top:2px dashed #000;margin:8px 0}
   #printHost table{width:100%;border-collapse:collapse}
   #printHost td,#printHost th{padding:3px 0}
   #printHost .rc{text-align:center}
-  #printHost .rtot,#printHost b,#printHost h3{font-weight:900!important}
   #printHost h3{font-size:1.5em;text-align:center;margin:0}
   #printHost small{font-size:.9em}
   #printHost img,#printHost svg{max-width:100%}
@@ -2956,7 +2955,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -3716,7 +3715,12 @@ const PAY = (()=>{
     if(!host){ host=document.createElement('div'); host.id='printHost'; document.body.appendChild(host); }
     let ps=document.getElementById('printPageCss');
     if(!ps){ ps=document.createElement('style'); ps.id='printPageCss'; document.head.appendChild(ps); }
-    ps.textContent='@media print{@page{size:'+mm+' auto;margin:0}#printHost{width:'+mm+';font-size:'+fs+'}}';
+    const WMAP={light:400,normal:500,bold:600,heavy:700};
+    const fw=WMAP[st.receiptWeight||'normal']||500;              // ค่าเริ่มต้น 500 = ชัดแต่ไม่อ้วน
+    ps.textContent='@media print{@page{size:'+mm+' auto;margin:0}'
+      +'#printHost{width:'+mm+';font-size:'+fs+'}'
+      +'#printHost,#printHost *{font-weight:'+fw+'!important}'
+      +'#printHost .rtot,#printHost b,#printHost h3{font-weight:'+Math.min(900,fw+200)+'!important}}';
     host.innerHTML=inner;
     document.body.classList.add('printing');
     let done=false;
@@ -5858,7 +5862,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.21</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.22</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5924,6 +5928,7 @@ const SETTINGS = (()=>{
           <div class="field"><label>ขนาดกระดาษ</label><select id="setPaper"><option value="80" ${(s.paperWidth||'80')==='80'?'selected':''}>80mm (มาตรฐาน)</option><option value="58" ${s.paperWidth==='58'?'selected':''}>58mm (พกพา)</option></select></div>
           <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ</label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
+        <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
@@ -5996,7 +6001,7 @@ const SETTINGS = (()=>{
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
     STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   async function cloudSignIn(){
@@ -6894,7 +6899,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
+  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
   function mergeMeta(D,o){
     if(!o) return;
     if(o.meta){ const keepBid=(D.meta||{}).currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
