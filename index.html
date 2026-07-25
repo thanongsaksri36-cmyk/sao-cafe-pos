@@ -402,14 +402,19 @@ tr:hover td{background:var(--surface-2)}
   html,body{background:#fff!important;margin:0!important;padding:0!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   body.printing>*{display:none!important}
   body.printing>#printHost{display:block!important}
-  #printHost{color:#000;background:#fff;font-family:'Courier New','TH Sarabun New','Prompt',monospace;line-height:1.35;margin:0 auto}
+  /* บังคับดำสนิท + ตัวหนา — เครื่องพิมพ์ความร้อนพิมพ์สีเทา/ฟอนต์เส้นบางออกมาจางมาก */
+  #printHost,#printHost *{color:#000!important;opacity:1!important;text-shadow:none!important;filter:none!important;
+    font-family:'Sarabun','TH Sarabun New','Tahoma','Segoe UI',Arial,sans-serif!important;
+    font-weight:700!important;-webkit-font-smoothing:none;letter-spacing:.1px}
+  #printHost{background:#fff!important;line-height:1.45;margin:0 auto}
   #printHost .receipt{width:100%;margin:0}
-  #printHost .rdiv{border-top:1px dashed #000;margin:8px 0}
+  #printHost .rdiv{border-top:2px dashed #000;margin:8px 0}
   #printHost table{width:100%;border-collapse:collapse}
-  #printHost td,#printHost th{padding:2px 0}
+  #printHost td,#printHost th{padding:3px 0}
   #printHost .rc{text-align:center}
-  #printHost .rtot{font-weight:700}
-  #printHost h3{font-size:16px;text-align:center;margin:0}
+  #printHost .rtot,#printHost b,#printHost h3{font-weight:900!important}
+  #printHost h3{font-size:1.5em;text-align:center;margin:0}
+  #printHost small{font-size:.9em}
   #printHost img,#printHost svg{max-width:100%}
   #printHost .pgbrk{page-break-before:always;break-before:page}
 }
@@ -2847,6 +2852,19 @@ const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
   && o.payStatus!=='open' && o.payStatus!=='wait_cash' && o.payStatus!=='wait_verify'
   && !!o.method && o.method!=='unpaid';
 // คืนสต็อกได้ไหม — เฉพาะบิลที่เคยตัดสต็อกจริง และยังไม่เคยคืน (กันสต็อกงอก)
+// คืนสต็อกจริง — ใช้จำนวนที่หักได้จริง (stockUsed) ถ้ามี · ส่งขึ้น cloud ด้วย
+const returnStockOf=(o)=>{
+  if(!canReturnStock(o)) return false;
+  const touched=new Map();
+  if(o.stockUsed && typeof o.stockUsed==='object' && Object.keys(o.stockUsed).length){
+    Object.keys(o.stockUsed).forEach(id=>{ const ig=STORE.find('ingredients',id); if(ig){ ig.stock+=o.stockUsed[id]; touched.set(ig.id,ig); } });
+  } else {
+    (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig){ ig.stock+=r.qty*it.qty; touched.set(ig.id,ig); } }); });
+  }
+  o.stockReturned=true;
+  touched.forEach(ig=>{ try{ CLOUD.pushItem('ingredients',ig); }catch(e){} });
+  return true;
+};
 const canReturnStock=(o)=>{
   if(!o||o.stockReturned) return false;
   if(o.stockDeducted===true) return true;
@@ -2938,7 +2956,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -2991,6 +3009,8 @@ const STORE = (()=>{
     save();
   }
   function scoped(key){ const b=bid(); return (DB[key]||[]).filter(x=> (x.branchId||'BR-001')===b ); }
+  // รหัสเครื่อง 2 ตัว (คงที่ต่อเครื่อง) — กันเลขบิลชนกันเมื่อขายหลายเครื่องพร้อมกัน
+  function deviceTag(){ try{ let t=localStorage.getItem('saocafe_dev'); if(!t){ t=Math.random().toString(36).slice(2,4).toUpperCase(); localStorage.setItem('saocafe_dev',t); } return t; }catch(e){ return 'XX'; } }
   function bcounter(){ if(!DB.branchCounters) DB.branchCounters={}; const b=bid(); if(!DB.branchCounters[b]) DB.branchCounters[b]={orderNo:1,receiptNo:1}; return DB.branchCounters[b]; }
   function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
   function ensureHQ(data){
@@ -3024,7 +3044,7 @@ const STORE = (()=>{
   function bid(){ return (DB&&DB.meta&&DB.meta.currentBranchId)||'BR-001'; }
   function setBid(id){ if(DB&&DB.meta){ DB.meta.currentBranchId=id; save(); } }
   function curBranch(){ return (DB.branches||[]).find(b=>b.id===bid())||null; }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,binfo};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo};
 })();
 
 /* ============================================================
@@ -3247,7 +3267,7 @@ const POS = (()=>{
   function persistCart(){ try{ localStorage.setItem('saocafe_cart',JSON.stringify({cart,orderType,discount,member,table,orderNo})); }catch(e){} }
   function restoreCart(){ if(cart.length) return; try{ const r=localStorage.getItem('saocafe_cart'); if(r){ const d=JSON.parse(r); if(d&&d.cart&&d.cart.length){ cart=d.cart; orderType=d.orderType||'dine-in'; discount=d.discount||null; member=d.member||null; table=d.table||null; orderNo=d.orderNo||null; } } }catch(e){} }
   function hasCart(){ return cart.length>0; }
-  function newOrderNo(){ orderNo='#'+String(STORE.bcounter().orderNo).padStart(3,'0'); $('#orderNo').textContent=orderNo; }
+  function newOrderNo(){ orderNo='#'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'); $('#orderNo').textContent=orderNo; }
   function renderTypes(){
     $('#otype').innerHTML=types.map(t=>`<button class="${t.k===orderType?'active':''}" onclick="POS.setType('${t.k}')">${t.t}</button>`).join('');
     $('#orderType').textContent=(types.find(t=>t.k===orderType)||{}).t;
@@ -3687,8 +3707,11 @@ const PAY = (()=>{
   }
   // ===== พิมพ์จากหน้าเดิม (ไม่ใช้ window.open — Safari/iPad บล็อก popup) =====
   function _emit(inner){
-    const pw=STORE.get().settings.paperWidth||'80';          // 58 หรือ 80 mm
-    const mm=pw==='58'?'58mm':'80mm', fs=pw==='58'?'11px':'12px';
+    const st=STORE.get().settings;
+    const pw=st.paperWidth||'80';                            // 58 หรือ 80 mm
+    const base=pw==='58'?12:14;                              // ⭐ ใหญ่ขึ้นจากเดิม (11/12) ให้พิมพ์ออกมาชัด
+    const scale={small:-2,normal:0,large:2,xlarge:4}[st.receiptScale||'normal']||0;
+    const mm=pw==='58'?'58mm':'80mm', fs=(base+scale)+'px';
     let host=document.getElementById('printHost');
     if(!host){ host=document.createElement('div'); host.id='printHost'; document.body.appendChild(host); }
     let ps=document.getElementById('printPageCss');
@@ -3931,11 +3954,20 @@ const INV = (()=>{
   function deduct(order){
     if(order.stockDeducted) return;          // กันตัดสต็อกซ้ำ (กดยืนยันซ้ำ/หลายเครื่อง)
     order.stockDeducted=true;                // ธงให้ตอนยกเลิกรู้ว่าบิลนี้เคยตัดสต็อกจริง
+    const used={}, touched=new Map();        // จดจำนวนที่ "หักได้จริง" -> ตอนยกเลิกคืนเท่าที่หักจริง (กันสต็อกงอก)
     order.items.forEach(it=>{
       const p=STORE.find('products',it.productId);
-      if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock=Math.max(0,ig.stock-r.qty*it.qty); });
+      if(p&&p.recipe) p.recipe.forEach(r=>{
+        const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return;
+        const want=r.qty*it.qty, real=Math.min(want, Math.max(0, ig.stock));
+        ig.stock=Math.max(0, ig.stock-want);
+        used[r.ingredientId]=(used[r.ingredientId]||0)+real;
+        touched.set(ig.id,ig);
+      });
     });
+    order.stockUsed=used;
     STORE.save();
+    touched.forEach(ig=>{ try{ CLOUD.pushItem('ingredients',ig); }catch(e){} });   // ⭐ สต็อกต้องขึ้น cloud ไม่งั้นหลายเครื่องไม่ตรง
     // แจ้งเตือนวัตถุดิบใกล้หมด
     const low=STORE.scoped('ingredients').filter(i=>i.stock<i.parLevel&&!i.deletedAt);
     if(low.length) UI.toast('⚠️ วัตถุดิบใกล้หมด: '+low.map(i=>i.name).slice(0,2).join(', '),'err');
@@ -4189,7 +4221,7 @@ const QR = (()=>{
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _rno=await CLOUD.nextNo('receipt');
     const order={
-      id:STORE.uuid(),no:'#Q'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
+      id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
       subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:sub,change:0,
@@ -4262,7 +4294,7 @@ const QR = (()=>{
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _rno=await CLOUD.nextNo('receipt');
     const order={
-      id:STORE.uuid(),no:'#Q'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
+      id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
       subtotal:sub,discount:0,vat:0,service:0,total:sub,method:'unpaid',paid:0,change:0,
@@ -4278,7 +4310,7 @@ const QR = (()=>{
     const _slip=(slipImg||_slipImg||''); _slipImg='';
     const _rno=await CLOUD.nextNo('receipt');
     const order={
-      id:STORE.uuid(),no:'#Q'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
+      id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
       subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:0,change:0,
@@ -4451,7 +4483,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
-      if(canReturnStock(o)){ (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); }); o.stockReturned=true; }
+      returnStockOf(o);
       o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.payStatus='void'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     },true);
@@ -4515,7 +4547,8 @@ const REPORT = (()=>{
     // กำไรขั้นต้น = ยอด - ต้นทุน (cost) ของสินค้า
     let cost=0;
     orders.forEach(o=>o.items.forEach(it=>{ const p=STORE.find('products',it.productId); if(p) cost+=p.cost*it.qty; }));
-    const profit=revenue-cost;
+    const vatSum=orders.reduce((s,o)=>s+(o.vat||0),0);
+    const profit=(revenue-vatSum)-cost;      // VAT ไม่ใช่รายได้ร้าน ต้องหักออกก่อนคิดกำไร
     // ค่าใช้จ่ายคงที่ (ต่อเดือน) เฉลี่ยตามจำนวนวันของช่วงที่เลือก
     const fixedMonthly=(STORE.get().settings.fixedCosts||[]).filter(fc=> curBF()==='all'?true:(fc.branchId||'BR-001')===curBF()).reduce((a,b)=>a+(b.amount||0),0);
     let days=1;
@@ -5061,7 +5094,7 @@ const BO = (()=>{
           cv.getContext('2d').drawImage(img,0,0,w,h);
           let data; try{ data=cv.toDataURL('image/jpeg',0.8); }catch(err){ UI.toast('อ่านรูปไม่ได้','err'); return; }
           const p=STORE.find('products',id);
-          if(p){ p.img=data; p.updatedAt=STORE.now(); STORE.save(); render(); UI.toast('อัปโหลดรูปแล้ว','ok'); }
+          if(p){ p.img=data; p.updatedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',p); render(); UI.toast('อัปโหลดรูปแล้ว','ok'); }   // ⭐ ต้อง push ไม่งั้น sync รอบหน้าทับรูปหาย
         };
         img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err');
         img.src=e.target.result;
@@ -5825,7 +5858,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.20</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.21</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5891,6 +5924,7 @@ const SETTINGS = (()=>{
           <div class="field"><label>ขนาดกระดาษ</label><select id="setPaper"><option value="80" ${(s.paperWidth||'80')==='80'?'selected':''}>80mm (มาตรฐาน)</option><option value="58" ${s.paperWidth==='58'?'selected':''}>58mm (พกพา)</option></select></div>
           <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ</label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
+        <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้เฉพาะโหมด Bluetooth ESC/POS<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
@@ -5962,7 +5996,7 @@ const SETTINGS = (()=>{
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
     STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   async function cloudSignIn(){
@@ -6057,10 +6091,7 @@ function voidOrder(oid){
     UI.ask('ยกเลิกบิล',[{key:'reason',label:'เหตุผลการยกเลิก',value:''}],(o)=>{
       const ord=STORE.find('orders',oid); if(!ord||ord.status==='void') return;
       // คืนสต็อกเฉพาะบิลที่ "เคยตัดสต็อกจริง" และยังไม่เคยคืน (กันสต็อกงอกจากบิลรอชำระ)
-      if(canReturnStock(ord)){
-        (ord.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); });
-        ord.stockReturned=true;
-      }
+      returnStockOf(ord);
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
       LINEN.send(LINEN.voidMsg(ord,o.reason),'voided');
       CLOUD.pushOrder(ord); KDS.updateBadge(); if(NAV.cur()==='history') HISTORY.render(); UI.toast('ยกเลิก/คืนเงินแล้ว','ok');
@@ -6099,7 +6130,17 @@ const SPLIT = (()=>{
     UI.open('genOverlay'); calc();
   }
   function readSel(){ const cart=POS.getCart(), sel=[]; cart.forEach((c,i)=>{ const el=$('#sp_'+i); const q=el?Math.min(c.qty,Math.max(0,parseInt(el.value)||0)):0; if(q>0) sel.push({line:c,qty:q}); }); return sel; }
-  function calc(){ const sel=readSel(); const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const el=$('#spTotal'); if(el) el.textContent=STORE.baht(tot); const qr=$('#spQR'); if(qr) qr.innerHTML=PAY.promptpayQR(tot); return tot; }
+  // เฉลี่ยส่วนลด/service/VAT ตามสัดส่วนของรายการที่เลือก (เดิมทิ้งหมด -> เก็บเงินขาด + VAT เพี้ยน)
+  function share(tot){
+    const full=POS.calc(), sub=full.sub||0, ratio= sub>0 ? tot/sub : 0;
+    return { subtotal:tot,
+             discount:Math.round((full.disc||0)*ratio),
+             service :Math.round((full.service||0)*ratio),
+             vat     :Math.round((full.vat||0)*ratio),
+             total   :Math.round((full.total||tot)*ratio) };
+  }
+  function calc(){ const sel=readSel(); const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const sh=share(tot);
+    const el=$('#spTotal'); if(el) el.textContent=STORE.baht(sh.total); const qr=$('#spQR'); if(qr) qr.innerHTML=PAY.promptpayQR(sh.total); return sh.total; }
   let _spBusy=false;                                   // กันกดซ้ำ -> บิลแยกซ้ำ
   async function pay(method){
     if(_spBusy) return;
@@ -6111,11 +6152,11 @@ const SPLIT = (()=>{
   async function _pay(method){
     const sel=readSel(); if(!sel.length){ UI.toast('เลือกจำนวนที่จะจ่ายก่อน','err'); return; }
     const _rno=await CLOUD.nextNo('receipt');
-    const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const st=AUTH.get();
+    const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const sh=share(tot); const st=AUTH.get();
     const order={ id:STORE.uuid(), no:(POS.getState().orderNo||'#?')+'/แยก', receiptNo:_rno, branchId:STORE.bid(),
       type:POS.getType(), table:POS.getTable()||'',
       items:sel.map(x=>({line:STORE.uuid(),productId:x.line.productId,name:x.line.name,base:x.line.base,modPrice:x.line.modPrice,mods:x.line.mods,qty:x.qty,note:''})),
-      subtotal:tot,discount:0,vat:0,service:0,total:tot,method,paid:tot,change:0,
+      subtotal:sh.subtotal,discount:sh.discount,vat:sh.vat,service:sh.service,total:sh.total,method,paid:sh.total,change:0,
       status:'preparing',payStatus:'paid',memberId:null,staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null };
     STORE.get().orders.push(order);
     INV.deduct(order); SHIFT.recordSale(order); CLOUD.pushOrder(order); STORE.save();
@@ -6123,7 +6164,7 @@ const SPLIT = (()=>{
     for(let i=cart.length-1;i>=0;i--){ if(cart[i].qty<=0) cart.splice(i,1); }
     KDS.updateBadge(); PAY.receipt(order);
     if(!cart.length) POS.clearAfterPay(); else POS.renderCart();
-    UI.toast('รับเงินบิลแยกแล้ว '+STORE.baht(tot),'ok');
+    UI.toast('รับเงินบิลแยกแล้ว '+STORE.baht(sh.total),'ok');
   }
   return {open,render,calc,pay};
 })();
@@ -6677,21 +6718,26 @@ const CLOUD = (()=>{
     for(let i=q.length-1;i>=0;i--){ const k=q[i].table+':'+q[i].row.id; if(seen[k])continue; seen[k]=1; out.unshift(q[i]); }
     saveQ(out);
   }
+  let _flushing=false;
   async function flushQ(){
-    if(status!=='online'||!client) return;
-    const rest=[];
-    for(const j of loadQ()){
-      try{
-        const r = (!authUser && j.table==='orders') ? await client.from(j.table).insert(j.row) : await client.from(j.table).upsert(j.row);
-        if(r && r.error && r.error.code!=='23505') rest.push(j);
-      }catch(e){ rest.push(j); }
-    }
-    saveQ(rest);
+    if(status!=='online'||!client||_flushing) return;      // กันรันซ้อน (ถูกเรียกจาก 3 ทาง)
+    _flushing=true;
+    try{
+      const done=new Set();
+      for(const j of loadQ()){
+        try{
+          const r = (!authUser && j.table==='orders') ? await client.from(j.table).insert(j.row) : await client.from(j.table).upsert(j.row);
+          if(!r || !r.error || r.error.code==='23505') done.add(j.table+':'+((j.row&&j.row.id)||''));
+        }catch(e){}
+      }
+      saveQ(loadQ().filter(j=>!done.has(j.table+':'+((j.row&&j.row.id)||''))));   // ลบเฉพาะที่สำเร็จ งานใหม่ระหว่างส่งไม่หาย
+    } finally { _flushing=false; }
   }
   function pendingCount(){ return loadQ().length; }
   // ---- ส่งออเดอร์ขึ้น cloud (เข้าคิวถ้าออฟไลน์/ล้มเหลว ไม่หาย) ----
   async function pushOrder(o){
-    if(!o) return; o._uat=Date.now(); const row={id:o.id,data:o,updated_at:o._uat};
+    if(!o) return; o._uat=Date.now(); try{ STORE.save(); }catch(e){}       // ⭐ เซฟ _uat ลงเครื่อง
+    const row={id:o.id,data:o,updated_at:o._uat};
     if(status==='online'&&client){
       try{
         const r = authUser ? await client.from('orders').upsert(row) : await client.from('orders').insert(row);  // anon มีสิทธิ์แค่ insert
@@ -6704,7 +6750,8 @@ const CLOUD = (()=>{
   }
   // ---- ส่งข้อมูล master (เมนู/สต็อก/พนักงาน...) ขึ้น cloud เมื่อมีการแก้ -> สาขาอื่นเห็นทันที ----
   async function pushItem(table,obj){
-    if(!obj) return; obj._uat=Date.now(); const row={id:obj.id,data:obj,updated_at:obj._uat};
+    if(!obj) return; obj._uat=Date.now(); try{ STORE.save(); }catch(e){}   // ⭐ เซฟ _uat ลงเครื่อง กัน cloud ทับของที่เพิ่งแก้
+    const row={id:obj.id,data:obj,updated_at:obj._uat};
     if(status==='online'&&client){
       try{ const r=await client.from(table).upsert(row); if(!r||!r.error) return; console.error('pushItem',table,r.error); }catch(e){ console.error('pushItem',table,e); }
     }
@@ -6733,7 +6780,9 @@ const CLOUD = (()=>{
             if(orph.length) await client.from(t).delete().in('id',orph); }catch(e){ console.error('clean',t,e); }
         }
       }
-      await client.from('app_meta').upsert({id:'main',data:{meta:D.meta,settings:D.settings,counters:D.counters,branchCounters:D.branchCounters},updated_at:now});
+      const _meta=Object.assign({},D.meta); delete _meta.currentBranchId;                       // ⭐ ไม่ส่งสาขาที่เครื่องนี้เลือกขึ้นไป
+      const _set=Object.assign({},D.settings); LOCAL_KEYS.forEach(k=>{ delete _set[k]; });        // ⭐ ไม่ส่งค่าตั้งเฉพาะเครื่อง
+      await client.from('app_meta').upsert({id:'main',data:{meta:_meta,settings:_set,counters:D.counters,branchCounters:D.branchCounters},updated_at:now});
       UI.toast('อัปข้อมูลขึ้น cloud สำเร็จ ✅','ok');
     }catch(e){ UI.toast('อัปไม่สำเร็จ: '+(e.message||e),'err'); }
   }
@@ -6765,7 +6814,7 @@ const CLOUD = (()=>{
         const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['members','members'],['promos','promos'],['staff','staff'],['tables_','tables'],['shifts','shifts'],['cashlog','cashlog'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches']];
         for(const [t,key] of ent){ const {data,error}=await client.from(t).select('data'); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
         const {data:meta}=await client.from('app_meta').select('data').eq('id','main').limit(1);
-        if(meta&&meta[0]){ const mm=meta[0].data; if(mm.meta)D.meta=mm.meta; if(mm.settings)D.settings=mm.settings; if(mm.counters)D.counters=mm.counters; if(mm.branchCounters)D.branchCounters=mm.branchCounters; }
+        if(meta&&meta[0]) mergeMeta(D,meta[0].data);
         STORE.save(); UI.toast('ดึงข้อมูลสำเร็จ — กำลังรีโหลด','ok'); setTimeout(()=>location.reload(),900);
       }catch(e){ UI.toast('ดึงไม่สำเร็จ: '+(e.message||e),'err'); }
     });
@@ -6832,7 +6881,7 @@ const CLOUD = (()=>{
   function onRemote(table,p){
     const o=p.new&&p.new.data; if(!o) return;
     const uat=(p.new.updated_at)||Date.now();
-    if(table==='app_meta'){ const D=STORE.get(); if(o.meta)D.meta=o.meta; if(o.settings)D.settings=o.settings; if(o.branchCounters)D.branchCounters=o.branchCounters; STORE.save(); rerender(); return; }
+    if(table==='app_meta'){ const D=STORE.get(); mergeMeta(D,o); STORE.save(); rerender(); return; }
     const key=TMAP[table]; if(!key) return;
     const D=STORE.get(), arr=D[key]||(D[key]=[]); const i=arr.findIndex(x=>x.id===o.id);
     if(i>=0){ if((arr[i]._uat||0) > uat) return;  // conflict guard: local ใหม่กว่า -> ไม่ทับ
@@ -6844,6 +6893,18 @@ const CLOUD = (()=>{
     STORE.save(); rerender();
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
+  // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
+  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
+  function mergeMeta(D,o){
+    if(!o) return;
+    if(o.meta){ const keepBid=(D.meta||{}).currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
+    if(o.settings){ const mine={}; LOCAL_KEYS.forEach(k=>{ if((D.settings||{})[k]!==undefined) mine[k]=D.settings[k]; }); D.settings=Object.assign({},D.settings,o.settings,mine); }
+    if(o.counters) D.counters=Object.assign({},D.counters,o.counters);
+    if(o.branchCounters){ D.branchCounters=D.branchCounters||{};
+      Object.keys(o.branchCounters).forEach(b=>{ const cur=D.branchCounters[b]||{orderNo:1,receiptNo:1}, inc=o.branchCounters[b]||{};
+        D.branchCounters[b]={orderNo:Math.max(cur.orderNo||1,inc.orderNo||1), receiptNo:Math.max(cur.receiptNo||1,inc.receiptNo||1)}; });
+    }
+  }
   async function pullSync(){
     if(status!=='online'||!client) return;
     try{
@@ -6853,7 +6914,7 @@ const CLOUD = (()=>{
         const {data,error}=await client.from(t).select('data,updated_at'); if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
         data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
-          if(i>=0){ if((arr[i]._uat||0) <= (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }
+          if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
       STORE.save();
