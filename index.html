@@ -2842,6 +2842,17 @@ var qrcode = function() {
 const $=(s)=>document.querySelector(s);
 const $$=(s)=>document.querySelectorAll(s);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); // กัน XSS
+// บิลนี้ "รับเงินจริงแล้ว" หรือยัง — ใช้ร่วมกันทุกรายงาน (กันนับบิลรอชำระเป็นยอดขาย)
+const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
+  && o.payStatus!=='open' && o.payStatus!=='wait_cash' && o.payStatus!=='wait_verify'
+  && !!o.method && o.method!=='unpaid';
+// คืนสต็อกได้ไหม — เฉพาะบิลที่เคยตัดสต็อกจริง และยังไม่เคยคืน (กันสต็อกงอก)
+const canReturnStock=(o)=>{
+  if(!o||o.stockReturned) return false;
+  if(o.stockDeducted===true) return true;
+  if(o.stockDeducted===false) return false;
+  return o.status!=='wait_payment';        // บิลเก่าที่ไม่มีธง: บิลรอชำระไม่เคยตัดสต็อก
+};
 // ---- PromptPay EMVCo payload + CRC16 (สำหรับสร้าง QR จ่ายเงินจริง) ----
 function ppTLV(id,val){ return id+String(val.length).padStart(2,'0')+val; }
 function prepMs(o){ return (o.closedAt&&o.closedAt>o.createdAt)?(o.closedAt-o.createdAt):null; }
@@ -3596,7 +3607,16 @@ const PAY = (()=>{
     else if(ch<0) box.innerHTML=`<span style="color:var(--danger)">ขาดอีก ${STORE.baht(-ch)}</span>`;
     else box.innerHTML=`เงินทอน ${STORE.baht(ch)}`;
   }
+  let _payBusy=false;                                  // กันกดยืนยันซ้ำ / Enter ค้าง -> บิลซ้ำ
   async function complete(){
+    if(_payBusy) return;
+    _payBusy=true;
+    const _b0=document.getElementById('payConfirm'); if(_b0) _b0.disabled=true;
+    try{ await _complete(); }
+    catch(e){ console.error('pay complete',e); try{ UI.toast('บันทึกบิลไม่สำเร็จ ลองใหม่','err'); }catch(_){} }
+    finally{ _payBusy=false; const _b1=document.getElementById('payConfirm'); if(_b1) _b1.disabled=false; }
+  }
+  async function _complete(){
     const s=POS.calc();
     if(method==='cash'&&cashIn<s.total){ UI.toast('รับเงินไม่พอ','err'); return; }
     const st=AUTH.get();
@@ -3608,7 +3628,7 @@ const PAY = (()=>{
       items:JSON.parse(JSON.stringify(cart)),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
       method, paid:method==='cash'?cashIn:s.total, change:method==='cash'?cashIn-s.total:0,
-      status:'preparing', memberId:member?member.id:null, staffId:st.id, staffName:st.name,
+      status:'preparing', payStatus:'paid', memberId:member?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
       channel:'pos', createdAt:STORE.now(), closedAt:null
     };
     STORE.get().orders.push(order);
@@ -3909,6 +3929,8 @@ const INV = (()=>{
     });
   }
   function deduct(order){
+    if(order.stockDeducted) return;          // กันตัดสต็อกซ้ำ (กดยืนยันซ้ำ/หลายเครื่อง)
+    order.stockDeducted=true;                // ธงให้ตอนยกเลิกรู้ว่าบิลนี้เคยตัดสต็อกจริง
     order.items.forEach(it=>{
       const p=STORE.find('products',it.productId);
       if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock=Math.max(0,ig.stock-r.qty*it.qty); });
@@ -4155,7 +4177,14 @@ const QR = (()=>{
       r.readAsDataURL(file); };
     inp.click();
   }
-  async function submitVerified(method,info,slipImg){
+  let _qrBusy=false;                                   // กันลูกค้ากดส่งออเดอร์รัว -> ออเดอร์ซ้ำ
+  async function submitVerified(m,i,sl){ if(_qrBusy) return; _qrBusy=true;
+    try{ return await _submitVerified(m,i,sl); }catch(e){ console.error('qr verified',e); }finally{ _qrBusy=false; } }
+  async function submitOpenTab(){ if(_qrBusy) return; _qrBusy=true;
+    try{ return await _submitOpenTab(); }catch(e){ console.error('qr opentab',e); }finally{ _qrBusy=false; } }
+  async function submitOrder(m,sl){ if(_qrBusy) return; _qrBusy=true;
+    try{ return await _submitOrder(m,sl); }catch(e){ console.error('qr order',e); }finally{ _qrBusy=false; } }
+  async function _submitVerified(method,info,slipImg){
     _slipImg='';
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _rno=await CLOUD.nextNo('receipt');
@@ -4228,7 +4257,7 @@ const QR = (()=>{
     } else { if(qtable) submitOpenTab(); else submitOrder('cash'); }
   }
   function confirmOrder(){ if(!qcart.length) return; const pol=STORE.get().settings.qrPayPolicy||'pay_first'; if(pol==='pay_later') submitOpenTab(); else toPay(); }
-  async function submitOpenTab(){
+  async function _submitOpenTab(){
     // โหมดเปิดบิลค้าง: เข้าครัวทันที จ่ายตอนกลับ
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _rno=await CLOUD.nextNo('receipt');
@@ -4244,7 +4273,7 @@ const QR = (()=>{
     INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
     stage='done'; renderTrack(order,'open');
   }
-  async function submitOrder(method,slipImg){
+  async function _submitOrder(method,slipImg){
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     const _slip=(slipImg||_slipImg||''); _slipImg='';
     const _rno=await CLOUD.nextNo('receipt');
@@ -4376,8 +4405,11 @@ const PENDING = (()=>{
   }
   function confirm(id){
     const o=STORE.find('orders',id); if(!o) return;
+    if(o.status!=='wait_payment'){ UI.toast('บิลนี้ถูกยืนยันไปแล้ว','err'); render(); return; }   // กันกดซ้ำ/หลายเครื่องพร้อมกัน
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total;
-    INV.deduct(o); STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
+    o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
+    INV.deduct(o); SHIFT.recordSale(o);                                                          // ⭐ เงินสดเข้าลิ้นชัก
+    STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
     try{ PAY.autoPrint(o); }catch(e){}
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('รับเงินแล้ว ส่งเข้าครัว '+(o.table?'โต๊ะ '+o.table:o.no),'ok');
@@ -4407,7 +4439,10 @@ const PENDING = (()=>{
   }
   function settlePay(id,method){
     const o=STORE.find('orders',id); if(!o) return;
+    if(o.payStatus==='paid'||o.status==='void'){ UI.toast('บิลนี้ปิดไปแล้ว','err'); render(); return; }   // กันกดซ้ำ
     o.method=method; o.payStatus='paid'; o.paid=o.total; if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
+    o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
+    SHIFT.recordSale(o);                                                                         // ⭐ เงินสดเข้าลิ้นชัก
     STORE.save(); CLOUD.pushOrder(o); UI.close('genOverlay'); updateBadge(); render();
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('ปิดบิลแล้ว '+(o.table?'โต๊ะ '+o.table:o.no)+' · '+STORE.baht(o.total),'ok');
@@ -4416,8 +4451,8 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
-      if(o.payStatus==='open'||o.status==='preparing'||o.status==='ready'){ (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); }); }
-      o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
+      if(canReturnStock(o)){ (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); }); o.stockReturned=true; }
+      o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.payStatus='void'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     },true);
   }
@@ -4469,7 +4504,7 @@ const REPORT = (()=>{
     if(period==='custom'){ if(!cFrom||!cTo) return true; const ts=o.createdAt, f=new Date(cFrom+'T00:00:00').getTime(), t=new Date(cTo+'T23:59:59.999').getTime(); return ts>=f&&ts<=t; }
     return true;
   }
-  function sales(){ return STORE.get().orders.filter(o=>o.status!=='void'&&o.method!=='unpaid'&&inPeriod(o)&&inBranch(o)); }
+  function sales(){ return STORE.get().orders.filter(o=>isPaidOrder(o)&&inPeriod(o)&&inBranch(o)); }
   function render(){
     const orders=sales();
     const revenue=orders.reduce((s,o)=>s+o.total,0);
@@ -5790,7 +5825,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.19</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.20</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6021,8 +6056,11 @@ function voidOrder(oid){
   AUTH.requireApproval('การยกเลิกบิลต้องได้รับอนุมัติ',()=>{
     UI.ask('ยกเลิกบิล',[{key:'reason',label:'เหตุผลการยกเลิก',value:''}],(o)=>{
       const ord=STORE.find('orders',oid); if(!ord||ord.status==='void') return;
-      // คืนสต็อกวัตถุดิบกลับเมื่อยกเลิก/คืนเงิน
-      (ord.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); });
+      // คืนสต็อกเฉพาะบิลที่ "เคยตัดสต็อกจริง" และยังไม่เคยคืน (กันสต็อกงอกจากบิลรอชำระ)
+      if(canReturnStock(ord)){
+        (ord.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) ig.stock+=r.qty*it.qty; }); });
+        ord.stockReturned=true;
+      }
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
       LINEN.send(LINEN.voidMsg(ord,o.reason),'voided');
       CLOUD.pushOrder(ord); KDS.updateBadge(); if(NAV.cur()==='history') HISTORY.render(); UI.toast('ยกเลิก/คืนเงินแล้ว','ok');
@@ -6062,7 +6100,15 @@ const SPLIT = (()=>{
   }
   function readSel(){ const cart=POS.getCart(), sel=[]; cart.forEach((c,i)=>{ const el=$('#sp_'+i); const q=el?Math.min(c.qty,Math.max(0,parseInt(el.value)||0)):0; if(q>0) sel.push({line:c,qty:q}); }); return sel; }
   function calc(){ const sel=readSel(); const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const el=$('#spTotal'); if(el) el.textContent=STORE.baht(tot); const qr=$('#spQR'); if(qr) qr.innerHTML=PAY.promptpayQR(tot); return tot; }
+  let _spBusy=false;                                   // กันกดซ้ำ -> บิลแยกซ้ำ
   async function pay(method){
+    if(_spBusy) return;
+    _spBusy=true;
+    try{ await _pay(method); }
+    catch(e){ console.error('split pay',e); try{ UI.toast('บันทึกบิลแยกไม่สำเร็จ','err'); }catch(_){} }
+    finally{ _spBusy=false; }
+  }
+  async function _pay(method){
     const sel=readSel(); if(!sel.length){ UI.toast('เลือกจำนวนที่จะจ่ายก่อน','err'); return; }
     const _rno=await CLOUD.nextNo('receipt');
     const tot=sel.reduce((s,x)=>s+(x.line.base+x.line.modPrice)*x.qty,0); const st=AUTH.get();
@@ -6118,7 +6164,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
   function daySummary(){
     const td=new Date().toDateString();
     const all=STORE.get().orders.filter(x=>(x.branchId||'BR-001')===STORE.bid()&&new Date(x.createdAt).toDateString()===td);
-    const ok=all.filter(x=>x.status!=='void'&&x.payStatus!=='open'&&x.method&&x.method!=='unpaid');
+    const ok=all.filter(isPaidOrder);
     const voided=all.filter(x=>x.status==='void');
     const tot=ok.reduce((a,b)=>a+b.total,0);
     const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer');
@@ -6264,8 +6310,9 @@ const DAYEND = (()=>{
     const bid=STORE.bid();
     const all=(STORE.get().orders||[]).filter(o=>(o.branchId||'BR-001')===bid && new Date(o.createdAt).toDateString()===ref);
     const voided=all.filter(o=>o.status==='void');
-    const ok=all.filter(o=>o.status!=='void' && o.payStatus!=='open' && o.method && o.method!=='unpaid');
-    const openTab=all.filter(o=>o.payStatus==='open');
+    const ok=all.filter(isPaidOrder);
+    const openTab=all.filter(o=>o.payStatus==='open'&&o.status!=='void');
+    const waitPay=all.filter(o=>o.status==='wait_payment');
     const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
     const by=m=>ok.filter(o=>o.method===m);
     const cash=by('cash'), pp=by('promptpay'), tr=by('transfer');
@@ -6296,6 +6343,7 @@ const DAYEND = (()=>{
       tr:{n:tr.length,v:sum(tr,o=>o.total)},
       voided:{n:voided.length,v:sum(voided,o=>o.total)},
       openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
+      waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
       first:times[0]||null, last:times[times.length-1]||null,
       top, shift
     };
@@ -6319,7 +6367,7 @@ const DAYEND = (()=>{
     L.push('💵 เงินสด   '+B(d.cash.v)+'  ('+d.cash.n+' บิล)');
     L.push('📱 QR       '+B(d.pp.v)+'  ('+d.pp.n+' บิล)');
     L.push('🏦 โอน      '+B(d.tr.v)+'  ('+d.tr.n+' บิล)');
-    if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n){
+    if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n||d.waitPay.n){
       L.push('');
       L.push('━━ รายละเอียด ━━');
       L.push('🧾 ยอดก่อนหักลด '+B(d.subtotal));
@@ -6328,6 +6376,7 @@ const DAYEND = (()=>{
       if(d.vat>0)      L.push('🧮 VAT          '+B(d.vat));
       if(d.voided.n)   L.push('❌ บิลยกเลิก    '+d.voided.n+' บิล ('+B(d.voided.v)+')');
       if(d.openTab.n)  L.push('⏳ ค้างชำระ     '+d.openTab.n+' บิล ('+B(d.openTab.v)+')');
+      if(d.waitPay.n)  L.push('🕐 รอรับเงิน    '+d.waitPay.n+' บิล ('+B(d.waitPay.v)+')');
     }
     if(d.shift){
       L.push('');
