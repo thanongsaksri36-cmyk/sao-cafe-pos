@@ -74,7 +74,7 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .tab{padding:9px 19px;background:var(--surface);color:var(--muted);border-radius:22px;font-size:14px;font-weight:500;white-space:nowrap;transition:.18s var(--ease);box-shadow:var(--shadow);border:1px solid var(--line)}
 .tab:hover{border-color:var(--gold-light);color:var(--text)}
 .tab.active{background:var(--green);color:#fff;border-color:var(--green)}
-.grid{flex:1;overflow-y:auto;padding:8px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;align-content:start}
+.grid{flex:1;overflow-y:auto;padding:8px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;align-content:start;align-items:stretch}
 .card{background:var(--surface);border-radius:var(--r-card);overflow:hidden;transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease);box-shadow:var(--shadow);border:1px solid var(--line);display:flex;flex-direction:column;position:relative}
 .card:hover{transform:translateY(-4px);border-color:var(--gold-light);box-shadow:var(--shadow-lg)}
 .card:active{transform:scale(.97)}
@@ -423,6 +423,10 @@ tr:hover td{background:var(--surface-2)}
   #staffChip span:not(.av){display:none}
   nav{width:80vw}
 }
+/* ชื่อเมนูฝั่งลูกค้า: จำกัด 3 บรรทัด ราคาไม่โดนดันตก */
+.qgrid .meta{display:flex;flex-direction:column;height:100%}
+.qgrid .nm{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;line-height:1.28;min-height:3.84em}
+.qgrid .pr{margin-top:auto}
 .hidden{display:none!important}
 /* ===== พิมพ์จากหน้าเดิม — ไม่เปิดหน้าต่างใหม่ (Safari/iPad บล็อก popup) ===== */
 #printHost{display:none}
@@ -2893,6 +2897,19 @@ const returnStockOf=(o)=>{
   touched.forEach(ig=>{ try{ CLOUD.pushItem('ingredients',ig); }catch(e){} });
   return true;
 };
+// ยกเลิก/คืนเงินบิลเงินสด -> ต้องหักเงินออกจากลิ้นชักด้วย ไม่งั้นปิดกะจะขึ้น "ขาด" เท่ายอดบิลนั้น
+const refundCashOf=(o,reason)=>{
+  try{
+    if(!o || o.cashRefunded) return false;
+    if(o.method!=='cash') return false;
+    if(o.payStatus && o.payStatus!=='paid') return false;      // ยังไม่ได้รับเงิน = ไม่ต้องคืน
+    const sh=SHIFT.active(); if(!sh) return false;             // ไม่มีกะเปิดอยู่ = บันทึกไม่ได้
+    const _cl={id:STORE.uuid(),type:'out',amount:o.total,note:'คืนเงินบิล '+(o.no||'')+(reason?' ('+reason+')':''),
+               staffId:((typeof AUTH!=='undefined'&&AUTH.get())||{}).id||null,at:STORE.now(),shiftId:sh.id,branchId:STORE.bid()};
+    STORE.get().cashlog.push(_cl); CLOUD.pushItem('cashlog',_cl);
+    o.cashRefunded=true; return true;
+  }catch(e){ console.error('refundCash',e); return false; }
+};
 const canReturnStock=(o)=>{
   if(!o||o.stockReturned) return false;
   if(o.stockDeducted===true) return true;
@@ -3356,9 +3373,11 @@ const POS = (()=>{
         : `<div style="font-size:38px;line-height:1;flex:none">${esc(p.emoji||'☕')}</div>`;
       const tag=oos?`<div style="font-size:11px;font-weight:700;color:var(--danger)">หมด</div>`
                    :(low?`<div style="font-size:10px;font-weight:700;color:var(--warn)">ใกล้หมด</div>`:'');
-      return `<div onclick="${oos?'':`POS.tap('${p.id}')`}" style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);cursor:${oos?'default':'pointer'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;gap:7px;padding:14px 10px 12px;min-height:128px;${oos?'opacity:.5;':''}">
+      const _nm=esc(p.name||''), _len=(p.name||'').length;
+      const _fs=_len>46?11:(_len>30?12:13.5);        // ชื่อยาว -> ย่อฟอนต์ ไม่ต้องตัดข้อความทิ้ง
+      return `<div onclick="${oos?'':`POS.tap('${p.id}')`}" title="${_nm}" style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);cursor:${oos?'default':'pointer'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;gap:7px;padding:14px 10px 12px;min-height:128px;height:100%;box-sizing:border-box;${oos?'opacity:.5;':''}">
         ${icon}
-        <div style="font-size:13.5px;font-weight:600;line-height:1.3;color:var(--text);word-break:break-word;width:100%">${esc(p.name)}</div>
+        <div style="font-size:${_fs}px;font-weight:600;line-height:1.28;color:var(--text);width:100%;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:3.84em">${_nm}</div>
         <div style="margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:2px;width:100%">
           <div style="font-size:15px;font-weight:800;color:var(--gold)">${STORE.baht(priceOf(p))}</div>
           ${tag}
@@ -4144,7 +4163,7 @@ const QR = (()=>{
         <div class="ph">${p.img?`<img src="${esc(p.img)}">`:`<div class="em">${esc(p.emoji||'☕')}</div>`}
           <span class="inc" id="qrcBadge_${p.id}" ${inCart?'':'style="display:none"'}>×${inCart}</span>
           <span class="plus">＋</span></div>
-        <div class="meta"><div class="nm">${esc(p.name)}</div><div class="pr">${STORE.baht(p.price)}</div></div>
+        <div class="meta"><div class="nm" title="${esc(p.name)}">${esc(p.name)}</div><div class="pr">${STORE.baht(p.price)}</div></div>
       </div>`; }
     function grid(ps){ return `<div class="qgrid">${ps.map(card).join('')}</div>`; }
     let body='';
@@ -4559,6 +4578,7 @@ const PENDING = (()=>{
     UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
       returnStockOf(o);
+      refundCashOf(o,'ยกเลิก');                                   // ⭐ หักเงินออกจากลิ้นชัก (ถ้าเคยรับเงินสดแล้ว)
       o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.payStatus='void'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     },true);
@@ -5933,7 +5953,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.25</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.27</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6169,7 +6189,9 @@ function voidOrder(oid){
       const ord=STORE.find('orders',oid); if(!ord||ord.status==='void') return;
       // คืนสต็อกเฉพาะบิลที่ "เคยตัดสต็อกจริง" และยังไม่เคยคืน (กันสต็อกงอกจากบิลรอชำระ)
       returnStockOf(ord);
+      const _refunded=refundCashOf(ord,o.reason);                 // ⭐ หักเงินออกจากลิ้นชัก
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
+      if(_refunded) UI.toast('หักเงินคืน '+STORE.baht(ord.total)+' ออกจากลิ้นชักแล้ว','ok');
       LINEN.send(LINEN.voidMsg(ord,o.reason),'voided');
       CLOUD.pushOrder(ord); KDS.updateBadge(); if(NAV.cur()==='history') HISTORY.render(); UI.toast('ยกเลิก/คืนเงินแล้ว','ok');
     });
