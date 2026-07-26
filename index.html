@@ -5953,7 +5953,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.27</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.28</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6017,6 +6017,10 @@ const SETTINGS = (()=>{
         <h3 style="margin-bottom:14px;font-size:16px">🖨️ เครื่องพิมพ์ใบเสร็จ</h3>
         <div class="row2">
           <div class="field"><label>ขนาดกระดาษ</label><select id="setPaper"><option value="80" ${(s.paperWidth||'80')==='80'?'selected':''}>80mm (มาตรฐาน)</option><option value="58" ${s.paperWidth==='58'?'selected':''}>58mm (พกพา)</option></select></div>
+          <div class="field"><label>🖥️ พิมพ์เงียบบน Windows (ไม่มีหน้าต่าง Print เด้ง)</label>
+            <button class="add-fab" style="width:100%;justify-content:center" onclick="SETTINGS.downloadBat()">⬇️ ดาวน์โหลดไฟล์เปิดร้าน (.bat)</button>
+            <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">ใช้กับคอม Windows เท่านั้น · เปิดร้านด้วยไฟล์นี้ทุกครั้ง แทนการเปิด Chrome ปกติ<br>ถ้า Chrome เตือนว่าไฟล์อาจไม่ปลอดภัย → กด <b>เก็บไว้ (Keep)</b></div>
+          </div>
           <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ</label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
         <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
@@ -6103,6 +6107,44 @@ const SETTINGS = (()=>{
     if(!error){ const b=await CLOUD.myBranch(); if(b && AUTH.isHQ&&!AUTH.isHQ()){ STORE.setBid(b); BRANCH.renderChip(); } render(); }
   }
   async function cloudSignOut(){ await CLOUD.signOut(); render(); }
+  // สร้างไฟล์ .bat เปิด Chrome โหมด kiosk-printing ให้ลูกค้าดาวน์โหลดเอง (URL ดึงจากหน้าที่เปิดอยู่จริง)
+  function downloadBat(){
+    try{
+      const url=location.origin+location.pathname;
+      const BS='\\';
+      const L=[
+        '@echo off',
+        'title SAO POS - Auto Print Mode',
+        'rem ============================================================',
+        'rem  SAO POS - open Chrome in silent print mode (no print dialog)',
+        'rem  HOW TO USE: double-click this file every time you open shop',
+        'rem ============================================================',
+        'set "POS_URL='+url+'"',
+        '',
+        'set "CH=%ProgramFiles%'+BS+'Google'+BS+'Chrome'+BS+'Application'+BS+'chrome.exe"',
+        'if not exist "%CH%" set "CH=%ProgramFiles(x86)%'+BS+'Google'+BS+'Chrome'+BS+'Application'+BS+'chrome.exe"',
+        'if not exist "%CH%" set "CH=%LocalAppData%'+BS+'Google'+BS+'Chrome'+BS+'Application'+BS+'chrome.exe"',
+        '',
+        'if not exist "%CH%" (',
+        '  echo Google Chrome not found. Please install Chrome first.',
+        '  pause',
+        '  exit /b',
+        ')',
+        '',
+        'rem separate profile so --kiosk-printing always applies',
+        'set "POSPROFILE=%LocalAppData%'+BS+'SAO_POS_Chrome"',
+        '',
+        'start "" "%CH%" --kiosk-printing --user-data-dir="%POSPROFILE%" --no-first-run --no-default-browser-check --new-window "%POS_URL%"'
+      ].join('\r\n')+'\r\n';
+      const blob=new Blob([L],{type:'application/octet-stream'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='เปิด POS พิมพ์อัตโนมัติ.bat';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },1500);
+      UI.confirm2('⬇️ ดาวน์โหลดแล้ว','วิธีใช้:\n\n1) ถ้า Chrome เตือนว่าไฟล์อาจไม่ปลอดภัย ให้กด "เก็บไว้ (Keep)"\n2) ย้ายไฟล์ไปวางที่หน้าจอ Desktop\n3) ปิด Chrome ให้หมดก่อน\n4) ดับเบิลคลิกไฟล์นี้เพื่อเปิดร้านทุกครั้ง\n\nอย่าลืมเปิด "พิมพ์อัตโนมัติเมื่อขายเสร็จ" ในหน้านี้ด้วย',()=>{});
+    }catch(e){ UI.toast('สร้างไฟล์ไม่สำเร็จ: '+(e.message||e),'err'); }
+  }
   function uploadQr(){
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const reader=new FileReader();
@@ -6177,7 +6219,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
