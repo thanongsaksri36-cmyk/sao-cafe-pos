@@ -122,14 +122,33 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .citem .qv{min-width:22px;text-align:center;font-weight:600;font-size:14px}
 .citem .cpr{font-weight:600;color:var(--gold);font-size:14px;min-width:64px;text-align:right}
 .citem .rm{color:var(--danger);font-size:11px;background:none;margin-left:auto}
-.summary{padding:12px 16px;border-top:1px solid var(--line);background:var(--surface-2)}
+.cart-items{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.summary{padding:12px 16px;border-top:1px solid var(--line);background:var(--surface-2);flex:0 0 auto}
+.cart-actions{flex:0 0 auto}
 .sr{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:5px}
 .sr.tot{font-size:20px;font-weight:700;color:var(--text);margin-top:6px;padding-top:8px;border-top:1px dashed var(--line)}
 .sr.disc{color:var(--success)}
-.cart-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 16px 12px}
+.cart-actions{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:0 16px 12px}
+.cart-actions .ca-table{grid-column:span 6}
+.cart-actions .ca-mem{grid-column:span 6}
+.cart-actions.has-table .ca-table{grid-column:span 3}
+.cart-actions.has-table .ca-mem{grid-column:span 3}
+.cart-actions .ca-sec{grid-column:span 2}          /* พักบิล · ส่วนลด · แยกบิล = แถวเดียว */
+.cart-actions .ca-s{display:none}                   /* ชื่อย่อ ใช้เฉพาะจอเล็ก */
+.cart-actions .ca-more{display:none;grid-column:span 2}
+.cart-actions.empty .ca-sec{display:none}           /* ตะกร้าว่าง = ซ่อนปุ่มที่กดไม่ได้ */
+/* --- แบบ A: ครบทุกปุ่ม (เหมือนเดิม) --- */
+.cart-actions.style-full .ca-table,.cart-actions.style-full .ca-mem,.cart-actions.style-full .ca-wide{grid-column:span 6}
+.cart-actions.style-full .ca-sec{grid-column:span 3}
+.cart-actions.style-full .ca-t{display:inline}
+.cart-actions.style-full .ca-s{display:none}
+/* --- แบบ C: เหลือ ⋯ + ชำระเงิน (1 แถว) --- */
+.cart-actions.style-min .ca-table,.cart-actions.style-min .ca-mem,.cart-actions.style-min .ca-sec{display:none!important}
+.cart-actions.style-min .ca-more{display:flex}
+.cart-actions.style-min .btn-pay{grid-column:span 4}
 .btn{padding:13px;border-radius:var(--r-btn);font-size:14px;font-weight:600;transition:.15s var(--ease);display:flex;align-items:center;justify-content:center;gap:6px}
 .btn:active{transform:scale(.97)}
-.btn-pay{grid-column:1/3;background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;font-size:16px;padding:15px;box-shadow:0 4px 14px rgba(27,58,47,.28)}
+.btn-pay{grid-column:1/-1;background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;font-size:16px;padding:15px;box-shadow:0 4px 14px rgba(27,58,47,.28)}
 .btn-pay:hover{filter:brightness(1.08);box-shadow:0 6px 20px rgba(27,58,47,.34)}
 .btn-pay:disabled{opacity:.4;pointer-events:none}
 .btn-ghost{background:var(--cream);color:var(--text)}
@@ -379,6 +398,15 @@ tr:hover td{background:var(--surface-2)}
   .cards-row{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
   .panel table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
   .modal{max-width:92vw}
+  /* ===== ตะกร้าจอเล็ก: บีบปุ่มล่างให้เหลือ 3 แถว จะได้เห็นรายการมากขึ้น ===== */
+  .cart-actions{gap:6px;padding:0 12px 10px}
+  .cart-actions .btn{padding:10px 4px;font-size:12.5px;gap:3px;border-radius:11px}
+  .cart-actions .btn-pay{padding:14px;font-size:15.5px}
+  .cart-actions .ca-t{display:none}
+  .cart-actions .ca-s{display:inline}
+  .summary{padding:9px 14px}
+  .sr{font-size:12.5px;margin-bottom:3px}
+  .sr.tot{font-size:18px;margin-top:4px;padding-top:6px}
 }
 /* ===== เฉพาะมือถือเล็ก (≤680px): แถบหมวดแคบลง เมนู 2 คอลัมน์ ===== */
 @media(max-width:680px){
@@ -458,12 +486,13 @@ tr:hover td{background:var(--surface-2)}
       <div class="hold-bar" id="holdBar"></div>
       <div class="cart-items" id="cartItems"></div>
       <div class="summary" id="summary"></div>
-      <div class="cart-actions">
-        <button class="btn" id="tableChip" style="grid-column:1/3;display:none" onclick="POS.pickTable()"></button>
-        <button class="btn btn-gold" style="grid-column:1/3" onclick="MEMBER.open()">👤 สมาชิก / สะสมแต้ม</button>
-        <button class="btn btn-ghost" onclick="POS.hold()">⏸️ พักบิล</button>
-        <button class="btn btn-ghost" onclick="DISC.open()">🏷️ ส่วนลด</button>
-        <button class="btn btn-ghost" style="grid-column:1/3" onclick="SPLIT.open()">✂️ แยกบิล / จ่ายแยก</button>
+      <div class="cart-actions" id="cartActions">
+        <button class="btn ca-table" id="tableChip" style="display:none" onclick="POS.pickTable()"></button>
+        <button class="btn btn-gold ca-mem" onclick="MEMBER.open()">👤 <span class="ca-t">สมาชิก / สะสมแต้ม</span><span class="ca-s">สมาชิก</span></button>
+        <button class="btn btn-ghost ca-sec" onclick="POS.hold()">⏸️ <span class="ca-t">พักบิล</span><span class="ca-s">พัก</span></button>
+        <button class="btn btn-ghost ca-sec" onclick="DISC.open()">🏷️ <span class="ca-t">ส่วนลด</span><span class="ca-s">ลด</span></button>
+        <button class="btn btn-ghost ca-sec ca-wide" onclick="SPLIT.open()">✂️ <span class="ca-t">แยกบิล / จ่ายแยก</span><span class="ca-s">แยก</span></button>
+        <button class="btn btn-ghost ca-more" id="cartMore" onclick="POS.moreActions()">⋯ <span id="cartMoreLbl">เพิ่มเติม</span></button>
         <button class="btn btn-pay" id="payBtn" onclick="PAY.open()" disabled>💵 ชำระเงิน</button>
       </div>
     </div>
@@ -2961,7 +2990,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
     };
@@ -3278,7 +3307,8 @@ const POS = (()=>{
     $('#otype').innerHTML=types.map(t=>`<button class="${t.k===orderType?'active':''}" onclick="POS.setType('${t.k}')">${t.t}</button>`).join('');
     $('#orderType').textContent=(types.find(t=>t.k===orderType)||{}).t;
     const chip=$('#tableChip');
-    if(chip){ if(orderType==='dine-in'){ chip.style.display='flex'; chip.innerHTML='🪑 '+(table?('โต๊ะ '+esc(table)):'เลือกโต๊ะ'); chip.className='btn '+(table?'btn-gold':'btn-ghost'); } else { chip.style.display='none'; table=null; } }
+    const _ca=$('#cartActions');
+    if(chip){ if(orderType==='dine-in'){ chip.style.display='flex'; chip.innerHTML='🪑 '+(table?('โต๊ะ '+esc(table)):'เลือกโต๊ะ'); chip.className='btn ca-table '+(table?'btn-gold':'btn-ghost'); if(_ca)_ca.classList.add('has-table'); } else { chip.style.display='none'; table=null; if(_ca)_ca.classList.remove('has-table'); } }
   }
   function pickTable(){
     if(orderType!=='dine-in') return;
@@ -3377,16 +3407,40 @@ const POS = (()=>{
     total = m.vatIncluded ? baseForVat : baseForVat+vat;
     return {sub,disc,vat,service,total};
   }
+  function applyCartStyle(){
+    const ca=$('#cartActions'); if(!ca) return;
+    const st=(STORE.get().settings||{}).cartStyle||'compact';
+    ca.classList.remove('style-full','style-compact','style-min'); ca.classList.add('style-'+st);
+    const lbl=$('#cartMoreLbl');
+    if(lbl) lbl.textContent = (orderType==='dine-in'&&table) ? ('โต๊ะ '+table) : 'เพิ่มเติม';
+  }
+  // เมนูรวมทุกปุ่ม — ใช้กับสไตล์ "เหลือ ⋯ + ชำระเงิน"
+  function moreActions(){
+    const dine=orderType==='dine-in';
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>⋯ เมนูเพิ่มเติม</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><div style="display:grid;gap:10px">
+        ${dine?`<button class="btn ${table?'btn-gold':'btn-ghost'}" style="min-height:54px;font-size:15px" onclick="UI.close('genOverlay');POS.pickTable()">🪑 ${table?('โต๊ะ '+esc(table)):'เลือกโต๊ะ'}</button>`:''}
+        <button class="btn btn-gold" style="min-height:54px;font-size:15px" onclick="UI.close('genOverlay');MEMBER.open()">👤 สมาชิก / สะสมแต้ม</button>
+        <button class="btn btn-ghost" style="min-height:54px;font-size:15px" onclick="UI.close('genOverlay');DISC.open()">🏷️ ส่วนลด</button>
+        <button class="btn btn-ghost" style="min-height:54px;font-size:15px" onclick="UI.close('genOverlay');POS.hold()">⏸️ พักบิล</button>
+        <button class="btn btn-ghost" style="min-height:54px;font-size:15px" onclick="UI.close('genOverlay');SPLIT.open()">✂️ แยกบิล / จ่ายแยก</button>
+      </div></div>`;
+    UI.open('genOverlay');
+  }
   function renderCart(){
+    applyCartStyle();
     persistCart();
     const _cn=cart.reduce((s,c)=>s+c.qty,0);
     $('#cartCnt').textContent=_cn;
     const _fb=$('#cartFabBadge'); if(_fb){ _fb.textContent=_cn; _fb.classList.toggle('hidden',_cn===0); }
     renderHolds();
+    const _ca2=$('#cartActions');
     if(!cart.length){
       $('#cartItems').innerHTML=`<div class="empty"><div class="ic">🛒</div>ยังไม่มีรายการ<br><small>แตะเมนูเพื่อเพิ่ม</small></div>`;
-      $('#summary').innerHTML=''; $('#payBtn').disabled=true; return;
+      $('#summary').innerHTML=''; $('#payBtn').disabled=true; if(_ca2)_ca2.classList.add('empty'); return;
     }
+    if(_ca2)_ca2.classList.remove('empty');
     $('#payBtn').disabled=false;
     $('#cartItems').innerHTML=cart.map(c=>{
       const modTxt=c.mods.filter(m=>m.name!=='ปกติ').map(m=>m.name).join(', ');
@@ -3440,7 +3494,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,pickTable,setTable,getTable,
+  return {render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -5879,7 +5933,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.23</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.25</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -5945,6 +5999,7 @@ const SETTINGS = (()=>{
           <div class="field"><label>ขนาดกระดาษ</label><select id="setPaper"><option value="80" ${(s.paperWidth||'80')==='80'?'selected':''}>80mm (มาตรฐาน)</option><option value="58" ${s.paperWidth==='58'?'selected':''}>58mm (พกพา)</option></select></div>
           <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ</label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
+        <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
@@ -6018,7 +6073,7 @@ const SETTINGS = (()=>{
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
     STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   async function cloudSignIn(){
@@ -6916,7 +6971,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
+  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
   function mergeMeta(D,o){
     if(!o) return;
     if(o.meta){ const keepBid=(D.meta||{}).currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
