@@ -74,7 +74,7 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .tab{padding:9px 19px;background:var(--surface);color:var(--muted);border-radius:22px;font-size:14px;font-weight:500;white-space:nowrap;transition:.18s var(--ease);box-shadow:var(--shadow);border:1px solid var(--line)}
 .tab:hover{border-color:var(--gold-light);color:var(--text)}
 .tab.active{background:var(--green);color:#fff;border-color:var(--green)}
-.grid{flex:1;overflow-y:auto;padding:8px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;align-content:start}
+.grid{flex:1;overflow-y:auto;padding:8px 16px 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;align-content:start;grid-auto-rows:minmax(min-content,auto)}
 .card{background:var(--surface);border-radius:var(--r-card);overflow:hidden;transition:transform .18s var(--ease),box-shadow .18s var(--ease),border-color .18s var(--ease);box-shadow:var(--shadow);border:1px solid var(--line);display:flex;flex-direction:column;position:relative}
 .card:hover{transform:translateY(-4px);border-color:var(--gold-light);box-shadow:var(--shadow-lg)}
 .card:active{transform:scale(.97)}
@@ -305,7 +305,7 @@ tr:hover td{background:var(--surface-2)}
 /* ---- QR เมนูกริด (สแกนสั่ง สไตล์ใหม่) ---- */
 .qmenu{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 0 24px}
 .qmenu-head{font-size:19px;font-weight:700;padding:16px 16px 8px;font-family:'Playfair Display',serif;color:var(--text)}
-.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:2px 14px 10px}
+.qgrid{grid-auto-rows:minmax(min-content,auto);display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:2px 14px 10px}
 .qcard{background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);cursor:pointer;transition:transform .14s var(--ease),box-shadow .14s var(--ease);position:relative;display:flex;flex-direction:column}
 .qcard:active{transform:scale(.97)}
 .qcard .ph{aspect-ratio:1/1;background:linear-gradient(150deg,#f3ecdb,#e6d8ba);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
@@ -4820,15 +4820,33 @@ const REPORT = (()=>{
    HISTORY — ประวัติบิล + ยกเลิก/คืนเงิน + พิมพ์ซ้ำ
    ============================================================ */
 const HISTORY = (()=>{
-  let period='today', q='', cFrom='', cTo='';
+  let period='today', q='', cFrom='', cTo='', pay='all';
+  // วิธีชำระ: ไอคอน · ชื่อ · สีตัวอักษร · สีพื้น
+  const PM={
+    cash      :['💵','เงินสด',    '#0f6e56','#e1f5ee'],
+    promptpay :['📱','พร้อมเพย์',  '#185fa5','#e6f1fb'],
+    transfer  :['🏦','โอน',       '#534ab7','#eeedfe'],
+    unpaid    :['⏳','ยังไม่จ่าย', '#854f0b','#faeeda']
+  };
+  function payCell(o){
+    const m=PM[o.method]||['❔',(o.method||'-'),'#5f5e5a','#f1efe8'];
+    const slip=o.slipVerified?'<br><small style="color:var(--success);font-weight:600">✓ สลิปผ่าน</small>':'';
+    const wait=(o.payStatus==='wait_cash'||o.payStatus==='wait_verify')?'<br><small style="color:var(--warn);font-weight:600">รอรับเงิน</small>'
+              :(o.payStatus==='open'?'<br><small style="color:var(--warn);font-weight:600">ค้างชำระ</small>':'');
+    return '<span style="display:inline-block;padding:3px 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap;color:'+m[2]+';background:'+m[3]+'">'+m[0]+' '+m[1]+'</span>'+slip+wait;
+  }
   function inP(o){ const d=new Date(o.createdAt),n=new Date();
     if(period==='today')return d.toDateString()===n.toDateString();
     if(period==='week')return (n-d)/86400000<=7;
     if(period==='custom'){ if(!cFrom||!cTo) return true; const ts=o.createdAt, f=new Date(cFrom+'T00:00:00').getTime(), t=new Date(cTo+'T23:59:59.999').getTime(); return ts>=f&&ts<=t; }
     return true; }
   function render(){
-    let orders=STORE.get().orders.filter(o=>inP(o)&&(o.branchId||'BR-001')===STORE.bid());
-    if(q) orders=orders.filter(o=>(o.no||'').toLowerCase().includes(q));
+    let base=STORE.get().orders.filter(o=>inP(o)&&(o.branchId||'BR-001')===STORE.bid());
+    if(q) base=base.filter(o=>(o.no||'').toLowerCase().includes(q));
+    const sum={}; let allN=0, allV=0;                       // สรุปแยกช่องทาง (ไม่นับบิลยกเลิก)
+    base.filter(o=>o.status!=='void').forEach(o=>{ const k=o.method||'unpaid';
+      if(!sum[k]) sum[k]={n:0,v:0}; sum[k].n++; sum[k].v+=(o.total||0); allN++; allV+=(o.total||0); });
+    let orders=(pay==='all')?base:base.filter(o=>(o.method||'unpaid')===pay);
     orders=orders.slice().sort((a,b)=>b.createdAt-a.createdAt);
     $('#historyPanel').innerHTML=`
       <div class="panel-head"><h2>📜 ประวัติบิล</h2>
@@ -4836,12 +4854,24 @@ const HISTORY = (()=>{
           ${[['today','วันนี้'],['week','7 วัน'],['all','ทั้งหมด']].map(([k,t])=>`<button class="sub-tab ${period===k?'active':''}" onclick="HISTORY.setPeriod('${k}')">${t}</button>`).join('')}
           <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="hisFrom" value="${cFrom}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"> ถึง <input type="date" id="hisTo" value="${cTo}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"></span>
         </div></div>
-      <div class="field" style="max-width:280px"><input placeholder="ค้นหาเลขบิล เช่น 001" oninput="HISTORY.search(this.value)"></div>
-      <table><thead><tr><th>บิล</th><th>เวลา</th><th>ประเภท</th><th>พนักงาน</th><th>ยอด</th><th>เวลาทำ</th><th>สถานะ</th><th></th></tr></thead><tbody>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+        <div class="field" style="max-width:250px;margin:0"><input placeholder="ค้นหาเลขบิล เช่น 001" oninput="HISTORY.search(this.value)"></div>
+        <div class="sub-tabs" style="margin:0">
+          <button class="sub-tab ${pay==='all'?'active':''}" onclick="HISTORY.setPay('all')">ทั้งหมด (${allN})</button>
+          ${Object.keys(PM).map(k=>{ const c=sum[k]; if(!c&&pay!==k) return '';
+            return `<button class="sub-tab ${pay===k?'active':''}" onclick="HISTORY.setPay('${k}')">${PM[k][0]} ${PM[k][1]}${c?' ('+c.n+')':''}</button>`; }).join('')}
+        </div>
+      </div>
+      <div class="cards-row" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:14px">
+        <div class="stat-card"><div class="lbl">รวมทั้งหมด</div><div class="val" style="color:var(--gold)">${STORE.baht(allV)}</div><div style="font-size:12px;color:var(--muted)">${allN} บิล</div></div>
+        ${Object.keys(PM).filter(k=>sum[k]).map(k=>`<div class="stat-card"><div class="lbl">${PM[k][0]} ${PM[k][1]}</div><div class="val" style="color:${PM[k][2]}">${STORE.baht(sum[k].v)}</div><div style="font-size:12px;color:var(--muted)">${sum[k].n} บิล</div></div>`).join('')}
+      </div>
+      <table><thead><tr><th>บิล</th><th>เวลา</th><th>ประเภท</th><th>ชำระโดย</th><th>พนักงาน</th><th>ยอด</th><th>เวลาทำ</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${orders.length?orders.map(o=>`<tr>
         <td><b>${esc(o.no)}</b>${o.table?'<br><small>โต๊ะ '+esc(o.table)+'</small>':''}</td>
         <td>${new Date(o.createdAt).toLocaleString('th-TH')}</td>
         <td>${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[o.type]||o.type}</td>
+        <td>${payCell(o)}</td>
         <td>${esc(o.staffName||'-')}</td>
         <td><b>${STORE.baht(o.total)}</b></td>
         <td>${fmtDur(prepMs(o))}</td>
@@ -4849,15 +4879,16 @@ const HISTORY = (()=>{
         <td style="text-align:right;white-space:nowrap">
           <button class="sub-tab" onclick="HISTORY.receipt('${o.id}')">🧾 ใบเสร็จ</button>
           ${o.status!=='void'?`<button class="sub-tab" style="color:var(--danger)" onclick="HISTORY.voidIt('${o.id}')">ยกเลิก/คืนเงิน</button>`:''}
-        </td></tr>`).join(''):'<tr><td colspan="8"><div class="empty">ไม่มีบิล</div></td></tr>'}
+        </td></tr>`).join(''):'<tr><td colspan="9"><div class="empty">ไม่มีบิล</div></td></tr>'}
       </tbody></table>`;
   }
   function setPeriod(p){ period=p; render(); }
+  function setPay(m){ pay=m; render(); }
   function setCustom(){ const f=$('#hisFrom').value, t=$('#hisTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; render(); } }
   function search(v){ q=v.trim().toLowerCase(); render(); }
   function receipt(id){ const o=STORE.find('orders',id); if(o) PAY.receipt(o); }
   function voidIt(id){ voidOrder(id); }
-  return {render,setPeriod,setCustom,search,receipt,voidIt};
+  return {render,setPeriod,setPay,setCustom,search,receipt,voidIt};
 })();
 
 /* ============================================================
@@ -5953,7 +5984,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.29</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.31</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
