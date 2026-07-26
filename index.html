@@ -2890,6 +2890,12 @@ function ppPayload(id,amountBaht){
    ============================================================ */
 const STORE = (()=>{
   const KEY='saocafe_v2', VERSION=6;
+  let _saveFail=0;
+  function storageInfo(){                      // พื้นที่ที่ใช้ไป (localStorage ~5MB)
+    try{ let n=0; for(const k in localStorage){ if(Object.prototype.hasOwnProperty.call(localStorage,k)) n+=((localStorage[k]||'').length+k.length)*2; }
+      return {bytes:n, mb:(n/1048576).toFixed(2), pct:Math.min(100,Math.round(n/5242880*100)), fail:_saveFail};
+    }catch(e){ return {bytes:0,mb:'0',pct:0,fail:_saveFail}; }
+  }
   let DB=null;
   const uuid=()=> 'id-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
   const now=()=> Date.now();
@@ -3032,8 +3038,9 @@ const STORE = (()=>{
     }
   }
   function save(){
-    try{ localStorage.setItem(KEY,JSON.stringify(DB)); }
-    catch(e){ console.error('save fail',e); UI.toast('บันทึกข้อมูลไม่สำเร็จ (พื้นที่เต็ม?)','err'); }
+    try{ localStorage.setItem(KEY,JSON.stringify(DB)); _saveFail=0; }
+    catch(e){ console.error('save fail',e); _saveFail++;
+      if(_saveFail===1||_saveFail%20===0) UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ไปที่ ตั้งค่า → ล้างบิลเก่า ด่วน','err'); }
   }
   function reset(){ if(confirm('ล้างข้อมูลทั้งหมดและเริ่มใหม่?')){ DB=seed(); stampBranches(DB); save(); location.reload(); } }
   function get(){ return DB; }
@@ -3043,7 +3050,7 @@ const STORE = (()=>{
   function bid(){ return (DB&&DB.meta&&DB.meta.currentBranchId)||'BR-001'; }
   function setBid(id){ if(DB&&DB.meta){ DB.meta.currentBranchId=id; save(); } }
   function curBranch(){ return (DB.branches||[]).find(b=>b.id===bid())||null; }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo};
 })();
 
 /* ============================================================
@@ -3426,7 +3433,7 @@ const POS = (()=>{
   }
   // ---- แยกบิล (split) ----
   function getState(){ return {cart,orderType,discount,member,orderNo,calc}; }
-  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; STORE.bcounter().orderNo++; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }
+  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
   function setDiscount(d){ discount=d; renderCart(); }
   function setMember(m){ member=m; renderCart(); }
   function getCart(){ return cart; }
@@ -3641,8 +3648,17 @@ const PAY = (()=>{
     const st=AUTH.get();
     const cart=POS.getCart(), member=POS.getMember(), discount=POS.getDiscount();
     const _rno=await CLOUD.nextNo('receipt');   // เลขใบเสร็จ atomic ฝั่ง server (fallback local ออฟไลน์)
+    // ⭐ จองเลขบิลทันที ณ ตอนสร้าง — ไม่ผูกกับ clearAfterPay อีก (เดิมถ้าพังหลังบันทึก เลขจะไม่เดิน)
+    const _c=STORE.bcounter(), _localBefore=_c.orderNo;
+    let _ono=await CLOUD.nextNo('order');            // ออนไลน์=เลข server · ออฟไลน์=เลขเครื่อง (ตัวมัน ++ ให้แล้ว)
+    try{
+      if(!(_ono>0) || _ono<_localBefore) _ono=_localBefore;   // server ยังไม่เริ่ม/ต่ำกว่า -> ใช้เลขเครื่อง
+      if(_c.orderNo<=_ono) _c.orderNo=_ono+1;                 // ดันเคาน์เตอร์ให้เลยเลขที่ใช้เสมอ
+      STORE.save();
+    }catch(e){ console.error('reserve orderNo',e); }
+    const _no='#'+STORE.deviceTag()+'-'+String(_ono).padStart(3,'0');
     const order={
-      id:STORE.uuid(), no:POS.getState().orderNo, receiptNo:_rno, branchId:STORE.bid(),
+      id:STORE.uuid(), no:_no, receiptNo:_rno, branchId:STORE.bid(),
       type:POS.getType(), table:POS.getTable()||'',
       items:JSON.parse(JSON.stringify(cart)),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
@@ -3660,17 +3676,18 @@ const PAY = (()=>{
     else if(order.method==='transfer') LINEN.send(LINEN.saleMsg(order),'paytransfer');
     CLOUD.pushOrder(order);
     STORE.save();
+    POS.clearAfterPay();               // ⭐ ล้างตะกร้า/ออกเลขใหม่ก่อน — พิมพ์พังต้องไม่ค้างที่บิลเดิม
     UI.close('payOverlay');
-    receipt(order); if(order.method==='cash') PRINT.kickDrawer();  // แสดงใบเสร็จ
-    autoPrint(order);                  // พิมพ์ใบเสร็จ + ใบครัว (รวมครั้งเดียว) ถ้าเปิดไว้
-    POS.clearAfterPay();
+    try{ receipt(order); }catch(e){ console.error('receipt',e); }
+    try{ if(order.method==='cash') PRINT.kickDrawer(); }catch(e){ console.error('drawer',e); }
+    try{ autoPrint(order); }catch(e){ console.error('autoPrint',e); }
     KDS.updateBadge();
     UI.toast('ขายสำเร็จ '+STORE.baht(s.total),'ok');
   }
   function receipt(order){
     const m=STORE.binfo(), items=order.items;
     const rows=items.map(it=>{
-      const mt=it.mods.filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+      const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
       return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`;
     }).join('');
     $('#genModal').className='modal';
@@ -3773,7 +3790,7 @@ const PAY = (()=>{
   }
   function renderFullTax(o,buyer){
     const m=STORE.binfo(); const preVat=o.total-o.vat;
-    const rows=o.items.map(it=>{ const mt=it.mods.filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); const line=(it.base+it.modPrice)*it.qty; return `<tr><td>${esc(it.name)}${mt?' ('+esc(mt)+')':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht(line)}</td></tr>`; }).join('');
+    const rows=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); const line=(it.base+it.modPrice)*it.qty; return `<tr><td>${esc(it.name)}${mt?' ('+esc(mt)+')':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht(line)}</td></tr>`; }).join('');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🧾 ใบกำกับภาษีเต็มรูป</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div id="rcptPrint" style="background:#fff;color:#000;padding:18px;font-size:13px;line-height:1.5">
@@ -4001,7 +4018,7 @@ const KDS = (()=>{
       const mins=(STORE.now()-o.createdAt)/60000;
       const cls=mins>10?'late':mins>5?'warn':'';
       const items=o.items.map((it,i)=>{
-        const mt=it.mods.filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+        const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
         const done=(o.itemDone||[]).includes(i);
         return `<div class="kitem ${done?'done':''}" onclick="KDS.toggleItem('${o.id}',${i})"><span class="kq">${it.qty}×</span><div style="flex:1;min-width:0"><b>${esc(it.name)}</b>${mt?`<div class="kmods">${esc(mt)}</div>`:''}</div><span class="kchk">${done?'✓':''}</span></div>`;
       }).join('');
@@ -4031,7 +4048,7 @@ const KDS = (()=>{
   // ใบเสิร์ฟ: พิมพ์รายการในออเดอร์ ไว้ให้พนักงานเสิร์ฟ+ทวนลูกค้า (เปิด/ปิดได้ในตั้งค่า)
   function serveSlipHtml(o){
     const m=STORE.get().meta;
-    const items=o.items.map(it=>{ const mt=it.mods.filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${it.qty}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
+    const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${it.qty}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
     const tp=({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[o.type]||'';
     const where=o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp;
     return `<div class="receipt"><div class="rc"><h3>🍽️ ใบครัว</h3></div>`+
@@ -5862,7 +5879,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.22</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.23</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6623,7 +6640,7 @@ const PRINT = (()=>{
     ln('เลขที่ '+order.no+(order.table?' โต๊ะ '+order.table:''));
     ln(new Date(order.createdAt).toLocaleString('th-TH'));
     dash();
-    order.items.forEach(it=>{ const mt=it.mods.filter(x=>x.name!=='ปกติ').map(x=>x.name).join(','); row(it.qty+'x '+it.name, (((it.base+it.modPrice)*it.qty)/100).toLocaleString()); if(mt) ln('  +'+mt); });
+    order.items.forEach(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(','); row(it.qty+'x '+it.name, (((it.base+it.modPrice)*it.qty)/100).toLocaleString()); if(mt) ln('  +'+mt); });
     dash();
     row('รวม', (order.subtotal/100).toLocaleString());
     if(order.discount>0) row('ส่วนลด', '-'+(order.discount/100).toLocaleString());
