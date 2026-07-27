@@ -249,6 +249,17 @@ tr:hover td{background:var(--surface-2)}
 /* ---------- Lock screen ---------- */
 #lockScreen{position:fixed;inset:0;background:var(--green-dark);z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:20px}
 #lockScreen.hide{display:none}
+#setupScreen{position:fixed;inset:0;background:var(--green-dark);z-index:120;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center}
+#setupScreen.hide{display:none}
+#setupScreen h2{font-family:'Playfair Display',serif;font-size:26px;margin:14px 0 4px}
+#setupScreen p{color:var(--gold-light);font-size:13px;line-height:1.7;margin-bottom:18px;max-width:340px}
+#setupScreen input{width:min(320px,86vw);padding:15px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:19px;text-align:center;letter-spacing:2px;text-transform:uppercase;font-family:'Prompt'}
+#setupScreen input::placeholder{color:rgba(255,255,255,.35);letter-spacing:1px}
+#setupScreen .su-btn{width:min(320px,86vw);margin-top:14px;padding:15px;border-radius:12px;background:var(--gold);color:#fff;font-size:16px;font-weight:600;border:0}
+#setupScreen .su-btn:disabled{opacity:.45}
+#setupScreen .su-msg{margin-top:14px;font-size:13px;min-height:40px;line-height:1.6}
+#setupScreen .su-list{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;max-width:360px}
+#setupScreen .su-list button{background:rgba(255,255,255,.08);color:#fff;padding:9px 14px;border-radius:18px;font-size:13px;border:0}
 .lock-logo{font-family:'Playfair Display',serif;font-size:34px;font-weight:700;letter-spacing:2px;color:#fff}
 .lock-logo small{display:block;font-family:'Prompt';font-size:11px;letter-spacing:5px;color:var(--gold-light);text-align:center;margin-top:2px}
 .lock-staff{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:24px 0 8px;max-width:420px}
@@ -564,6 +575,17 @@ tr:hover td{background:var(--surface-2)}
   <div class="pindots" id="lockDots"></div>
   <div class="pinpad" id="lockPad"></div>
   <div class="lock-msg" id="lockMsg">ใส่ PIN 4 หลัก (พิมพ์จากคีย์บอร์ดได้)</div>
+</div>
+
+<div id="setupScreen" class="hide">
+  <div class="lock-logo">SAO CAFE<small>ตั้งค่าเครื่องครั้งแรก</small></div>
+  <h2>🏪 ใส่รหัสสาขา</h2>
+  <p>ใส่รหัสสาขาที่ได้รับจากส่วนกลาง<br>ทำครั้งเดียว ครั้งต่อไปเปิดใช้ได้เลย</p>
+  <input id="suCode" placeholder="เช่น BR-004" autocomplete="off" spellcheck="false" maxlength="24">
+  <button class="su-btn" id="suGo" onclick="APP.setupGo()">ตรวจสอบรหัส</button>
+  <div class="su-msg" id="suMsg"></div>
+  <div class="su-list" id="suList"></div>
+  <button style="margin-top:18px;background:none;border:0;color:rgba(255,255,255,.5);font-size:12px;text-decoration:underline" onclick="APP.setupSkip()">ข้ามไปก่อน — ใช้สาขาเดิมในเครื่อง</button>
 </div>
 
 <div id="toast"></div>
@@ -3072,7 +3094,18 @@ const STORE = (()=>{
   function ensureHQ(data){
     try{
       const alive=(data.staff||[]).filter(x=>!x.deletedAt&&x.active!==false);
-      if(alive.length && !alive.some(x=>x.hq===true)){ alive.forEach(x=>{ if(x.role==='owner') x.hq=true; }); }
+      // HQ "ตัวจริง" = ตั้งจากส่วนกลาง (ไม่มีธง _autoHQ)
+      const realHQ = alive.some(x=> x.hq===true && !x._autoHQ);
+      if(realHQ){
+        // มีผู้ดูแลจากส่วนกลางแล้ว -> ถอด HQ ที่เครื่องสาขาเลื่อนตัวเองออก (กันแฟรนไชส์เห็นทุกสาขา)
+        let n=0; alive.forEach(x=>{ if(x._autoHQ){ x.hq=false; delete x._autoHQ; n++; } });
+        if(n) try{ console.warn('ถอดสิทธิ์ HQ ชั่วคราวออก '+n+' บัญชี (มีผู้ดูแลจากส่วนกลางแล้ว)'); }catch(e){}
+        return data;
+      }
+      // ยังไม่มี HQ เลย -> ให้ owner เป็น HQ ชั่วคราว พร้อมติดธงไว้ให้ถอดได้ทีหลัง
+      if(alive.length && !alive.some(x=>x.hq===true)){
+        alive.forEach(x=>{ if(x.role==='owner'){ x.hq=true; x._autoHQ=true; } });
+      }
     }catch(e){}
     return data;
   }
@@ -3101,7 +3134,7 @@ const STORE = (()=>{
   function bid(){ return (DB&&DB.meta&&DB.meta.currentBranchId)||'BR-001'; }
   function setBid(id){ if(DB&&DB.meta){ DB.meta.currentBranchId=id; save(); } }
   function curBranch(){ return (DB.branches||[]).find(b=>b.id===bid())||null; }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -3228,7 +3261,7 @@ const UI = (()=>{
   function confirm2(title,msg,onYes,danger){
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>${esc(title)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b"><p style="font-size:14px;line-height:1.6">${esc(msg)}</p></div>
+      <div class="modal-b"><p style="font-size:14px;line-height:1.6;white-space:pre-line">${esc(msg)}</p></div>
       <div class="modal-f">
         <button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button>
         <button class="${danger?'btn-danger':'btn-gold'}" id="genYes">ยืนยัน</button>
@@ -5989,7 +6022,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.33</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.37</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6102,7 +6135,10 @@ const SETTINGS = (()=>{
           <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
             <code style="font-size:17px;font-weight:800;letter-spacing:1px;color:var(--gold);background:var(--surface);padding:7px 14px;border-radius:9px;border:1px solid var(--line)">${esc(STORE.shopId())}</code>
             <button class="sub-tab" onclick="SETTINGS.changeShop()">✏️ เปลี่ยนรหัสร้าน</button>
-            <button class="sub-tab" onclick="SETTINGS.copyShop()">📋 คัดลอก</button>
+            <button class="sub-tab" onclick="SETTINGS.copyShop()">📋 คัดลอกรหัส</button>
+            <button class="sub-tab" style="background:var(--gold);color:#fff" onclick="SETTINGS.copyShopLink()">🔗 ลิงก์เปิดร้าน</button>
+            <button class="sub-tab" style="background:var(--green);color:#fff" onclick="SETTINGS.branchLink()">🏪 ลิงก์เปิดสาขา</button>
+            <button class="sub-tab" onclick="APP.setupReset()">🔄 ตั้งรหัสสาขาใหม่</button>
           </div>
           <p style="font-size:12px;color:var(--muted);margin-top:7px;line-height:1.5">ข้อมูลของร้านนี้แยกจากร้านอื่นด้วยรหัสนี้ · เครื่องทุกเครื่องของร้านเดียวกันต้องใช้รหัสเดียวกัน<br>
           ${(CLOUD.hasShopCol&&!CLOUD.hasShopCol())?'<b style="color:var(--danger)">⚠️ ฐานข้อมูลยังไม่ได้ตั้งค่าแยกร้าน — กรุณารันไฟล์ SQL ก่อน (ตอนนี้ยังใช้ข้อมูลรวมกันอยู่)</b>':'<span style="color:var(--success);font-weight:600">✅ ระบบแยกร้านทำงานอยู่</span>'}</p>
@@ -6145,6 +6181,37 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
     STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
+  }
+  // ลิงก์เปิดสาขา — เลือกสาขา แล้วได้ลิงก์ส่งให้สาขานั้นเปิดเครื่องได้เลย
+  function branchLink(){
+    const bs=(STORE.get().branches||[]).filter(b=>!b.deletedAt);
+    if(!bs.length){ UI.toast('ยังไม่มีสาขา','err'); return; }
+    const base=location.origin+location.pathname, sid=STORE.shopId();
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>🏪 ลิงก์เปิดสาขา</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b"><p style="font-size:13px;color:var(--muted);margin-bottom:10px">ส่งลิงก์ให้สาขา — เปิดแล้วตั้งร้าน+สาขาให้อัตโนมัติ ไม่ต้องพิมพ์อะไรเลย</p>'+
+      bs.map(b=>{
+        const u=base+'?shop='+encodeURIComponent(sid)+'&b='+encodeURIComponent(b.id);
+        return '<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">'+
+          '<b>'+esc(b.name||b.id)+'</b> <small style="color:var(--muted)">'+esc(b.id)+'</small>'+
+          '<div style="font-size:11px;color:var(--muted);word-break:break-all;margin:6px 0">'+esc(u)+'</div>'+
+          '<button class="btn-gold" style="width:100%;padding:8px" onclick="SETTINGS.copyText(\''+esc(u)+'\')">📋 คัดลอกลิงก์</button></div>';
+      }).join('')+'</div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
+    UI.open('genOverlay');
+  }
+  function copyText(t){
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t); }catch(e){}
+    UI.toast('คัดลอกลิงก์แล้ว ✅','ok');
+  }
+  // ลิงก์ที่ตั้งรหัสร้านให้อัตโนมัติ — ส่งให้ลูกค้าเปิดลิงก์เดียวจบ
+  function copyShopLink(){
+    const url=location.origin+location.pathname+'?shop='+encodeURIComponent(STORE.shopId());
+    const done=()=>UI.confirm2('🔗 คัดลอกลิงก์แล้ว','ส่งลิงก์นี้ให้ลูกค้าเปิดในเครื่องเขา\nระบบจะตั้งรหัสร้านให้อัตโนมัติ ไม่ต้องพิมพ์เอง\n\n'+url,()=>{});
+    try{
+      if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done).catch(done);
+      else done();
+    }catch(e){ done(); }
   }
   function copyShop(){
     const t=STORE.shopId();
@@ -6285,7 +6352,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -7158,6 +7225,7 @@ const CLOUD = (()=>{
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
+      try{ STORE.ensureHQ(); }catch(e){}     // ⭐ ดึงรายชื่อจากส่วนกลางมาแล้ว -> ถอด HQ ชั่วคราวของเครื่องสาขาทิ้ง
       STORE.save();
       try{ BO.dedupeMenu(true); }catch(e){}   // ล้างข้อมูลซ้ำอัตโนมัติหลัง sync (กันของเก่าใน cloud งอกกลับ)
       rerender();
@@ -7314,8 +7382,97 @@ const AI = (()=>{
 })();
 
 const APP = (()=>{
+  // ===== ตั้งรหัสร้านจากลิงก์  ?shop=SHOP-XXXX  (ส่งลิงก์เดียวให้ลูกค้า ไม่ต้องพิมพ์เอง) =====
+  let _shopAsk=null;
+  const SETUP_KEY='saocafe_setup';
+  const setupDone =()=>{ try{ return localStorage.getItem(SETUP_KEY)==='1'; }catch(e){ return true; } };
+  const markSetup =()=>{ try{ localStorage.setItem(SETUP_KEY,'1'); }catch(e){} };
+  function applyShopFromLink(){
+    try{
+      const sp=new URLSearchParams(location.search);
+      const q=(sp.get('shop')||'').trim().toUpperCase();
+      const bq=(sp.get('b')||'').trim().toUpperCase();
+      const drop=(k)=>{ try{ sp.delete(k); }catch(e){} };
+      const clean=()=>{ try{ const qs=sp.toString();
+        history.replaceState(null,'',location.pathname+(qs?('?'+qs):'')); }catch(e){} };
+      const D=STORE.get();
+      const fresh = !((D.orders||[]).length) && !((D.cashlog||[]).length);   // เครื่องใหม่ ยังไม่เคยขาย
+
+      // ── รหัสสาขาจากลิงก์  ?b=BR-004 ──  (โหมดลูกค้า QR ใช้ ?t= จัดการเอง ไม่แตะ)
+      if(bq && /^[A-Z0-9-]{3,24}$/.test(bq) && !sp.get('t') && sp.get('order')!=='1'){
+        if(fresh || bq===STORE.bid()){ STORE.setBid(bq); markSetup(); drop('b'); }
+      }
+
+      // ── รหัสร้านจากลิงก์  ?shop=SHOP-XXXX ──
+      if(q && /^[A-Z0-9-]{4,24}$/.test(q)){
+        const cur=STORE.shopId();
+        if(q===cur){ drop('shop'); }
+        else if(fresh){ STORE.setShopId(q); drop('shop'); }
+        else { _shopAsk={from:cur,to:q,clean:()=>{}}; drop('shop'); }        // มีข้อมูลแล้ว -> ถามก่อน
+      }
+      clean();
+    }catch(e){}
+  }
+
+  // ===== หน้าตั้งค่าเครื่องครั้งแรก: ใส่รหัสสาขา =====
+  function needSetup(){
+    try{
+      if(setupDone()) return false;
+      const D=STORE.get();
+      if((D.orders||[]).length || (D.cashlog||[]).length){ markSetup(); return false; }  // เครื่องเก่าที่ขายแล้ว ข้ามไป
+      return true;
+    }catch(e){ return false; }
+  }
+  function setupShow(){
+    const el=$('#setupScreen'); if(!el) return;
+    el.classList.remove('hide');
+    $('#lockScreen').classList.add('hide');
+    const i=$('#suCode'); if(i){ i.value=''; i.focus();
+      i.onkeydown=(e)=>{ if(e.key==='Enter') setupGo(); }; }
+    setupHint();
+  }
+  function setupHint(){
+    const bs=(STORE.get().branches||[]).filter(b=>!b.deletedAt);
+    const el=$('#suList'); if(!el) return;
+    if(bs.length<2){ el.innerHTML=''; return; }
+    el.innerHTML='<div style="width:100%;font-size:12px;color:var(--gold-light);margin-bottom:4px">หรือเลือกจากรายการ</div>'+
+      bs.map(b=>`<button onclick="APP.setupPick('${String(b.id).replace(/[^A-Za-z0-9-]/g,'')}')">${esc(b.name||b.id)}</button>`).join('');
+  }
+  function setupPick(id){ const i=$('#suCode'); if(i) i.value=id; setupGo(); }
+  async function setupGo(){
+    const msg=$('#suMsg'), btn=$('#suGo');
+    const code=(($('#suCode')||{}).value||'').trim().toUpperCase();
+    if(!/^[A-Z0-9-]{3,24}$/.test(code)){ msg.innerHTML='<span style="color:#F0A0A0">รหัสไม่ถูกต้อง (ใช้ A-Z 0-9 และ - เท่านั้น)</span>'; return; }
+    btn.disabled=true; msg.innerHTML='<span style="color:var(--gold-light)">กำลังตรวจสอบ…</span>';
+    let br=(STORE.get().branches||[]).find(b=>String(b.id).toUpperCase()===code && !b.deletedAt);
+    if(!br){ try{ await CLOUD.pullSync(); }catch(e){}
+      br=(STORE.get().branches||[]).find(b=>String(b.id).toUpperCase()===code && !b.deletedAt); }
+    if(!br){
+      btn.disabled=false;
+      msg.innerHTML='<span style="color:#F0A0A0">ไม่พบสาขา '+esc(code)+'</span><br><small style="color:var(--gold-light)">เช็คตัวสะกด หรือขอรหัสใหม่จากส่วนกลาง</small>';
+      setupHint(); return;
+    }
+    msg.innerHTML='<span style="color:#9BD5A8">พบสาขา: <b>'+esc(br.name||br.id)+'</b></span><br><small style="color:var(--gold-light)">กำลังเข้าสู่ระบบ…</small>';
+    STORE.setBid(br.id); markSetup();
+    setTimeout(()=>location.reload(),800);
+  }
+  function setupSkip(){
+    UI.confirm2('ข้ามการตั้งรหัสสาขา?',
+      'เครื่องนี้จะใช้สาขาเดิม: '+((STORE.curBranch()||{}).name||STORE.bid())+'\n\nถ้าคุณเป็นสาขาใหม่ ให้ใส่รหัสแทน — ไม่งั้นยอดขายจะไปรวมกับสาขาอื่น',
+      ()=>{ markSetup(); const el=$('#setupScreen'); if(el) el.classList.add('hide');
+            if(!AUTH.get()) $('#lockScreen').classList.remove('hide'); });
+  }
+  function setupReset(){ try{ localStorage.removeItem(SETUP_KEY); }catch(e){} location.reload(); }
+  function askShopSwitch(){
+    if(!_shopAsk) return; const a=_shopAsk; _shopAsk=null;
+    UI.confirm2('🏪 ลิงก์นี้ตั้งรหัสร้านให้',
+      'จาก  '+a.from+'\nเป็น  '+a.to+'\n\nเครื่องนี้เคยขายไปแล้ว — ถ้าเปลี่ยน จะไปใช้ข้อมูลของอีกร้าน\n(ข้อมูลร้านเดิมไม่หาย เปลี่ยนกลับได้)\n\nยืนยันเปลี่ยนไหม?',
+      ()=>{ a.clean(); STORE.setShopId(a.to); UI.toast('ตั้งรหัสร้าน '+a.to+' แล้ว — กำลังรีโหลด','ok'); setTimeout(()=>location.reload(),900); });
+    a.clean();
+  }
   function init(){
     STORE.load();
+    applyShopFromLink();               // ⭐ ต้องทำก่อน CLOUD.init เพื่อให้ต่อ cloud ด้วยรหัสร้านที่ถูก
     applyBrand();
     CLOUD.init();
     SETTINGS.applyTheme();
@@ -7328,6 +7485,8 @@ const APP = (()=>{
     // เตือนก่อนรีเฟรช/ปิดหน้า ถ้ายังมีรายการในตะกร้า
     window.addEventListener('beforeunload',(e)=>{ if(POS.hasCart()){ e.preventDefault(); e.returnValue=''; return ''; } });
     if(!AUTH.tryRestore()) AUTH.lock();  // รีเฟรชแล้วยังล็อกอินอยู่ (ไม่ต้องใส่ PIN ใหม่)
+    if(needSetup()) setupShow();         // เครื่องใหม่ -> ให้ใส่รหัสสาขาก่อน
+    if(_shopAsk) setTimeout(askShopSwitch,600);
     setInterval(tickClock,1000);
     setInterval(()=>KDS.tick(),1000);
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
@@ -7383,7 +7542,7 @@ const APP = (()=>{
       if(e.key==='Enter'&&$('#payOverlay').classList.contains('show')){ PAY.complete(); }
     });
   }
-  return {init,applyBrand,updateSyncChip};
+  return {init,applyBrand,updateSyncChip,setupGo,setupPick,setupSkip,setupReset};
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
