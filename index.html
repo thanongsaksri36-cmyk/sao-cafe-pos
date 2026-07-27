@@ -2964,6 +2964,43 @@ const STORE = (()=>{
       return {bytes:n, mb:(n/1048576).toFixed(2), pct:Math.min(100,Math.round(n/5242880*100)), fail:_saveFail};
     }catch(e){ return {bytes:0,mb:'0',pct:0,fail:_saveFail}; }
   }
+  // แยกดูว่าอะไรกินพื้นที่ (ประเมินจากขนาด JSON ของแต่ละก้อน)
+  function storageBreak(){
+    const sz=o=>{ try{ return JSON.stringify(o||null).length*2; }catch(e){ return 0; } };
+    const D=DB||{}; const out=[];
+    const imgs=(D.products||[]).filter(p=>p.img&&String(p.img).length>200);
+    out.push({k:'รูปเมนู', b:imgs.reduce((a,p)=>a+String(p.img).length*2,0), n:imgs.length, act:'img'});
+    out.push({k:'บิลขาย', b:sz(D.orders), n:(D.orders||[]).length, act:'orders'});
+    out.push({k:'ความเคลื่อนไหวสต็อก', b:sz(D.stockmoves), n:(D.stockmoves||[]).length, act:'moves'});
+    out.push({k:'สลิปโอนเงิน', b:(D.orders||[]).reduce((a,o)=>a+(o.slipImg?String(o.slipImg).length*2:0),0),
+              n:(D.orders||[]).filter(o=>o.slipImg).length, act:'slip'});
+    out.push({k:'เมนู+วัตถุดิบ+อื่น ๆ', b:sz(D.products)-out[0].b+sz(D.ingredients)+sz(D.branches)+sz(D.staff)+sz(D.cashlog)+sz(D.shifts), n:0, act:''});
+    return out.filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
+  }
+  // ล้างของจริง — บิล/สต็อก/สลิป ยังอยู่บน cloud ครบ ลบเฉพาะในเครื่อง
+  function purge(kind, days){
+    const D=DB; const cut=Date.now()-(days||30)*86400000; let freed=0, n=0;
+    const len=o=>{ try{ return JSON.stringify(o).length*2; }catch(e){ return 0; } };
+    if(kind==='orders'){
+      const keep=[]; (D.orders||[]).forEach(o=>{ if((o.createdAt||0)>=cut || o.payStatus==='open' || o.status==='preparing'){ keep.push(o); } else { freed+=len(o); n++; } });
+      D.orders=keep;
+    } else if(kind==='moves'){
+      const keep=[]; (D.stockmoves||[]).forEach(o=>{ if((o.at||o.createdAt||0)>=cut){ keep.push(o); } else { freed+=len(o); n++; } });
+      D.stockmoves=keep;
+    } else if(kind==='slip'){
+      (D.orders||[]).forEach(o=>{ if(o.slipImg && (o.createdAt||0)<cut){ freed+=String(o.slipImg).length*2; o.slipImg=''; n++; } });
+    } else if(kind==='img'){
+      const b=bid();
+      (D.products||[]).forEach(p=>{ if(p.img && String(p.img).length>200 && (p.branchId||'BR-001')!==b){ freed+=String(p.img).length*2; p.img=''; n++; } });
+    }
+    _purgeAt(kind);
+    save();
+    return {freed, n, mb:(freed/1048576).toFixed(2)};
+  }
+  const PURGE_KEY='saocafe_purge';
+  function _purgeAt(kind){ try{ const m=JSON.parse(localStorage.getItem(PURGE_KEY)||'{}'); m[kind]=Date.now(); localStorage.setItem(PURGE_KEY,JSON.stringify(m)); }catch(e){} }
+  // ล้างบิลแล้วต้องไม่ให้ pullSync ดึงกลับมา -> จำเวลาที่ล้างไว้
+  function purgedOrdersAt(){ try{ return (JSON.parse(localStorage.getItem(PURGE_KEY)||'{}')).orders||0; }catch(e){ return 0; } }
   let DB=null;
   const uuid=()=> 'id-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8);
   const now=()=> Date.now();
@@ -3080,7 +3117,17 @@ const STORE = (()=>{
     (D.products||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=JSON.parse(JSON.stringify(o)); n.id=uuid(); n.branchId=toB; n.cost=0; if(catMap[o.cat])n.cat=catMap[o.cat]; if(Array.isArray(n.recipe))n.recipe=n.recipe.map(r=>({ingredientId:ingMap[r.ingredientId]||r.ingredientId,qty:r.qty})); made.products.push(n); D.products.push(n); });
     (D.tables||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.tables.push(n); D.tables.push(n); });
     (D.promos||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.promos.push(n); D.promos.push(n); });
-    save();
+    if(!save()){
+      // เซฟลงเครื่องไม่สำเร็จ -> ถอยกลับให้หมด ห้ามดันขึ้น cloud (ไม่งั้น cloud กับเครื่องไม่ตรงกัน)
+      const back=(key,arr)=>{ const ids=new Set(arr.map(x=>x.id)); D[key]=(D[key]||[]).filter(x=>!ids.has(x.id)); };
+      back('suppliers',made.suppliers); back('categories',made.categories); back('ingredients',made.ingredients);
+      back('products',made.products);   back('tables',made.tables);        back('promos',made.promos);
+      save();
+      try{ UI.confirm2('❌ โคลนไม่สำเร็จ — พื้นที่เครื่องเต็ม',
+        'ยังไม่มีอะไรถูกส่งขึ้น cloud ข้อมูลไม่เสียหาย\n\nไปล้างพื้นที่ก่อนแล้วค่อยโคลนใหม่ไหม?',
+        ()=>{ UI.close('genOverlay'); setTimeout(()=>SETTINGS.cleanup(),250); }); }catch(e){}
+      return null;
+    }
     pushClone(made);          // ⭐ ดันขึ้น cloud ทันที ไม่งั้นสาขาปลายทางเปิดมาแล้วเมนูว่าง
     return made;
   }
@@ -3136,10 +3183,12 @@ const STORE = (()=>{
     }
   }
   function save(){
-    try{ localStorage.setItem(KEY,JSON.stringify(DB)); _saveFail=0; }
-    catch(e){ console.error('save fail',e); _saveFail++;
-      if(_saveFail===1||_saveFail%20===0) UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ไปที่ ตั้งค่า → ล้างบิลเก่า ด่วน','err'); }
+    try{ localStorage.setItem(KEY,JSON.stringify(DB)); _saveFail=0; return true; }
+    catch(e){ console.error('save fail',e); _saveFail++; _lastSaveOk=false;
+      if(_saveFail===1||_saveFail%20===0) UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ไปที่ ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง ด่วน','err');
+      return false; }
   }
+  let _lastSaveOk=true;
   function reset(){ if(confirm('ล้างข้อมูลทั้งหมดและเริ่มใหม่?')){ DB=seed(); stampBranches(DB); save(); location.reload(); } }
   function get(){ return DB; }
   function find(arr,id){ return (DB[arr]||[]).find(x=>x.id===id); }
@@ -3155,7 +3204,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,ensureHQ:()=>ensureHQ(DB)};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -6043,7 +6092,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.40</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.42</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6183,6 +6232,7 @@ const SETTINGS = (()=>{
         <h3 style="margin-bottom:14px;font-size:16px">จัดการข้อมูล</h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="add-fab" onclick="SETTINGS.backup()">⬇️ สำรองข้อมูล (JSON)</button>
+          <button class="add-fab" style="background:#B4451F;color:#fff" onclick="SETTINGS.cleanup()">🧹 ล้างพื้นที่เครื่อง</button>
           <button class="add-fab" style="background:var(--gold)" onclick="document.getElementById('restoreFile').click()">⬆️ กู้คืนข้อมูล</button>
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
@@ -6220,6 +6270,48 @@ const SETTINGS = (()=>{
       }).join('')+'</div>'+
       '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
     UI.open('genOverlay');
+  }
+  // ===== ล้างพื้นที่เครื่อง (ข้อมูลยังอยู่บน cloud ครบ) =====
+  function cleanup(){
+    const inf=STORE.storageInfo(), br=STORE.storageBreak();
+    const col = inf.pct>=90?'#C0392B' : inf.pct>=70?'#B4451F' : '#2E7D32';
+    const row=(x)=>{
+      const mb=(x.b/1048576).toFixed(2);
+      const btn = x.act==='orders' ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'orders\',30)">ล้างที่เก่ากว่า 30 วัน</button>'
+              : x.act==='moves'  ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'moves\',30)">ล้างที่เก่ากว่า 30 วัน</button>'
+              : x.act==='slip'   ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'slip\',7)">ล้างสลิปเก่ากว่า 7 วัน</button>'
+              : x.act==='img'    ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'img\',0)">ลบรูปของสาขาอื่น</button>' : '';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)">'+
+        '<span style="flex:1"><b>'+esc(x.k)+'</b>'+(x.n?' <small style="color:var(--muted)">'+x.n+' รายการ</small>':'')+'</span>'+
+        '<span style="width:66px;text-align:right;font-variant-numeric:tabular-nums">'+mb+' MB</span>'+btn+'</div>';
+    };
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>🧹 ล้างพื้นที่เครื่อง</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+
+        '<div style="text-align:center;margin-bottom:6px"><b style="font-size:26px;color:'+col+'">'+inf.mb+' MB</b>'+
+        '<small style="color:var(--muted)"> / ~5 MB · ใช้ไป '+inf.pct+'%</small></div>'+
+        '<div style="height:9px;border-radius:5px;background:var(--line);overflow:hidden;margin-bottom:12px">'+
+          '<div style="height:100%;width:'+Math.min(100,inf.pct)+'%;background:'+col+'"></div></div>'+
+        (inf.pct>=90?'<p style="color:#C0392B;font-size:13px;font-weight:600;margin-bottom:10px">⚠️ เต็มแล้ว — บิลใหม่อาจบันทึกไม่ลง ล้างด่วน</p>':'')+
+        br.map(row).join('')+
+        '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">'+
+        '💡 ทุกอย่างที่ล้างยังอยู่ครบบน cloud — ดูย้อนหลังได้จากรายงาน<br>'+
+        'ล้างแล้วระบบจะไม่ดึงของเก่ากลับมาอีก</p>'+
+      '</div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
+    UI.open('genOverlay');
+  }
+  function doPurge(kind,days){
+    const th={orders:'บิลเก่า',moves:'ความเคลื่อนไหวสต็อกเก่า',slip:'รูปสลิปเก่า',img:'รูปเมนูของสาขาอื่น'}[kind]||kind;
+    UI.confirm2('ล้าง'+th+'?',
+      (days?('ลบเฉพาะที่เก่ากว่า '+days+' วัน\n'):'')+
+      'ข้อมูลยังอยู่บน cloud ครบ ไม่หาย\nบิลที่ยังไม่ปิด/ยังทำอยู่ จะไม่ถูกลบ',
+      ()=>{
+        const r=STORE.purge(kind,days);
+        UI.toast('ล้าง '+r.n+' รายการ · คืนพื้นที่ '+r.mb+' MB','ok');
+        setTimeout(cleanup,300);
+      });
   }
   function copyText(t){
     try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t); }catch(e){}
@@ -6373,7 +6465,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -6615,12 +6707,13 @@ const BRANCH = (()=>{
     const b=id?list().find(x=>x.id===id):null;
     UI.ask(b?'แก้สาขา':'เพิ่มสาขาใหม่',[
       {key:'name',label:'ชื่อสาขา',value:b?b.name:''},
-      {key:'type',label:'ประเภท (owned=เจ้าของเอง / franchise=แฟรนไชส์)',value:b?b.type:'owned'},
+      {key:'type',label:'ประเภทสาขา',type:'select',value:(b&&b.type==='franchise')?'franchise':'owned',
+        options:[{v:'owned',t:'🏠 เจ้าของเอง'},{v:'franchise',t:'🤝 แฟรนไชส์'}]},
       {key:'owner',label:'ชื่อเจ้าของสาขา (ไม่บังคับ)',value:b?(b.ownerName||''):''},
       {key:'phone',label:'เบอร์ติดต่อ (ไม่บังคับ)',value:b?(b.phone||''):''}
     ],(o)=>{
       const name=(o.name||'').trim(); if(!name){ UI.toast('ใส่ชื่อสาขา','err'); return; }
-      const type=(o.type||'owned').trim()==='franchise'?'franchise':'owned';
+      const type=String(o.type||'owned').trim().toLowerCase()==='franchise'?'franchise':'owned';
       const D=STORE.get();
       if(b){ b.name=name; b.type=type; b.ownerName=o.owner||''; b.phone=o.phone||''; STORE.save(); CLOUD.pushItem('branches',b); manage(); UI.toast('บันทึกสาขาแล้ว','ok'); }
       else{
@@ -6633,12 +6726,20 @@ const BRANCH = (()=>{
   }
   function clonePrompt(toId){
     if(!gateHQ()) return;
+    const inf=STORE.storageInfo();
+    if(inf.pct>=80){
+      UI.confirm2('⚠️ พื้นที่เครื่องเหลือน้อย ('+inf.pct+'%)',
+        'โคลนเมนูตอนนี้เสี่ยง "บันทึกไม่ลง" ข้อมูลจะไม่ครบ\n\nไปล้างพื้นที่ก่อนไหม? (ข้อมูลไม่หาย ยังอยู่บน cloud)',
+        ()=>{ UI.close('genOverlay'); setTimeout(()=>SETTINGS.cleanup(),250); });
+      return;
+    }
     const others=list().filter(b=>b.id!==toId);
     if(!others.length){ manage(); return; }
     const hasMenu=(STORE.get().products||[]).filter(p=>(p.branchId||'BR-001')===toId&&!p.deletedAt).length>0;
     if(hasMenu){ UI.toast('สาขานี้มีเมนูอยู่แล้ว ดึงซ้ำไม่ได้ (กันเมนูซ้ำ)','err'); return; }
     UI.ask('ดึงเมนูจากสาขาต้นแบบ',[{key:'src',label:'ดึงเมนู+สูตร+รูป+วัตถุดิบ จากสาขา (เว้นว่าง = เริ่มจากศูนย์)',type:'select',value:others[0].id,options:[{v:'',t:'— เริ่มจากศูนย์ (ตั้งเมนูเอง) —'}].concat(others.map(b=>({v:b.id,t:'ดึงจาก '+b.name})))}],(o)=>{
-      if(o.src){ STORE.cloneBranch(o.src,toId); UI.toast('ดึงเมนู+สูตร+รูปแล้ว · วัตถุดิบ: สต็อก 0 + ต้นทุน 0 (ใส่ราคาจริงของสาขาเอง)','ok'); }
+      if(o.src){ if(!STORE.cloneBranch(o.src,toId)) return;
+        UI.toast('ดึงเมนู+สูตร+รูปแล้ว · วัตถุดิบ: สต็อก 0 + ต้นทุน 0 (ใส่ราคาจริงของสาขาเอง)','ok'); }
       setTimeout(()=>openLink(toId),400);
     });
   }
@@ -7286,8 +7387,12 @@ const CLOUD = (()=>{
     try{
       const D=STORE.get();
       const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
+      const _pOrd=STORE.purgedOrdersAt();   // ล้างบิลเก่าไปแล้ว -> ห้ามดึงกลับ ไม่งั้นเครื่องเต็มอีก
       for(const [t,key] of ent){
-        const {data,error}=await selShop(t,'data,updated_at'); if(error||!data) continue;
+        const {data,error}= (t==='orders'&&_pOrd)
+          ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_pOrd))
+          : await selShop(t,'data,updated_at');
+        if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
         data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
