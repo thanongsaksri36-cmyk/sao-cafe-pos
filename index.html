@@ -2959,10 +2959,21 @@ function ppPayload(id,amountBaht){
 const STORE = (()=>{
   const KEY='saocafe_v2', VERSION=6;
   let _saveFail=0;
-  function storageInfo(){                      // พื้นที่ที่ใช้ไป (localStorage ~5MB)
+  // เพดาน localStorage ต่างกันตามเบราว์เซอร์ — iOS/Safari ~5MB · Chrome/Edge/Firefox ~10MB
+  function quotaBytes(){
+    try{
+      const ua=navigator.userAgent||'';
+      const iOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&(navigator.maxTouchPoints||0)>1);
+      const safari=/Safari/.test(ua)&&!/Chrome|Chromium|Edg|OPR|Firefox/.test(ua);
+      return (iOS||safari) ? 5*1048576 : 10*1048576;
+    }catch(e){ return 5*1048576; }
+  }
+  function storageInfo(){
     try{ let n=0; for(const k in localStorage){ if(Object.prototype.hasOwnProperty.call(localStorage,k)) n+=((localStorage[k]||'').length+k.length)*2; }
-      return {bytes:n, mb:(n/1048576).toFixed(2), pct:Math.min(100,Math.round(n/5242880*100)), fail:_saveFail};
-    }catch(e){ return {bytes:0,mb:'0',pct:0,fail:_saveFail}; }
+      const q=quotaBytes();
+      return {bytes:n, mb:(n/1048576).toFixed(2), quotaMb:(q/1048576).toFixed(0),
+              pct:Math.min(100,Math.round(n/q*100)), fail:_saveFail};
+    }catch(e){ return {bytes:0,mb:'0',quotaMb:'5',pct:0,fail:_saveFail}; }
   }
   // แยกดูว่าอะไรกินพื้นที่ (ประเมินจากขนาด JSON ของแต่ละก้อน)
   function storageBreak(){
@@ -6108,7 +6119,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.44</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.45</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6307,7 +6318,7 @@ const SETTINGS = (()=>{
       '<div class="modal-h"><h3>🧹 ล้างพื้นที่เครื่อง</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
       '<div class="modal-b">'+
         '<div style="text-align:center;margin-bottom:6px"><b style="font-size:26px;color:'+col+'">'+inf.mb+' MB</b>'+
-        '<small style="color:var(--muted)"> / ~5 MB · ใช้ไป '+inf.pct+'%</small></div>'+
+        '<small style="color:var(--muted)"> / ~'+inf.quotaMb+' MB · ใช้ไป '+inf.pct+'%</small></div>'+
         '<div style="height:9px;border-radius:5px;background:var(--line);overflow:hidden;margin-bottom:12px">'+
           '<div style="height:100%;width:'+Math.min(100,inf.pct)+'%;background:'+col+'"></div></div>'+
         (inf.pct>=90?'<p style="color:#C0392B;font-size:13px;font-weight:600;margin-bottom:10px">⚠️ เต็มแล้ว — บิลใหม่อาจบันทึกไม่ลง ล้างด่วน</p>':'')+
@@ -7342,7 +7353,7 @@ const CLOUD = (()=>{
     });
   }
   // ---- Realtime: subscribe ทุกตารางหลัก + reconnect อัตโนมัติ ----
-  const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','promos','suppliers','branches','shifts','cashlog','app_meta'];
+  const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','members','promos','suppliers','branches','shifts','cashlog','app_meta'];
   const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
   const rtChs={}, rtErr={};                       // channel แยกต่อตาราง -> ตารางเดียวมีปัญหา ตารางอื่นยังวิ่ง
   function subTable(t){
@@ -7433,15 +7444,28 @@ const CLOUD = (()=>{
     if(status!=='online'||!client) return;
     try{
       const D=STORE.get();
-      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
+      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
       const _pOrd=STORE.purgedOrdersAt();   // ล้างบิลเก่าไปแล้ว -> ห้ามดึงกลับ ไม่งั้นเครื่องเต็มอีก
+      // เครื่องสาขา (ไม่ใช่ HQ) เก็บเฉพาะข้อมูลสาขาตัวเอง — ลดพื้นที่ + ไม่เห็นของสาขาอื่น
+      // members ไม่กรอง (แต้มใช้ร่วมทุกสาขา) · branches ไม่กรอง (ต้องมีรายชื่อ)
+      const _me=(typeof AUTH!=='undefined'&&AUTH.get)?AUTH.get():null;
+      const _onlyMine = !!_me && !AUTH.isHQ();
+      const _myB=STORE.bid();
+      const _BRSCOPE=new Set(['orders','products','categories','ingredients','modifiers','tables','promos','suppliers','stockmoves','shifts','cashlog']);
+      const _skip=(key,o)=>{
+        if(!_onlyMine) return false;
+        if(key==='staff') return !(o.hq===true || (o.branchId||'BR-001')===_myB);
+        return _BRSCOPE.has(key) && (o.branchId||'BR-001')!==_myB;
+      };
       for(const [t,key] of ent){
         const {data,error}= (t==='orders'&&_pOrd)
           ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_pOrd))
           : await selShop(t,'data,updated_at');
         if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
-        data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
+        data.forEach(r=>{ const o=r.data; if(!o||!o.id) return;
+          if(_skip(key,o)) return;                                                                    // ⭐ ของสาขาอื่น ไม่เก็บลงเครื่อง
+          const i=arr.findIndex(x=>x.id===o.id);
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
