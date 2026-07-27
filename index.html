@@ -6043,7 +6043,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.39</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.40</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7453,7 +7453,7 @@ const APP = (()=>{
   // ===== ตั้งรหัสร้านจากลิงก์  ?shop=SHOP-XXXX  (ส่งลิงก์เดียวให้ลูกค้า ไม่ต้องพิมพ์เอง) =====
   let _shopAsk=null;
   const SETUP_KEY='saocafe_setup';
-  const setupDone =()=>{ try{ return localStorage.getItem(SETUP_KEY)==='1'; }catch(e){ return true; } };
+  const setupFlag =()=>{ try{ return localStorage.getItem(SETUP_KEY)||''; }catch(e){ return '1'; } };
   const markSetup =()=>{ try{ localStorage.setItem(SETUP_KEY,'1'); }catch(e){} };
   function applyShopFromLink(){
     try{
@@ -7485,10 +7485,12 @@ const APP = (()=>{
   // ===== หน้าตั้งค่าเครื่องครั้งแรก: ใส่รหัสสาขา =====
   function needSetup(){
     try{
-      if(setupDone()) return false;
+      const f=setupFlag();
+      if(f==='0') return true;                 // ผู้ใช้กด "ตั้งรหัสสาขาใหม่" เอง -> เปิดให้เสมอ
+      if(f==='1') return false;                // ตั้งเรียบร้อยแล้ว
       const D=STORE.get();
       if((D.orders||[]).length || (D.cashlog||[]).length){ markSetup(); return false; }  // เครื่องเก่าที่ขายแล้ว ข้ามไป
-      return true;
+      return true;                             // เครื่องใหม่เอี่ยม
     }catch(e){ return false; }
   }
   function setupShow(){
@@ -7530,7 +7532,12 @@ const APP = (()=>{
       ()=>{ markSetup(); const el=$('#setupScreen'); if(el) el.classList.add('hide');
             if(!AUTH.get()) $('#lockScreen').classList.remove('hide'); });
   }
-  function setupReset(){ try{ localStorage.removeItem(SETUP_KEY); }catch(e){} location.reload(); }
+  function setupReset(){
+    UI.confirm2('ตั้งรหัสสาขาใหม่?',
+      'เครื่องนี้จะกลับไปหน้าใส่รหัสสาขา\nสาขาปัจจุบัน: '+((STORE.curBranch()||{}).name||STORE.bid())+
+      '\n\nข้อมูลไม่หาย — แค่เปลี่ยนว่าเครื่องนี้ขายในนามสาขาไหน',
+      ()=>{ try{ localStorage.setItem(SETUP_KEY,'0'); }catch(e){} location.reload(); });
+  }
   function askShopSwitch(){
     if(!_shopAsk) return; const a=_shopAsk; _shopAsk=null;
     UI.confirm2('🏪 ลิงก์นี้ตั้งรหัสร้านให้',
