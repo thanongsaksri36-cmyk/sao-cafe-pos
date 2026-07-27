@@ -3073,13 +3073,27 @@ const STORE = (()=>{
   }
   function cloneBranch(fromB,toB){
     const D=DB, catMap={}, ingMap={}, supMap={};
-    (D.suppliers||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); supMap[o.id]=n.id; D.suppliers.push(n); });
-    (D.categories||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); catMap[o.id]=n.id; D.categories.push(n); });
-    (D.ingredients||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB,stock:0,cost:0,purchasePrice:null,purchaseQty:0,supplierId:o.supplierId?(supMap[o.supplierId]||null):null}); ingMap[o.id]=n.id; D.ingredients.push(n); });
-    (D.products||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=JSON.parse(JSON.stringify(o)); n.id=uuid(); n.branchId=toB; n.cost=0; if(catMap[o.cat])n.cat=catMap[o.cat]; if(Array.isArray(n.recipe))n.recipe=n.recipe.map(r=>({ingredientId:ingMap[r.ingredientId]||r.ingredientId,qty:r.qty})); D.products.push(n); });
-    (D.tables||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ D.tables.push(Object.assign({},o,{id:uuid(),branchId:toB})); });
-    (D.promos||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ D.promos.push(Object.assign({},o,{id:uuid(),branchId:toB})); });
+    const made={suppliers:[],categories:[],ingredients:[],products:[],tables:[],promos:[]};
+    (D.suppliers||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); supMap[o.id]=n.id; made.suppliers.push(n); D.suppliers.push(n); });
+    (D.categories||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); catMap[o.id]=n.id; made.categories.push(n); D.categories.push(n); });
+    (D.ingredients||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB,stock:0,cost:0,purchasePrice:null,purchaseQty:0,supplierId:o.supplierId?(supMap[o.supplierId]||null):null}); ingMap[o.id]=n.id; made.ingredients.push(n); D.ingredients.push(n); });
+    (D.products||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=JSON.parse(JSON.stringify(o)); n.id=uuid(); n.branchId=toB; n.cost=0; if(catMap[o.cat])n.cat=catMap[o.cat]; if(Array.isArray(n.recipe))n.recipe=n.recipe.map(r=>({ingredientId:ingMap[r.ingredientId]||r.ingredientId,qty:r.qty})); made.products.push(n); D.products.push(n); });
+    (D.tables||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.tables.push(n); D.tables.push(n); });
+    (D.promos||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.promos.push(n); D.promos.push(n); });
     save();
+    pushClone(made);          // ⭐ ดันขึ้น cloud ทันที ไม่งั้นสาขาปลายทางเปิดมาแล้วเมนูว่าง
+    return made;
+  }
+  // ดันของที่เพิ่งโคลนขึ้น cloud ทีละชิ้น (มี queue ออฟไลน์รองรับอยู่แล้ว)
+  function pushClone(made){
+    const map={suppliers:'suppliers',categories:'categories',ingredients:'ingredients',
+               products:'products',tables:'tables_',promos:'promos'};
+    let n=0;
+    try{
+      Object.keys(map).forEach(k=>{ (made[k]||[]).forEach(o=>{ try{ CLOUD.pushItem(map[k],o); n++; }catch(e){} }); });
+      if(n) try{ UI.toast('กำลังส่ง '+n+' รายการขึ้น cloud…','ok'); }catch(e){}
+    }catch(e){ console.error('pushClone',e); }
+    return n;
   }
   function scoped(key){ const b=bid(); return (DB[key]||[]).filter(x=> (x.branchId||'BR-001')===b ); }
   // ===== รหัสร้าน (แยกข้อมูลร้านใครร้านมันใน Supabase ก้อนเดียวกัน) =====
@@ -3134,7 +3148,14 @@ const STORE = (()=>{
   function bid(){ return (DB&&DB.meta&&DB.meta.currentBranchId)||'BR-001'; }
   function setBid(id){ if(DB&&DB.meta){ DB.meta.currentBranchId=id; save(); } }
   function curBranch(){ return (DB.branches||[]).find(b=>b.id===bid())||null; }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,ensureHQ:()=>ensureHQ(DB)};
+  // สำนักงานใหญ่ = สาขาที่ติดธง hqBranch · ถ้ายังไม่ได้ตั้ง = สาขาแรกสุด (BR-001)
+  function hqBid(){
+    const bs=(DB.branches||[]).filter(b=>!b.deletedAt);
+    const m=bs.find(b=>b.hqBranch===true);
+    return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
+  }
+  function atHQ(){ return bid()===hqBid(); }
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -6022,7 +6043,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.37</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.39</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6551,7 +6572,7 @@ const BRANCH = (()=>{
           <span style="flex:1"><b style="font-size:15px">${esc(b.name)}</b><br><small style="color:var(--muted)">${typeTh(b.type)}${b.id===curId?' · กำลังใช้อยู่':''}</small></span>
         </button>`).join('')}
       </div>
-      <div class="modal-f">${isOwner?'<button class="add-fab" onclick="BRANCH.manage()">⚙️ จัดการสาขา</button>':''}<button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button></div>`;
+      <div class="modal-f">${isOwner?('<button class="add-fab" onclick="BRANCH.manage()">⚙️ จัดการสาขา'+(STORE.atHQ()?'':' (สำนักงานใหญ่)')+'</button>'):''}<button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button></div>`;
     UI.open('genOverlay');
   }
   function setCurrent(id){
@@ -6559,15 +6580,28 @@ const BRANCH = (()=>{
     UI.toast('สลับเป็น '+((cur()||{}).name||'')+' แล้ว','ok');
     if(typeof NAV!=='undefined'&&NAV.cur) NAV.go(NAV.cur()); // รีเฟรชหน้าปัจจุบัน
   }
+  // ด่านเดียวใช้ร่วมกันทุกปุ่มที่แก้โครงสร้างสาขา
+  function gateHQ(){
+    if(!AUTH.isHQ()){ UI.toast('เฉพาะผู้ดูแลระบบ (HQ)','err'); return false; }
+    if(STORE.atHQ()) return true;
+    const h=list().find(b=>b.id===STORE.hqBid());
+    UI.confirm2('เปิด/แก้สาขาได้จากสำนักงานใหญ่เท่านั้น',
+      'ตอนนี้เครื่องอยู่สาขา: '+((cur()||{}).name||STORE.bid())+'\n'
+      +'ต้องอยู่ที่: '+((h&&h.name)||STORE.hqBid())+'\n\nสลับไปสำนักงานใหญ่แล้วเปิดหน้าจัดการสาขาให้เลยไหม?',
+      ()=>{ STORE.setBid(STORE.hqBid()); renderChip();
+            if(typeof NAV!=='undefined'&&NAV.cur) NAV.go(NAV.cur());
+            setTimeout(()=>manage(),350); });
+    return false;
+  }
   function manage(){
-    if(!AUTH.isHQ()){ UI.toast('เฉพาะผู้ดูแลระบบ (HQ)','err'); return; }
+    if(!gateHQ()) return;
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>⚙️ จัดการสาขา</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px"><button class="btn-gold" onclick="BRANCH.edit('')">+ เพิ่มสาขา</button></div>
         ${list().map(b=>`<div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px">
-          <span style="flex:1"><b>${esc(b.name)}</b> <small style="color:var(--muted)">(${esc(b.id)} · ${typeTh(b.type)}${b.active===false?' · ปิด':''})</small>${b.ownerName?'<br><small style="color:var(--muted)">เจ้าของ: '+esc(b.ownerName)+'</small>':''}</span>
+          <span style="flex:1"><b>${esc(b.name)}</b>${b.id===STORE.hqBid()?' <span class="pill ok" style="font-size:10px">สำนักงานใหญ่</span>':''} <small style="color:var(--muted)">(${esc(b.id)} · ${typeTh(b.type)}${b.active===false?' · ปิด':''})</small>${b.ownerName?'<br><small style="color:var(--muted)">เจ้าของ: '+esc(b.ownerName)+'</small>':''}</span>
           ${(STORE.get().products||[]).filter(p=>(p.branchId||'BR-001')===b.id&&!p.deletedAt).length===0 && list().length>1?`<button class="add-fab" style="background:var(--gold)" onclick="BRANCH.clonePrompt('${b.id}')">📋 ดึงเมนูจากสาขาอื่น</button>`:''}
           <button class="add-fab" onclick="BRANCH.edit('${b.id}')">✏️ แก้</button>
         </div>`).join('')}
@@ -6577,6 +6611,7 @@ const BRANCH = (()=>{
     UI.open('genOverlay');
   }
   function edit(id){
+    if(!gateHQ()) return;
     const b=id?list().find(x=>x.id===id):null;
     UI.ask(b?'แก้สาขา':'เพิ่มสาขาใหม่',[
       {key:'name',label:'ชื่อสาขา',value:b?b.name:''},
@@ -6597,16 +6632,49 @@ const BRANCH = (()=>{
     });
   }
   function clonePrompt(toId){
+    if(!gateHQ()) return;
     const others=list().filter(b=>b.id!==toId);
     if(!others.length){ manage(); return; }
     const hasMenu=(STORE.get().products||[]).filter(p=>(p.branchId||'BR-001')===toId&&!p.deletedAt).length>0;
     if(hasMenu){ UI.toast('สาขานี้มีเมนูอยู่แล้ว ดึงซ้ำไม่ได้ (กันเมนูซ้ำ)','err'); return; }
     UI.ask('ดึงเมนูจากสาขาต้นแบบ',[{key:'src',label:'ดึงเมนู+สูตร+รูป+วัตถุดิบ จากสาขา (เว้นว่าง = เริ่มจากศูนย์)',type:'select',value:others[0].id,options:[{v:'',t:'— เริ่มจากศูนย์ (ตั้งเมนูเอง) —'}].concat(others.map(b=>({v:b.id,t:'ดึงจาก '+b.name})))}],(o)=>{
       if(o.src){ STORE.cloneBranch(o.src,toId); UI.toast('ดึงเมนู+สูตร+รูปแล้ว · วัตถุดิบ: สต็อก 0 + ต้นทุน 0 (ใส่ราคาจริงของสาขาเอง)','ok'); }
-      manage();
+      setTimeout(()=>openLink(toId),400);
     });
   }
-  return {renderChip,switcher,setCurrent,manage,edit,clonePrompt,list,cur};
+  // เปิดสาขาเสร็จ -> ได้ลิงก์ + ข้อความ LINE พร้อมส่งให้สาขาเลย
+  function openLink(bid){
+    const b=list().find(x=>x.id===bid); if(!b){ manage(); return; }
+    const url=location.origin+location.pathname+'?shop='+encodeURIComponent(STORE.shopId())+'&b='+encodeURIComponent(b.id);
+    const menuN=(STORE.get().products||[]).filter(p=>(p.branchId||'BR-001')===bid&&!p.deletedAt).length;
+    const msg='สวัสดีครับ ระบบ POS ของสาขา '+(b.name||b.id)+' พร้อมใช้งานแล้วครับ\n\n'
+      +'เปิดลิงก์นี้ในเครื่องที่จะใช้ขาย (iPad / คอม / มือถือ)\n'+url+'\n\n'
+      +'เปิดปุ๊บระบบตั้งค่าให้อัตโนมัติ ไม่ต้องพิมพ์อะไร\n'
+      +'จากนั้นใส่ PIN ที่ผมให้ไว้ แล้วขายได้เลยครับ\n\n'
+      +'แนะนำ: กด "แชร์ > เพิ่มไปยังหน้าจอโฮม" จะได้ไอคอนเปิดง่ายเหมือนแอป';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>✅ เปิดสาขา '+esc(b.name||b.id)+' แล้ว</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+
+        '<div style="background:var(--card2,rgba(0,0,0,.04));border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">'+
+          'รหัสสาขา <b>'+esc(b.id)+'</b> · เมนู <b>'+menuN+'</b> รายการ'+
+          (menuN?'':' <span style="color:#C00">— ยังไม่มีเมนู ต้องเพิ่มก่อนสาขาถึงจะขายได้</span>')+
+        '</div>'+
+        '<label style="font-size:12px;color:var(--muted)">ลิงก์สำหรับสาขา</label>'+
+        '<div style="font-size:11px;word-break:break-all;border:1px solid var(--line);border-radius:8px;padding:8px;margin:4px 0 10px">'+esc(url)+'</div>'+
+        '<button class="btn-gold" style="width:100%;padding:11px;margin-bottom:8px" onclick="SETTINGS.copyText(\''+esc(url)+'\')">📋 คัดลอกลิงก์</button>'+
+        '<button class="btn-ghost" style="width:100%;padding:11px" onclick="BRANCH.copyInvite(\''+esc(bid)+'\')">💬 คัดลอกข้อความ LINE พร้อมส่ง</button>'+
+        '<textarea id="brInvite" style="position:absolute;left:-9999px">'+esc(msg)+'</textarea>'+
+      '</div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\');BRANCH.manage()">← กลับไปหน้าสาขา</button></div>';
+    UI.open('genOverlay');
+  }
+  function copyInvite(){
+    const t=$('#brInvite'); if(!t) return;
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t.value);
+         else { t.style.position='static'; t.select(); document.execCommand('copy'); t.style.position='absolute'; } }catch(e){}
+    UI.toast('คัดลอกข้อความแล้ว — วางใน LINE ได้เลย ✅','ok');
+  }
+  return {renderChip,switcher,setCurrent,manage,edit,clonePrompt,openLink,copyInvite,list,cur};
 })();
 
 
