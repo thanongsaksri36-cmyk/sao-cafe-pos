@@ -2969,11 +2969,11 @@ const STORE = (()=>{
     const sz=o=>{ try{ return JSON.stringify(o||null).length*2; }catch(e){ return 0; } };
     const D=DB||{}; const out=[];
     const imgs=(D.products||[]).filter(p=>p.img&&String(p.img).length>200);
-    out.push({k:'รูปเมนู', b:imgs.reduce((a,p)=>a+String(p.img).length*2,0), n:imgs.length, act:'img'});
+    out.push({k:'รูปเมนู', b:imgs.reduce((a,p)=>a+String(p.img).length*2,0), n:imgs.length, act:'zip'});
     out.push({k:'บิลขาย', b:sz(D.orders), n:(D.orders||[]).length, act:'orders'});
     out.push({k:'ความเคลื่อนไหวสต็อก', b:sz(D.stockmoves), n:(D.stockmoves||[]).length, act:'moves'});
     out.push({k:'สลิปโอนเงิน', b:(D.orders||[]).reduce((a,o)=>a+(o.slipImg?String(o.slipImg).length*2:0),0),
-              n:(D.orders||[]).filter(o=>o.slipImg).length, act:'slip'});
+              n:(D.orders||[]).filter(o=>o.slipImg).length, act:'zipslip'});
     out.push({k:'เมนู+วัตถุดิบ+อื่น ๆ', b:sz(D.products)-out[0].b+sz(D.ingredients)+sz(D.branches)+sz(D.staff)+sz(D.cashlog)+sz(D.shifts), n:0, act:''});
     return out.filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
   }
@@ -2988,14 +2988,30 @@ const STORE = (()=>{
       const keep=[]; (D.stockmoves||[]).forEach(o=>{ if((o.at||o.createdAt||0)>=cut){ keep.push(o); } else { freed+=len(o); n++; } });
       D.stockmoves=keep;
     } else if(kind==='slip'){
-      (D.orders||[]).forEach(o=>{ if(o.slipImg && (o.createdAt||0)<cut){ freed+=String(o.slipImg).length*2; o.slipImg=''; n++; } });
-    } else if(kind==='img'){
-      const b=bid();
-      (D.products||[]).forEach(p=>{ if(p.img && String(p.img).length>200 && (p.branchId||'BR-001')!==b){ freed+=String(p.img).length*2; p.img=''; n++; } });
+      (D.orders||[]).forEach(o=>{ if(o.slipImg && (o.createdAt||0)<cut){ freed+=String(o.slipImg).length*2; o.slipImg=''; o._strip=1; n++; } });
     }
     _purgeAt(kind);
     save();
     return {freed, n, mb:(freed/1048576).toFixed(2)};
+  }
+  // บีบอัดรูป base64 ด้วย canvas — ได้ของใหม่ที่เล็กลง ใช้แทนของเดิมได้เลย
+  function shrink(dataUrl,maxW,q){
+    return new Promise(res=>{
+      try{
+        if(!dataUrl||String(dataUrl).slice(0,5)!=='data:') return res(null);
+        const im=new Image();
+        im.onload=()=>{ try{
+          const sc=Math.min(1,(maxW||420)/(im.width||1));
+          const w=Math.max(1,Math.round((im.width||1)*sc)), h=Math.max(1,Math.round((im.height||1)*sc));
+          const c=document.createElement('canvas'); c.width=w; c.height=h;
+          const cx=c.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,w,h); cx.drawImage(im,0,0,w,h);
+          const out=c.toDataURL('image/jpeg', q||0.72);
+          res(out && out.length < dataUrl.length ? out : null);   // เล็กลงจริงเท่านั้นถึงใช้
+        }catch(e){ res(null); } };
+        im.onerror=()=>res(null);
+        im.src=dataUrl;
+      }catch(e){ res(null); }
+    });
   }
   const PURGE_KEY='saocafe_purge';
   function _purgeAt(kind){ try{ const m=JSON.parse(localStorage.getItem(PURGE_KEY)||'{}'); m[kind]=Date.now(); localStorage.setItem(PURGE_KEY,JSON.stringify(m)); }catch(e){} }
@@ -3204,7 +3220,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,ensureHQ:()=>ensureHQ(DB)};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -6092,7 +6108,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.42</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.44</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6277,10 +6293,11 @@ const SETTINGS = (()=>{
     const col = inf.pct>=90?'#C0392B' : inf.pct>=70?'#B4451F' : '#2E7D32';
     const row=(x)=>{
       const mb=(x.b/1048576).toFixed(2);
-      const btn = x.act==='orders' ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'orders\',30)">ล้างที่เก่ากว่า 30 วัน</button>'
-              : x.act==='moves'  ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'moves\',30)">ล้างที่เก่ากว่า 30 วัน</button>'
-              : x.act==='slip'   ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'slip\',7)">ล้างสลิปเก่ากว่า 7 วัน</button>'
-              : x.act==='img'    ? '<button class="btn-gold" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.doPurge(\'img\',0)">ลบรูปของสาขาอื่น</button>' : '';
+      const B=(fn,txt,cls)=>'<button class="'+(cls||'btn-gold')+'" style="padding:6px 10px;font-size:12px;white-space:nowrap" onclick="'+fn+'">'+txt+'</button>';
+      const btn = x.act==='orders'  ? B("SETTINGS.doPurge('orders',30)",'🗑️ ล้างเก่ากว่า 30 วัน')
+              : x.act==='moves'   ? B("SETTINGS.doPurge('moves',30)",'🗑️ ล้างเก่ากว่า 30 วัน')
+              : x.act==='zip'     ? B("SETTINGS.shrinkImgs('menu')",'🗜️ บีบอัดรูป')
+              : x.act==='zipslip' ? B("SETTINGS.shrinkImgs('slip')",'🗜️ บีบอัดสลิป')+B("SETTINGS.doPurge('slip',7)",'🗑️ ลบเก่ากว่า 7 วัน','btn-ghost') : '';
       return '<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--line)">'+
         '<span style="flex:1"><b>'+esc(x.k)+'</b>'+(x.n?' <small style="color:var(--muted)">'+x.n+' รายการ</small>':'')+'</span>'+
         '<span style="width:66px;text-align:right;font-variant-numeric:tabular-nums">'+mb+' MB</span>'+btn+'</div>';
@@ -6296,17 +6313,42 @@ const SETTINGS = (()=>{
         (inf.pct>=90?'<p style="color:#C0392B;font-size:13px;font-weight:600;margin-bottom:10px">⚠️ เต็มแล้ว — บิลใหม่อาจบันทึกไม่ลง ล้างด่วน</p>':'')+
         br.map(row).join('')+
         '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">'+
-        '💡 ทุกอย่างที่ล้างยังอยู่ครบบน cloud — ดูย้อนหลังได้จากรายงาน<br>'+
-        'ล้างแล้วระบบจะไม่ดึงของเก่ากลับมาอีก</p>'+
+        '🗜️ <b>บีบอัด</b> = ย่อรูปให้เล็กลง ~80% ภาพยังอยู่ ปลอดภัยที่สุด แนะนำทำก่อน<br>'+
+        '🗑️ <b>ล้าง</b> = ลบออกจากเครื่อง — <b>ของยังอยู่ครบบน cloud</b> ดูย้อนหลังได้จากรายงาน<br>'+
+        'ระบบกันไม่ให้ของที่ล้างแล้วไปเขียนทับ cloud เด็ดขาด</p>'+
       '</div>'+
       '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
     UI.open('genOverlay');
   }
+  // บีบอัดรูป — ของใหม่เล็กกว่า ใช้แทนของเดิม แล้วอัปขึ้น cloud ได้ปลอดภัย
+  async function shrinkImgs(what){
+    const D=STORE.get();
+    const jobs = what==='slip'
+      ? (D.orders||[]).filter(o=>o.slipImg&&String(o.slipImg).length>40000).map(o=>({o,f:'slipImg',t:'orders',w:600,q:0.62}))
+      : (D.products||[]).filter(p=>p.img&&String(p.img).length>40000).map(p=>({o:p,f:'img',t:'products',w:420,q:0.72}));
+    if(!jobs.length){ UI.toast('ไม่มีรูปที่ใหญ่พอให้บีบอัด','ok'); return; }
+    const el=$('#suMsg'); let before=0, after=0, n=0;
+    UI.toast('กำลังบีบอัด '+jobs.length+' รูป… อย่าปิดหน้านี้','ok');
+    for(let i=0;i<jobs.length;i++){
+      const j=jobs[i], old=String(j.o[j.f]);
+      const out=await STORE.shrink(old,j.w,j.q);
+      if(out){ before+=old.length*2; after+=out.length*2; j.o[j.f]=out; n++;
+        if(j.o._strip) delete j.o._strip;                 // มีของจริงใหม่แล้ว อัปขึ้น cloud ได้
+        try{ CLOUD.pushItem(j.t,j.o); }catch(e){} }
+      if(i%5===0){ try{ UI.toast('บีบอัด '+(i+1)+'/'+jobs.length,'ok'); }catch(e){} await new Promise(r=>setTimeout(r,0)); }
+    }
+    STORE.save();
+    const mb=((before-after)/1048576).toFixed(2);
+    UI.toast('บีบอัด '+n+' รูป · ประหยัด '+mb+' MB ✅','ok');
+    setTimeout(cleanup,400);
+  }
   function doPurge(kind,days){
-    const th={orders:'บิลเก่า',moves:'ความเคลื่อนไหวสต็อกเก่า',slip:'รูปสลิปเก่า',img:'รูปเมนูของสาขาอื่น'}[kind]||kind;
+    const th={orders:'บิลเก่า',moves:'ความเคลื่อนไหวสต็อกเก่า',slip:'รูปสลิปเก่า'}[kind]||kind;
     UI.confirm2('ล้าง'+th+'?',
       (days?('ลบเฉพาะที่เก่ากว่า '+days+' วัน\n'):'')+
-      'ข้อมูลยังอยู่บน cloud ครบ ไม่หาย\nบิลที่ยังไม่ปิด/ยังทำอยู่ จะไม่ถูกลบ',
+      'ของจริงยังอยู่ครบบน cloud — ลบเฉพาะสำเนาในเครื่องนี้\n'+
+      'ระบบจะกันไม่ให้ของเปล่าไปเขียนทับ cloud\n'+
+      'บิลที่ยังไม่ปิด / ยังทำอยู่ จะไม่ถูกลบ',
       ()=>{
         const r=STORE.purge(kind,days);
         UI.toast('ล้าง '+r.n+' รายการ · คืนพื้นที่ '+r.mb+' MB','ok');
@@ -6465,7 +6507,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,shrinkImgs,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -7212,7 +7254,9 @@ const CLOUD = (()=>{
   }
   // ---- ส่งข้อมูล master (เมนู/สต็อก/พนักงาน...) ขึ้น cloud เมื่อมีการแก้ -> สาขาอื่นเห็นทันที ----
   async function pushItem(table,obj){
-    if(!obj) return; obj._uat=Date.now(); try{ STORE.save(); }catch(e){}   // ⭐ เซฟ _uat ลงเครื่อง กัน cloud ทับของที่เพิ่งแก้
+    if(!obj) return;
+    if(obj._strip){ console.warn('ข้ามการอัป: รายการนี้ถูกล้างรูปในเครื่อง (cloud ยังมีของจริง)'); return; }
+    obj._uat=Date.now(); try{ STORE.save(); }catch(e){}   // ⭐ เซฟ _uat ลงเครื่อง กัน cloud ทับของที่เพิ่งแก้
     let row=rowOf(obj,obj._uat);
     if(status==='online'&&client){
       try{
@@ -7241,9 +7285,12 @@ const CLOUD = (()=>{
       const master=['products','categories','ingredients','modifiers','tables_','members','promos','staff'];
       for(const [t,arr] of map){
         if(arr&&arr.length){
-          let rows=arr.map(x=>rowOf(x,now));
-          let r=await client.from(t).upsert(rows);
-          if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; rows=arr.map(x=>rowOf(x,now)); await client.from(t).upsert(rows); }
+          const safe=arr.filter(x=>!x._strip);        // ⭐ ของที่ถูกล้างรูป/สลิปในเครื่อง ห้ามเขียนทับ cloud
+          if(safe.length){
+            let rows=safe.map(x=>rowOf(x,now));
+            let r=await client.from(t).upsert(rows);
+            if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; rows=safe.map(x=>rowOf(x,now)); await client.from(t).upsert(rows); }
+          }
         }
         if(master.includes(t) && AUTH.isHQ()){          // เฉพาะ HQ เท่านั้นที่ sync ลบได้ (กันสาขาลบข้ามกัน)
           try{ const {data:ex}=await selShop(t,'id,data'); const cur=new Set((arr||[]).map(x=>x.id));
