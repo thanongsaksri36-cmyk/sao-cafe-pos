@@ -3024,6 +3024,24 @@ const STORE = (()=>{
       }catch(e){ res(null); }
     });
   }
+  // เครื่องเก็บบิลกี่วัน (ที่เหลือดูจาก cloud) — ตั้งได้ในหน้าตั้งค่า
+  function keepDays(){ const v=parseInt(((DB&&DB.settings)||{}).ordersKeepDays); return (v>=1&&v<=90)?v:3; }
+  function keepFrom(){ return Date.now()-keepDays()*86400000; }
+  // ล้างบิลเก่าออกจากเครื่องอัตโนมัติ (cloud มีครบ) — บิลที่ยังไม่ปิด/ยังทำอยู่ ไม่แตะ
+  function autoPurgeOrders(){
+    try{
+      const cut=keepFrom(); const arr=DB.orders||[]; let n=0;
+      const keep=arr.filter(o=>{
+        if(o._arch) return true;                                        // ของที่ดึงมาดูชั่วคราว ปล่อยไว้
+        if((o.createdAt||0)>=cut) return true;
+        if(o.payStatus==='open'||o.status==='preparing'||o.status==='ready') return true;
+        if(o._q) return true;                                           // ยังค้างคิวรอส่ง cloud
+        n++; return false;
+      });
+      if(n){ DB.orders=keep; _purgeAt('orders'); save(); console.info('ล้างบิลเก่าออกจากเครื่องอัตโนมัติ '+n+' ใบ (cloud มีครบ)'); }
+      return n;
+    }catch(e){ return 0; }
+  }
   const PURGE_KEY='saocafe_purge';
   function _purgeAt(kind){ try{ const m=JSON.parse(localStorage.getItem(PURGE_KEY)||'{}'); m[kind]=Date.now(); localStorage.setItem(PURGE_KEY,JSON.stringify(m)); }catch(e){} }
   // ล้างบิลแล้วต้องไม่ให้ pullSync ดึงกลับมา -> จำเวลาที่ล้างไว้
@@ -3210,6 +3228,13 @@ const STORE = (()=>{
     }
   }
   function save(){
+    // บิลย้อนหลังที่ดึงมาดูชั่วคราว (_arch) ต้องไม่ถูกเซฟลงเครื่อง ไม่งั้นเครื่องเต็มอีก
+    let _bak=null;
+    try{ if(DB&&(DB.orders||[]).some(o=>o._arch)){ _bak=DB.orders; DB.orders=_bak.filter(o=>!o._arch); } }catch(e){}
+    try{ const r=_save0(); if(_bak) DB.orders=_bak; return r; }
+    catch(e){ if(_bak) DB.orders=_bak; return false; }
+  }
+  function _save0(){
     try{ localStorage.setItem(KEY,JSON.stringify(DB)); _saveFail=0; return true; }
     catch(e){ console.error('save fail',e); _saveFail++; _lastSaveOk=false;
       if(_saveFail===1||_saveFail%20===0) UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ไปที่ ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง ด่วน','err');
@@ -3231,7 +3256,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,ensureHQ:()=>ensureHQ(DB)};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -4903,8 +4928,8 @@ const REPORT = (()=>{
     if(!rows.length) return '<div class="empty">ยังไม่มียอดขาย</div>';
     return `<table><thead><tr><th>เมนู</th><th>ขาย</th><th>ยอด</th><th>ต้นทุน</th><th>กำไร</th><th>Margin</th></tr></thead><tbody>${rows.map(([nm,d])=>{const pf=d.rev-d.cost;const mg=d.rev?Math.round(pf/d.rev*100):0;return `<tr><td>${esc(nm)}</td><td>${d.q}</td><td>${STORE.baht(d.rev)}</td><td>${STORE.baht(d.cost)}</td><td style="color:var(--success);font-weight:600">${STORE.baht(pf)}</td><td><span class="pill ${mg>=50?'ok':mg>=30?'lo':'no'}">${mg}%</span></td></tr>`;}).join('')}</tbody></table>`;
   }
-  function setPeriod(p){ period=p; render(); }
-  function setCustom(){ const f=$('#repFrom').value, t=$('#repTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; render(); } }
+  function setPeriod(p){ period=p; needRange(p,cFrom,cTo,render); }
+  function setCustom(){ const f=$('#repFrom').value, t=$('#repTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; needRange('custom',cFrom,cTo,render); } }
   function setBranch(b){ branchFilter=b; render(); }
   function exportCSV(){
     const orders=sales();
@@ -4954,6 +4979,26 @@ const REPORT = (()=>{
 /* ============================================================
    HISTORY — ประวัติบิล + ยกเลิก/คืนเงิน + พิมพ์ซ้ำ
    ============================================================ */
+// แปลงช่วงเวลาที่เลือก -> เวลาเริ่มต้น (ms) · ใช้ร่วมกันทั้งประวัติบิลและรายงาน
+function periodFrom(period,cFrom){
+  const n=new Date();
+  if(period==='today') return new Date(n.getFullYear(),n.getMonth(),n.getDate()).getTime();
+  if(period==='week')  return Date.now()-7*86400000;
+  if(period==='month') return new Date(n.getFullYear(),n.getMonth(),1).getTime();
+  if(period==='custom'&&cFrom) return new Date(cFrom+'T00:00:00').getTime();
+  return 0;                                   // 'all' = ตั้งแต่เริ่มร้าน
+}
+// โหลดข้อมูลย้อนหลังจาก cloud ให้พอกับช่วงที่เลือก แล้วค่อย render
+async function needRange(period,cFrom,cTo,after){
+  const f=periodFrom(period,cFrom);
+  const t=(period==='custom'&&cTo)?new Date(cTo+'T23:59:59.999').getTime():Date.now();
+  if(f>=CLOUD.archFrom()){ after(); return; }                 // มีในเครื่องครบแล้ว
+  UI.toast('กำลังดึงข้อมูลย้อนหลังจาก cloud…','ok');
+  const r=await CLOUD.ensureRange(f,t);
+  if(!r.ok){ UI.toast(r.offline?'⚠️ ออฟไลน์อยู่ — ดูย้อนหลังไม่ได้ ต่อเน็ตแล้วลองใหม่':('ดึงไม่สำเร็จ: '+(r.msg||'')),'err'); }
+  else if(r.n) UI.toast('ดึงมา '+r.n+' บิลจาก cloud','ok');
+  after();
+}
 const HISTORY = (()=>{
   let period='today', q='', cFrom='', cTo='', pay='all';
   // วิธีชำระ: ไอคอน · ชื่อ · สีตัวอักษร · สีพื้น
@@ -4991,6 +5036,7 @@ const HISTORY = (()=>{
         </div></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
         <div class="field" style="max-width:250px;margin:0"><input placeholder="ค้นหาเลขบิล เช่น 001" oninput="HISTORY.search(this.value)"></div>
+        <button class="sub-tab" style="margin:0" onclick="HISTORY.loadArchive()" title="บิลเก่าที่ล้างออกจากเครื่องไปแล้ว ยังอยู่บน cloud">☁️ ดึงบิลย้อนหลัง${CLOUD.archCount()?(' ('+CLOUD.archCount()+')'):''}</button>
         <div class="sub-tabs" style="margin:0">
           <button class="sub-tab ${pay==='all'?'active':''}" onclick="HISTORY.setPay('all')">ทั้งหมด (${allN})</button>
           ${Object.keys(PM).map(k=>{ const c=sum[k]; if(!c&&pay!==k) return '';
@@ -5017,13 +5063,31 @@ const HISTORY = (()=>{
         </td></tr>`).join(''):'<tr><td colspan="9"><div class="empty">ไม่มีบิล</div></td></tr>'}
       </tbody></table>`;
   }
-  function setPeriod(p){ period=p; render(); }
+  function setPeriod(p){ period=p; needRange(p,cFrom,cTo,render); }
   function setPay(m){ pay=m; render(); }
-  function setCustom(){ const f=$('#hisFrom').value, t=$('#hisTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; render(); } }
+  function setCustom(){ const f=$('#hisFrom').value, t=$('#hisTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; needRange('custom',cFrom,cTo,render); } }
   function search(v){ q=v.trim().toLowerCase(); render(); }
+  // ดึงบิลเก่าที่ถูกล้างออกจากเครื่อง กลับมาดูชั่วคราว (ไม่กินพื้นที่ · รีเฟรชแล้วหาย)
+  function loadArchive(){
+    const d=(ms)=>new Date(ms).toISOString().slice(0,10);
+    UI.ask('☁️ ดึงบิลย้อนหลังจาก cloud',[
+      {key:'from',label:'ตั้งแต่วันที่',type:'date',value:d(Date.now()-90*86400000)},
+      {key:'to',  label:'ถึงวันที่',   type:'date',value:d(Date.now())}
+    ],async(o)=>{
+      const f=new Date(o.from+'T00:00:00').getTime(), t=new Date(o.to+'T23:59:59').getTime();
+      if(!(f>0&&t>=f)){ UI.toast('ช่วงวันที่ไม่ถูกต้อง','err'); return; }
+      UI.toast('กำลังดึงจาก cloud…','ok');
+      const r=await CLOUD.fetchArchive(f,t);
+      if(!r.ok){ UI.toast('ดึงไม่สำเร็จ: '+(r.msg||''),'err'); return; }
+      if(!r.n){ UI.toast('ไม่มีบิลเพิ่มเติมในช่วงนี้ — มีครบอยู่แล้ว','ok'); return; }
+      period='custom'; cFrom=o.from; cTo=o.to;
+      UI.toast('ดึงมา '+r.n+' บิล · ใช้ได้ทั้งประวัติบิลและรายงาน · ไม่กินพื้นที่เครื่อง','ok');
+      render();
+    });
+  }
   function receipt(id){ const o=STORE.find('orders',id); if(o) PAY.receipt(o); }
   function voidIt(id){ voidOrder(id); }
-  return {render,setPeriod,setPay,setCustom,search,receipt,voidIt};
+  return {render,setPeriod,setPay,setCustom,search,loadArchive,receipt,voidIt};
 })();
 
 /* ============================================================
@@ -6119,7 +6183,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.45</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.47</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6325,7 +6389,8 @@ const SETTINGS = (()=>{
         br.map(row).join('')+
         '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">'+
         '🗜️ <b>บีบอัด</b> = ย่อรูปให้เล็กลง ~80% ภาพยังอยู่ ปลอดภัยที่สุด แนะนำทำก่อน<br>'+
-        '🗑️ <b>ล้าง</b> = ลบออกจากเครื่อง — <b>ของยังอยู่ครบบน cloud</b> ดูย้อนหลังได้จากรายงาน<br>'+
+        '🗑️ <b>ล้าง</b> = ลบสำเนาในเครื่อง — <b>ตัวจริงยังอยู่ครบบน cloud</b><br>'+
+        '&nbsp;&nbsp;&nbsp;อยากดูบิลเก่าเมื่อไหร่ → ประวัติบิล → <b>☁️ ดึงบิลย้อนหลัง</b><br>'+
         'ระบบกันไม่ให้ของที่ล้างแล้วไปเขียนทับ cloud เด็ดขาด</p>'+
       '</div>'+
       '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
@@ -7399,6 +7464,33 @@ const CLOUD = (()=>{
     }
   }
   let _olPull=0;
+  // ดึงบิลย้อนหลังจาก cloud มาดู "ชั่วคราว" — ไม่เซฟลงเครื่อง ไม่กินพื้นที่
+  async function fetchArchive(fromMs,toMs){
+    if(status!=='online'||!client) return {ok:false,msg:'ยังไม่ออนไลน์'};
+    try{
+      const r=await selShop('orders','data,updated_at',q=>q.gte('updated_at',Math.max(0,fromMs-86400000)));
+      if(r.error||!r.data) return {ok:false,msg:(r.error&&r.error.message)||'ดึงไม่สำเร็จ'};
+      const D=STORE.get(), arr=D.orders||(D.orders=[]);
+      const have=new Set(arr.map(x=>x.id)); let n=0;
+      r.data.forEach(row=>{ const o=row.data; if(!o||!o.id||have.has(o.id)) return;
+        const c=o.createdAt||0; if(c<fromMs||c>toMs) return;
+        o._uat=row.updated_at||0; o._arch=1; arr.push(o); n++; });      // _arch = ชั่วคราว ไม่เซฟ
+      return {ok:true,n};
+    }catch(e){ return {ok:false,msg:String(e&&e.message||e)}; }
+  }
+  function archCount(){ try{ return (STORE.get().orders||[]).filter(o=>o._arch).length; }catch(e){ return 0; } }
+  // จำว่าโหลดย้อนหลังมาถึงวันไหนแล้ว จะได้ไม่ยิงซ้ำ
+  let _archFrom=Infinity;
+  function archFrom(){ return Math.min(_archFrom, STORE.keepFrom()); }
+  // ให้แน่ใจว่าช่วงเวลาที่ผู้ใช้เลือก มีข้อมูลครบในหน่วยความจำ
+  async function ensureRange(fromMs,toMs){
+    const have=archFrom();
+    if(fromMs>=have) return {ok:true,n:0,cached:true};        // มีครบแล้ว
+    if(status!=='online'||!client) return {ok:false,offline:true,msg:'ออฟไลน์อยู่ — ดูย้อนหลังไม่ได้'};
+    const r=await fetchArchive(fromMs, toMs||Date.now());
+    if(r.ok) _archFrom=Math.min(_archFrom, fromMs);
+    return r;
+  }
   async function pullOrdersLite(){                 // ตาข่ายนิรภัย: ออเดอร์ใหม่ต้องถึงร้านใน <=8 วิ แม้ realtime ล่ม
     if(status!=='online'||!client||!authUser) return;
     if(Date.now()-_olPull<7000) return; _olPull=Date.now();
@@ -7458,8 +7550,9 @@ const CLOUD = (()=>{
         return _BRSCOPE.has(key) && (o.branchId||'BR-001')!==_myB;
       };
       for(const [t,key] of ent){
-        const {data,error}= (t==='orders'&&_pOrd)
-          ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_pOrd))
+        const _oFrom = (t==='orders') ? Math.max(_pOrd||0, STORE.keepFrom()-86400000) : 0;
+        const {data,error}= _oFrom
+          ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_oFrom))   // ⭐ บิลเก่าอยู่บน cloud ไม่ต้องลากลงเครื่อง
           : await selShop(t,'data,updated_at');
         if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
@@ -7480,7 +7573,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,archCount,ensureRange,archFrom,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
@@ -7738,6 +7831,8 @@ const APP = (()=>{
     if(!AUTH.tryRestore()) AUTH.lock();  // รีเฟรชแล้วยังล็อกอินอยู่ (ไม่ต้องใส่ PIN ใหม่)
     if(needSetup()) setupShow();         // เครื่องใหม่ -> ให้ใส่รหัสสาขาก่อน
     if(_shopAsk) setTimeout(askShopSwitch,600);
+    setTimeout(()=>{ try{ STORE.autoPurgeOrders(); }catch(e){} }, 8000);      // ให้ sync เสร็จก่อนค่อยล้าง
+    setInterval(()=>{ try{ STORE.autoPurgeOrders(); }catch(e){} }, 3600000);   // ทุกชั่วโมง
     setInterval(tickClock,1000);
     setInterval(()=>KDS.tick(),1000);
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
