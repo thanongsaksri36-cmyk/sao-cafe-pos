@@ -5988,7 +5988,10 @@ const BO = (()=>{
         <td>${AUTH.roleTh(s.role)}</td>
         <td>${pinCell(s)}</td><td>${STORE.baht(s.sales||0)}</td>
         <td><span class="pill ${s.active?'ok':'no'}">${s.active?'ทำงาน':'พักงาน'}</span></td>
-        <td style="text-align:right"><button class="sub-tab" onclick="BO.editStaff('${s.id}')">แก้ไข</button>${(me&&me.id===s.id)?'':`<button class="sub-tab" style="color:var(--danger)" onclick="BO.delStaff('${s.id}')">ลบ</button>`}</td>
+        <td style="text-align:right">${ canTouchStaff(s)
+            ? ('<button class="sub-tab" onclick="BO.editStaff(\''+s.id+'\')">แก้ไข</button>'
+               + ((me&&me.id===s.id)?'':'<button class="sub-tab" style="color:var(--danger)" onclick="BO.delStaff(\''+s.id+'\')">ลบ</button>'))
+            : '<span style="color:var(--muted);font-size:12px">🔒 ล็อก</span>' }</td>
       </tr>`).join('')}
       </tbody></table>
       <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">
@@ -6047,14 +6050,26 @@ const BO = (()=>{
     EDIT_ROLES.forEach(([rk])=>{ let perms=[]; PERM_GROUPS.forEach(g=>{ const el=$('#rp_'+rk+'_'+g.k); if(el&&el.checked) perms=perms.concat(g.perms); }); s.rolePerms[rk]=perms; });
     STORE.save(); UI.close('genOverlay'); UI.toast('บันทึกสิทธิ์ตำแหน่งแล้ว','ok'); if(typeof NAV!=='undefined') NAV.build();
   }
+  // สิทธิ์แตะพนักงาน: ผู้ดูแลทำได้ทุกคน · พนักงานสาขาทำได้เฉพาะคนในสาขาตัวเองที่ไม่ใช่ผู้ดูแล
+  function canTouchStaff(s){
+    if(!s) return false;
+    if(AUTH.isHQ()) return true;
+    if(s.hq) return false;                                     // 🔒 ห้ามแตะบัญชีผู้ดูแลเด็ดขาด
+    return (s.branchId||'BR-001')===STORE.bid();
+  }
+  function denyStaff(s){
+    UI.toast(s&&s.hq ? 'บัญชีผู้ดูแลระบบ — แก้ไข/ลบได้เฉพาะผู้ดูแลเท่านั้น' : 'แก้ไขได้เฉพาะพนักงานในสาขาของคุณ','err');
+  }
   function delStaff(id){
     const s=STORE.find('staff',id); if(!s) return;
+    if(!canTouchStaff(s)){ denyStaff(s); return; }              // ⭐ กันแฟรนไชส์ลบบัญชีผู้ดูแล
     if(AUTH.get()&&AUTH.get().id===id){ UI.toast('ลบบัญชีตัวเองไม่ได้','err'); return; }
     if(s.hq){ const otherHQ=STORE.get().staff.filter(x=>!x.deletedAt&&x.hq&&x.id!==id&&x.active).length; if(otherHQ===0){ UI.toast('ลบไม่ได้ ต้องมีผู้ดูแลระบบ (HQ) อย่างน้อย 1 คน','err'); return; } }
     UI.confirm2('ลบพนักงาน','ลบ "'+s.name+'" ออกจากระบบ?',()=>{ s.deletedAt=STORE.now(); s.active=false; STORE.save(); CLOUD.pushItem('staff',s); render(); UI.toast('ลบพนักงานแล้ว','ok'); },true);
   }
   function editStaff(id,preBranch){
     const s=id?STORE.find('staff',id):null;
+    if(s && !canTouchStaff(s)){ denyStaff(s); return; }         // ⭐ กันแฟรนไชส์แก้บัญชีผู้ดูแล/สาขาอื่น
     const hqUser=AUTH.isHQ(), branches=STORE.get().branches||[];
     const defB=preBranch||(s?(s.branchId||STORE.bid()):STORE.bid());
     const fields=[
@@ -6069,7 +6084,7 @@ const BO = (()=>{
     }
     UI.ask(s?'แก้ไขพนักงาน':'เพิ่มพนักงาน',fields,(o)=>{
       if(!/^\d{4}$/.test(o.pin)){ UI.toast('PIN ต้องเป็นตัวเลข 4 หลัก','err'); return; }
-      const bId = hqUser ? (o.branch||defB) : (s?s.branchId:STORE.bid());
+      const bId = hqUser ? (o.branch||defB) : (s?(s.branchId||STORE.bid()):STORE.bid());
       const hqFlag = hqUser ? (o.hq==='1') : (s?!!s.hq:false);
       // กัน PIN ซ้ำ — ซ้ำในสาขาเดียวกัน หรือซ้ำกับผู้ดูแล HQ = เข้าผิดคนได้
       const dup=(STORE.get().staff||[]).find(x=> x && !x.deletedAt && x.active!==false && x.pin===o.pin
@@ -6256,7 +6271,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.53</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.54</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
