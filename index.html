@@ -3285,6 +3285,48 @@ const STORE = (()=>{
 })();
 
 /* ============================================================
+   1.5 FEAT — แพ็กเกจเสริมต่อสาขา (ผู้ดูแลเปิดให้ · สาขาเปิดเองไม่ได้)
+   เก็บที่ข้อมูล "สาขา" เพราะมือถือลูกค้าดึงผ่าน branch_public ได้
+   ============================================================ */
+const FEAT = (()=>{
+  const CATALOG=[
+    {k:'onlinePay', ic:'💳', name:'ลูกค้าจ่ายออนไลน์',  why:'PromptPay / โอน + แนบสลิป', cost:'เก็บรูปสลิป ~300 KB/ใบ'},
+    {k:'qrOrder',   ic:'📱', name:'QR สั่งจากโต๊ะ',      why:'ลูกค้าสแกนสั่งเอง',        cost:'พื้นที่ + traffic'},
+    {k:'ai',        ic:'🤖', name:'ผู้ช่วย AI',          why:'ถามยอดขาย · แนะนำโปร',     cost:'ค่า token ทุกครั้งที่ถาม'},
+    {k:'slipVerify',ic:'🧾', name:'ตรวจสลิปอัตโนมัติ',   why:'SlipOK ตรวจให้',           cost:'จ่ายต่อการตรวจ 1 ใบ'},
+    {k:'lineNotify',ic:'💬', name:'แจ้งเตือน LINE',      why:'ปิดกะ · เบิกเงิน · ออเดอร์', cost:'โควตา Edge Function'}
+  ];
+  const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+  function all(b){
+    const br = b || STORE.curBranch() || {};
+    const f = br.feat && typeof br.feat==='object' ? br.feat : {};
+    // รองรับของเดิม: qrOnlinePay / slipVerify ที่เคยเก็บแยก
+    if(f.onlinePay===undefined && br.qrOnlinePay!==undefined) f.onlinePay={on:!!br.qrOnlinePay,until:''};
+    if(f.slipVerify===undefined && br.slipVerify!==undefined) f.slipVerify={on:!!br.slipVerify,until:''};
+    return f;
+  }
+  function rec(k,b){ const v=all(b)[k]; return (v&&typeof v==='object')?v:{on:!!v,until:''}; }
+  function expired(k,b){ const r=rec(k,b); return !!(r.on && r.until && r.until < today()); }
+  function on(k,b){ const r=rec(k,b); if(!r.on) return false; if(r.until && r.until < today()) return false; return true; }
+  function until(k,b){ return rec(k,b).until||''; }
+  function daysLeft(k,b){
+    const u=until(k,b); if(!u) return null;
+    const d=Math.ceil((new Date(u+'T23:59:59').getTime()-Date.now())/86400000);
+    return d;
+  }
+  function setBranch(bid,map){                      // map = {key:{on,until}}
+    const b=(STORE.get().branches||[]).find(x=>x.id===bid); if(!b) return false;
+    b.feat=Object.assign({},b.feat||{},map);
+    b.qrOnlinePay=on('onlinePay',b);                // เผื่อโค้ดเก่า/มือถือลูกค้ารุ่นก่อน
+    b.slipVerify =on('slipVerify',b);
+    try{ CLOUD.pushItem('branches',b); }catch(e){}
+    return true;
+  }
+  function badges(b){ return CATALOG.filter(c=>on(c.k,b)).map(c=>c.ic).join(' ')||'—'; }
+  return {CATALOG,all,rec,on,until,daysLeft,expired,setBranch,badges,today};
+})();
+
+/* ============================================================
    2. AUTH — PIN lock, RBAC, staff switch, approval gate
    ============================================================ */
 const AUTH = (()=>{
@@ -3456,7 +3498,7 @@ const NAV = (()=>{
     {k:'pending',label:'รอชำระ',icon:'📥',perm:'pos'},
     {k:'qr',label:'QR ลูกค้า',icon:'📱',perm:'pos'},
     {k:'report',label:'รายงาน',icon:'📊',perm:'report'},
-    {k:'ai',label:'ผู้ช่วย AI',icon:'🤖',perm:'report'},
+    {k:'ai',label:'ผู้ช่วย AI',icon:'🤖',perm:'report',feat:'ai'},
     {k:'history',label:'ประวัติบิล',icon:'📜',perm:'report'},
     {k:'bo',label:'หลังร้าน',icon:'⚙️',perm:'bo_menu'},
     {k:'shift',label:'กะ/เงินสด',icon:'💰',perm:'shift'},
@@ -3464,7 +3506,8 @@ const NAV = (()=>{
   ];
   let cur='pos';
   function build(){
-    const items=ALL.filter(i=> i.perm==='*'? AUTH.get().role==='owner' : AUTH.can(i.perm));
+    const items=ALL.filter(i=> (i.perm==='*'? AUTH.get().role==='owner' : AUTH.can(i.perm))
+                            && (!i.feat || FEAT.on(i.feat)) );   // ⭐ แพ็กเกจเสริมที่สาขายังไม่ได้เปิด = ไม่แสดง
     $('#nav').innerHTML=items.map(i=>`<button class="nav-btn ${i.k===cur?'active':''}" data-k="${i.k}" onclick="NAV.go('${i.k}')">${i.icon}<span class="lbl">${i.label}</span>${i.k==='kds'?`<span class="bdg hidden" id="kdsBdg"></span>`:i.k==='pending'?`<span class="bdg hidden" id="pendingBdg"></span>`:''}</button>`).join('');
     KDS.updateBadge(); PENDING.updateBadge();
   }
@@ -4451,9 +4494,10 @@ const QR = (()=>{
     const b=STORE.curBranch()||{}, st=STORE.get().settings||{};
     const tv=(v)=>(v===true||v==='true'||v===1||v==='1');
     const pick=(k)=> (b[k]!==undefined&&b[k]!==null) ? b[k] : st[k];
-    return { onlinePay: tv(pick('qrOnlinePay')),
+    // สิทธิ์แพ็กเกจเสริม อ่านจาก "สาขา" เท่านั้น — เครื่องสาขาแก้ในตัวเองไม่มีผล
+    return { onlinePay: FEAT.on('onlinePay',b),
              payPolicy: pick('qrPayPolicy')||'pay_first',
-             slipVerify: tv(pick('slipVerify')) };
+             slipVerify: FEAT.on('slipVerify',b) };
   }
   function toPay(){
     if(!qcart.length) return;
@@ -6340,7 +6384,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.57</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.60</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6389,10 +6433,44 @@ const SETTINGS = (()=>{
           </div>`:''}
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
-          <div class="field"><label>💳 ให้ลูกค้าจ่ายออนไลน์เอง (PromptPay / โอน + แนบสลิป)</label><select id="setQrOnlinePay"><option value="0" ${!s.qrOnlinePay?'selected':''}>ปิด — จ่ายที่เคาน์เตอร์อย่างเดียว (ประหยัดพื้นที่ DB)</option><option value="1" ${s.qrOnlinePay?'selected':''}>เปิด — ลูกค้าโอนเองได้ (เก็บรูปสลิป กินพื้นที่มาก)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">รูปสลิป 1 ใบ ≈ 300 KB · Supabase ฟรี 500 MB → เก็บได้ ~1,600 ใบ · เปิดเมื่อพร้อมอัปแพ็กเกจ</div>
-            ${AUTH.isHQ()?`<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;cursor:pointer;background:rgba(166,124,61,.08);border:1px solid var(--gold);border-radius:8px;padding:8px 10px">
-              <input type="checkbox" id="setQrAll" style="width:18px;height:18px">
-              <span>👑 ใช้ 3 ค่านี้กับ<b>ทุกสาขา</b> (${(STORE.get().branches||[]).filter(b=>!b.deletedAt).length} สาขา) — วิธีชำระ · จ่ายออนไลน์ · ตรวจสลิป</span></label>`:''}</div>
+          ${(()=>{
+            if(!AUTH.isHQ()){                                   // 🔒 สาขาเห็นสถานะอย่างเดียว
+              const cb=STORE.curBranch()||{};
+              return `<div class="field"><label>🎁 แพ็กเกจเสริมของสาขานี้</label>
+                <div style="border:1px solid var(--line);border-radius:10px;padding:6px 12px 10px;background:var(--surface)">
+                  ${FEAT.CATALOG.map(c=>{ const ok=FEAT.on(c.k,cb), d=FEAT.daysLeft(c.k,cb);
+                    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px">
+                      <span style="opacity:${ok?1:.35}">${c.ic}</span>
+                      <span style="flex:1;opacity:${ok?1:.5}">${esc(c.name)}</span>
+                      <small style="color:${ok?'var(--success)':'var(--muted)'}">${ok?('เปิดอยู่'+((d!=null&&d<=30)?(' · เหลือ '+d+' วัน'):'')):'ยังไม่เปิด'}</small></div>`;
+                  }).join('')}
+                  <div style="font-size:12px;color:var(--muted);margin-top:8px">🔒 บริการเสริม เปิด/ปิดโดยส่วนกลาง · ต้องการเปิดใช้ ติดต่อผู้ดูแลระบบ</div>
+                </div></div>`;
+            }
+            const bs=(STORE.get().branches||[]).filter(b=>!b.deletedAt);
+            const sel=_featB||STORE.bid();
+            const cb=bs.find(b=>b.id===sel)||bs[0]||{};
+            return `<div class="field"><label>🎁 แพ็กเกจเสริม — 👑 ผู้ดูแลกำหนดเท่านั้น</label>
+              <div style="border:1px solid var(--gold);border-radius:10px;padding:10px">
+                <select id="featBranch" onchange="SETTINGS.featPick(this.value)" style="margin-bottom:10px">
+                  ${bs.map(b=>`<option value="${esc(b.id)}" ${b.id===sel?'selected':''}>${esc(b.name||b.id)} · ${b.type==='franchise'?'แฟรนไชส์':'เจ้าของเอง'}</option>`).join('')}
+                </select>
+                ${FEAT.CATALOG.map(c=>{ const r=FEAT.rec(c.k,cb), d=FEAT.daysLeft(c.k,cb), ex=FEAT.expired(c.k,cb);
+                  return `<div style="display:flex;align-items:center;gap:9px;padding:9px 2px;border-bottom:1px solid var(--line)">
+                    <input type="checkbox" class="featon" data-k="${c.k}" ${r.on?'checked':''} style="width:18px;height:18px">
+                    <span style="flex:1;font-size:14px">${c.ic} ${esc(c.name)}<br><small style="color:var(--muted)">${esc(c.cost)}</small></span>
+                    <span style="text-align:right"><input type="date" class="featun" data-k="${c.k}" value="${esc(r.until||'')}" style="font-size:12px;padding:5px;width:140px">
+                    <br><small style="color:${ex?'#C0392B':(d!=null&&d<=30?'#B4451F':'var(--muted)')}">${ex?'⛔ หมดอายุแล้ว':(d!=null?('เหลือ '+d+' วัน'):'ไม่จำกัดเวลา')}</small></span>
+                  </div>`; }).join('')}
+                <button class="btn-gold" style="width:100%;padding:10px;margin-top:10px" onclick="SETTINGS.featSave()">💾 บันทึกสิทธิ์สาขานี้</button>
+              </div>
+              <div style="border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-top:8px">
+                <div style="font-size:12px;color:var(--muted);margin-bottom:4px">สรุปทุกสาขา</div>
+                ${bs.map(b=>`<div style="display:flex;gap:8px;padding:5px 0;font-size:13px;border-bottom:1px solid var(--line)">
+                  <span style="flex:1">${esc(b.name||b.id)}</span><span style="letter-spacing:2px">${FEAT.badges(b)}</span></div>`).join('')}
+                <div style="font-size:11px;color:var(--muted);margin-top:6px">${FEAT.CATALOG.map(c=>c.ic+' '+c.name).join(' · ')}</div>
+              </div></div>`;
+          })()}
           <div class="field"><label>🧾 ตรวจสลิปอัตโนมัติ (SlipOK · ต้องตั้ง Edge Function ก่อน)</label><select id="setSlipVerify"><option value="0" ${!s.slipVerify?'selected':''}>ปิด (พนักงานตรวจเอง)</option><option value="1" ${s.slipVerify?'selected':''}>เปิด (ลูกค้าแนบสลิป ระบบตรวจให้)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">เปิดแล้วลูกค้าโอน→แนบสลิป→ผ่านเข้าครัวอัตโนมัติ · ไม่ผ่าน→ส่งพนักงานตรวจมือ</div></div>
           <div class="field"><label>🔒 ล็อกหน้าจออัตโนมัติเมื่อไม่ใช้งาน</label>
             <select id="setSession">${[['0','ไม่ล็อกอัตโนมัติ'],['10','10 นาที'],['30','30 นาที'],['60','1 ชั่วโมง'],['240','4 ชั่วโมง'],['720','12 ชั่วโมง']].map(([v,t])=>`<option value="${v}" ${String(s.sessionTimeoutMin||0)===v?'selected':''}>${t}</option>`).join('')}</select></div>
@@ -6500,19 +6578,10 @@ const SETTINGS = (()=>{
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
-    { const qo=$('#setQrOnlinePay'); if(qo) s.qrOnlinePay=qo.value==='1'; }
-    // ⭐ ค่าที่ลูกค้าต้องใช้ ต้องเก็บที่ "สาขา" ด้วย (มือถือลูกค้าไม่ได้ sync settings)
+    // ⭐ ค่าที่ลูกค้าต้องใช้ ต้องเก็บที่ "สาขา" (มือถือลูกค้าไม่ได้ sync settings)
     { const _b=STORE.curBranch();
-      if(_b){ _b.qrOnlinePay=!!s.qrOnlinePay; _b.qrPayPolicy=s.qrPayPolicy;
-              try{ CLOUD.pushItem('branches',_b); }catch(e){} }
-      const _all=$('#setQrAll');
-      if(_all && _all.checked && AUTH.isHQ()){                      // 👑 กระจายให้ทุกสาขาในครั้งเดียว
-        let n=0;
-        (STORE.get().branches||[]).forEach(b=>{ if(!b||b.deletedAt) return;
-          b.qrOnlinePay=!!s.qrOnlinePay; b.qrPayPolicy=s.qrPayPolicy; b.slipVerify=!!s.slipVerify;
-          try{ CLOUD.pushItem('branches',b); }catch(e){} n++; });
-        if(n) UI.toast('ใช้การตั้งค่าลูกค้ากับ '+n+' สาขาแล้ว ✅','ok');
-      } } { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
+      if(_b){ _b.qrPayPolicy=s.qrPayPolicy; try{ CLOUD.pushItem('branches',_b); }catch(e){} } }
+    // สิทธิ์แพ็กเกจเสริม แยกไปที่ปุ่ม "บันทึกสิทธิ์สาขานี้" (SETTINGS.featSave) { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
@@ -6634,6 +6703,27 @@ const SETTINGS = (()=>{
   function queueClear(){
     UI.confirm2('ล้างคิวที่ไม่ใช่บิลขาย?','บิลขายจะไม่ถูกแตะ\nรายการเมนู/ตั้งค่าที่ค้าง จะถูกลบจากคิว (ข้อมูลจริงอยู่บน cloud แล้ว)',
       ()=>{ const n=CLOUD.queueClearNonOrders(); UI.toast('ล้าง '+n+' รายการออกจากคิว','ok'); setTimeout(queueInfo,300); });
+  }
+  // ===== แพ็กเกจเสริมต่อสาขา (ผู้ดูแลเท่านั้น) =====
+  let _featB=null;
+  function featPick(id){ _featB=id; render(); }
+  function featSave(){
+    if(!AUTH.isHQ()){ UI.toast('เฉพาะผู้ดูแลระบบ','err'); return; }
+    const bid=(($('#featBranch')||{}).value)||_featB||STORE.bid();
+    const map={}; let on=0;
+    document.querySelectorAll('.featon').forEach(el=>{
+      const k=el.getAttribute('data-k');
+      const dt=document.querySelector('.featun[data-k="'+k+'"]');
+      const until=(dt&&dt.value)||'';
+      map[k]={on:!!el.checked, until};
+      if(el.checked) on++;
+    });
+    if(!FEAT.setBranch(bid,map)){ UI.toast('ไม่พบสาขา','err'); return; }
+    STORE.save();
+    const b=(STORE.get().branches||[]).find(x=>x.id===bid)||{};
+    UI.toast('บันทึกสิทธิ์ '+(b.name||bid)+' — เปิด '+on+' บริการ ✅','ok');
+    try{ NAV.build(); }catch(e){}
+    render();
   }
   function copyText(t){
     try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t); }catch(e){}
@@ -6787,7 +6877,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -6937,6 +7027,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
   async function send(text,ev){
     try{
       const st=STORE.get().settings; if(!st.tgNotify) return false;
+      if(!FEAT.on('lineNotify')) return false;                         // ⭐ แพ็กเกจเสริมที่สาขายังไม่ได้เปิด
       if(ev && st.tgEvents && st.tgEvents[ev]===false) return false;   // เหตุการณ์นี้ถูกปิดไว้
       const tk=token(), ch=chat(); if(!tk||!ch) return false;
       const bn=(STORE.curBranch()||{}).name||'';
@@ -7821,6 +7912,18 @@ const CUSTOMER = (()=>{
     CLOUD.init();
     // รอเชื่อม cloud + ดึงเมนูล่าสุด (กันเมนูไม่ตรง)
     let tries=0; while(CLOUD.getStatus()!=='online'&&tries<20){ await new Promise(r=>setTimeout(r,300)); tries++; }
+    await CLOUD.pullMenu();                                            // ต้องได้ข้อมูลสาขาก่อนเช็คสิทธิ์
+    if(!FEAT.on('qrOrder')){                                           // ⭐ สาขานี้ยังไม่ได้เปิดบริการสั่งผ่าน QR
+      const b=STORE.curBranch()||{};
+      document.querySelector('#qrRoot').innerHTML=
+        '<div style="margin:auto;text-align:center;padding:44px 24px;max-width:420px">'
+        +'<div style="font-size:64px">🙏</div>'
+        +'<h2 style="font-family:\'Playfair Display\',serif;margin:14px 0">ขออภัยค่ะ</h2>'
+        +'<p style="color:var(--muted);line-height:1.8">สาขานี้ยังไม่เปิดให้สั่งผ่าน QR<br>รบกวนสั่งที่เคาน์เตอร์ได้เลยค่ะ</p>'
+        +(b.name?('<p style="margin-top:18px;font-size:13px;color:var(--muted)">'+esc(b.name)+'</p>'):'')
+        +'</div>';
+      return;
+    }
     if(CLOUD.getStatus()==='online'){ await CLOUD.pullMenu(); }
     QR.startCustomer(table);
   }
