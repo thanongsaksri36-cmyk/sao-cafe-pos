@@ -4191,10 +4191,18 @@ const MEMBER = (()=>{
       </div>`;
     UI.open('genOverlay'); if(cur) renderBox(cur);
   }
-  function find(){
+  async function find(){
     const phone=($('#memPhone').value||'').trim(); if(!phone){ UI.toast('ใส่เบอร์โทร','err'); return; }
-    const mem=STORE.get().members.find(x=>x.phone===phone&&!x.deletedAt);
-    if(mem) renderBox(mem); else renderNew(phone);
+    let mem=STORE.get().members.find(x=>x.phone===phone&&!x.deletedAt);
+    if(mem) renderBox(mem);                                        // แสดงของในเครื่องก่อน ให้ไว
+    try{                                                           // แล้วเช็คกับ cloud ให้แน่ใจว่าแต้มตรง
+      const fresh=await CLOUD.refreshMember(phone);
+      if(fresh && !fresh.deletedAt){
+        if(!mem || fresh.points!==mem.points || fresh.name!==mem.name) renderBox(fresh);
+        return;
+      }
+    }catch(e){}
+    if(!mem) renderNew(phone);
   }
   function renderNew(phone){
     $('#memBox').innerHTML=`<div style="text-align:center;padding:14px;background:var(--surface-2);border-radius:12px">
@@ -6430,7 +6438,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.64</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.65</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7819,7 +7827,7 @@ const CLOUD = (()=>{
   }
   // ---- Realtime: subscribe ทุกตารางหลัก + reconnect อัตโนมัติ ----
   const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','members','promos','suppliers','branches','shifts','cashlog','app_meta'];
-  const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
+  const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',members:'members',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
   const rtChs={}, rtErr={};                       // channel แยกต่อตาราง -> ตารางเดียวมีปัญหา ตารางอื่นยังวิ่ง
   function subTable(t){
     if(!client||rtChs[t]) return;
@@ -7879,6 +7887,21 @@ const CLOUD = (()=>{
     }catch(e){ return {ok:false,msg:String(e&&e.message||e)}; }
   }
   // ลูกค้า QR ถามสถานะออเดอร์ตัวเอง (ต้องรู้ id ที่เดาไม่ได้) — ผ่าน RPC ไม่เปิดตาราง orders ให้ anon
+  // ดึงข้อมูลสมาชิกรายคนจาก cloud (ใช้ตอนกดค้นหา — กันแต้มไม่ตรงเมื่อ realtime หลุด)
+  async function refreshMember(phone){
+    if(status!=='online'||!client||!phone) return null;
+    try{
+      const r=await selShop('members','data,updated_at',q=>q.filter('data->>phone','eq',String(phone)));
+      if(r.error||!r.data||!r.data.length) return null;
+      const D=STORE.get(), arr=D.members||(D.members=[]); let hit=null;
+      r.data.forEach(row=>{ const o=row.data; if(!o||!o.id) return;
+        const i=arr.findIndex(x=>x.id===o.id);
+        if(i>=0){ if((arr[i]._uat||0) <= (row.updated_at||0)){ o._uat=row.updated_at||0; arr[i]=o; } hit=arr[i]; }
+        else { o._uat=row.updated_at||0; arr.push(o); hit=o; } });
+      if(hit) STORE.save();
+      return hit;
+    }catch(e){ return null; }
+  }
   async function orderStatus(id){
     if(!client||!id) return null;
     try{
@@ -7987,7 +8010,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,orderStatus,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
