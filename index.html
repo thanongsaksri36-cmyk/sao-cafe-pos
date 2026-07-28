@@ -4439,16 +4439,26 @@ const QR = (()=>{
         <div class="sr tot" style="margin-bottom:10px"><span>รวม</span><span>${STORE.baht(sub)}</span></div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-ghost" style="flex:1" onclick="QR.render()">← เพิ่มเมนู</button>
-          <button class="qrc-checkout" style="flex:2" onclick="QR.confirmOrder()">${(STORE.get().settings.qrPayPolicy||'pay_first')==='pay_later'?'ยืนยันสั่ง · จ่ายตอนกลับ →':'ยืนยัน · ชำระเงิน →'}</button>
+          <button class="qrc-checkout" style="flex:2" onclick="QR.confirmOrder()">${cfg().payPolicy==='pay_later'?'ยืนยันสั่ง · จ่ายตอนกลับ →':'ยืนยัน · ชำระเงิน →'}</button>
         </div>
       </div>`;
   }
   function chQty(pid,d){ const c=qcart.find(x=>x.productId===pid); if(!c)return; c.qty+=d; if(c.qty<=0) qcart=qcart.filter(x=>x.productId!==pid); if(!qcart.length){ render(); return; } renderCartReview(); }
   function setTable(t){ qtable=t; renderCartReview(); }
+  // ค่าตั้งค่าฝั่งลูกค้า — เก็บที่ "สาขา" เพื่อให้มือถือลูกค้าดึงผ่าน branch_public ได้
+  // (settings ไม่ถูก sync ลงมือถือลูกค้า เพราะมี API key อยู่)
+  function cfg(){
+    const b=STORE.curBranch()||{}, st=STORE.get().settings||{};
+    const tv=(v)=>(v===true||v==='true'||v===1||v==='1');
+    const pick=(k)=> (b[k]!==undefined&&b[k]!==null) ? b[k] : st[k];
+    return { onlinePay: tv(pick('qrOnlinePay')),
+             payPolicy: pick('qrPayPolicy')||'pay_first',
+             slipVerify: tv(pick('slipVerify')) };
+  }
   function toPay(){
     if(!qcart.length) return;
     // ปิดจ่ายออนไลน์อยู่ -> ข้ามหน้าเลือกวิธี ส่งเป็น "จ่ายที่เคาน์เตอร์" เลย ลูกค้ากดน้อยลง 1 ครั้ง
-    if(!STORE.get().settings.qrOnlinePay){ payBy('cash'); return; }
+    if(!cfg().onlinePay){ payBy('cash'); return; }
     stage='pay'; renderPay();
   }
   function renderPay(){
@@ -4456,7 +4466,7 @@ const QR = (()=>{
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">เลือกวิธีชำระ</div><small>${qtable?'โต๊ะ '+esc(qtable)+' · ':''}ยอด ${STORE.baht(sub)}</small></div>
       <div style="flex:1;overflow-y:auto;padding:20px;max-width:480px;margin:0 auto;width:100%;text-align:center">
-        ${STORE.get().settings.qrOnlinePay?`
+        ${cfg().onlinePay?`
         <button class="qrc-checkout" style="background:var(--green);margin-bottom:14px" onclick="QR.payBy('promptpay')">📱 สแกนจ่าย PromptPay</button>
         <button class="qrc-checkout" style="background:var(--gold);margin-bottom:14px" onclick="QR.payBy('transfer')">🏦 โอนเงิน</button>`:''}
         <button class="qrc-checkout" style="background:var(--text);margin-bottom:14px" onclick="QR.payBy('cash')">💵 จ่ายเงินสดที่เคาน์เตอร์</button>
@@ -4560,7 +4570,7 @@ const QR = (()=>{
           <p style="margin:12px 0">${m.promptpayQrImg?'<b style="color:var(--warn)">⚠️ กรุณากรอกยอด</b> ':'PromptPay: <b>'+esc(m.promptpayId)+'</b><br>'}โอน <b>${STORE.baht(sub)}</b>${m.promptpayQrImg?' เอง':''}</p>
           <button class="btn btn-gold" style="width:100%;margin-bottom:6px" onclick="QR.saveQR()">💾 บันทึกรูป QR</button>
           <p style="color:var(--muted);font-size:12px;margin-bottom:14px;line-height:1.5">📸 <b>เปิดจากในไลน์?</b> แคปหน้าจอ QR แล้วเข้าแอปธนาคาร → เลือก "สแกนจากรูป/คลังภาพ" ได้เลย<br><span style="font-size:11px">(ปุ่มบันทึกใช้ได้เมื่อเปิดด้วย Chrome/Safari)</span></p>
-          ${m.slipVerify?`
+          ${(m.slipVerify||cfg().slipVerify)?`
             <p style="color:var(--muted);font-size:13px;margin-bottom:10px">โอนเสร็จ แนบสลิป ระบบตรวจให้อัตโนมัติ ✨</p>
             <button class="qrc-checkout" onclick="QR.uploadSlip('${method}')">📎 แนบสลิป · ตรวจอัตโนมัติ</button>
             <button class="btn btn-ghost" style="width:100%;margin-top:10px" onclick="QR.submitOrder('${method}')">หรือ กดแจ้งให้พนักงานตรวจเอง</button>
@@ -4573,7 +4583,7 @@ const QR = (()=>{
         </div>`;
     } else { if(qtable) submitOpenTab(); else submitOrder('cash'); }
   }
-  function confirmOrder(){ if(!qcart.length) return; const pol=STORE.get().settings.qrPayPolicy||'pay_first'; if(pol==='pay_later') submitOpenTab(); else toPay(); }
+  function confirmOrder(){ if(!qcart.length) return; if(cfg().payPolicy==='pay_later') submitOpenTab(); else toPay(); }
   async function _submitOpenTab(){
     // โหมดเปิดบิลค้าง: เข้าครัวทันที จ่ายตอนกลับ
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
@@ -6038,6 +6048,8 @@ const BO = (()=>{
         <button class="add-fab" onclick="BO.rolePerms()">⚙️ สิทธิ์ตำแหน่ง</button>
         <button class="add-fab" onclick="BO.editStaff()">+ เพิ่มพนักงาน</button></div>
       ${hq?'<p style="font-size:12px;color:var(--muted);margin-bottom:8px">👑 คุณเป็นผู้ดูแล — เห็นและแก้ไขพนักงานได้ทุกสาขา</p>':''}
+      ${(()=>{ const n=staff.filter(x=>x.hq&&x.active!==false).length;
+        return (hq&&n>1)?('<div style="background:rgba(180,69,31,.1);border:1px solid #B4451F;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:13px">⚠️ มีบัญชี <b>ผู้ดูแล '+n+' คน</b> — ทุกคนเห็นยอดขายและต้นทุนของ<b>ทุกสาขา</b><br><small>ถ้าใครควรดูแค่สาขาตัวเอง กด "แก้ไข" → <b>ดูได้ทุกสาขา = ไม่</b></small></div>'):''; })()}
       <table><thead><tr><th>ชื่อ</th><th>สาขา</th><th>ตำแหน่ง</th><th>PIN</th><th>ยอดขายสะสม</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${staff.map(s=>`<tr${s.hq?' style="background:rgba(166,124,61,.06)"':''}>
         <td><b>${esc(s.name)}</b></td>
@@ -6328,7 +6340,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.55</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.57</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6377,7 +6389,10 @@ const SETTINGS = (()=>{
           </div>`:''}
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
-          <div class="field"><label>💳 ให้ลูกค้าจ่ายออนไลน์เอง (PromptPay / โอน + แนบสลิป)</label><select id="setQrOnlinePay"><option value="0" ${!s.qrOnlinePay?'selected':''}>ปิด — จ่ายที่เคาน์เตอร์อย่างเดียว (ประหยัดพื้นที่ DB)</option><option value="1" ${s.qrOnlinePay?'selected':''}>เปิด — ลูกค้าโอนเองได้ (เก็บรูปสลิป กินพื้นที่มาก)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">รูปสลิป 1 ใบ ≈ 300 KB · Supabase ฟรี 500 MB → เก็บได้ ~1,600 ใบ · เปิดเมื่อพร้อมอัปแพ็กเกจ</div></div>
+          <div class="field"><label>💳 ให้ลูกค้าจ่ายออนไลน์เอง (PromptPay / โอน + แนบสลิป)</label><select id="setQrOnlinePay"><option value="0" ${!s.qrOnlinePay?'selected':''}>ปิด — จ่ายที่เคาน์เตอร์อย่างเดียว (ประหยัดพื้นที่ DB)</option><option value="1" ${s.qrOnlinePay?'selected':''}>เปิด — ลูกค้าโอนเองได้ (เก็บรูปสลิป กินพื้นที่มาก)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">รูปสลิป 1 ใบ ≈ 300 KB · Supabase ฟรี 500 MB → เก็บได้ ~1,600 ใบ · เปิดเมื่อพร้อมอัปแพ็กเกจ</div>
+            ${AUTH.isHQ()?`<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;cursor:pointer;background:rgba(166,124,61,.08);border:1px solid var(--gold);border-radius:8px;padding:8px 10px">
+              <input type="checkbox" id="setQrAll" style="width:18px;height:18px">
+              <span>👑 ใช้ 3 ค่านี้กับ<b>ทุกสาขา</b> (${(STORE.get().branches||[]).filter(b=>!b.deletedAt).length} สาขา) — วิธีชำระ · จ่ายออนไลน์ · ตรวจสลิป</span></label>`:''}</div>
           <div class="field"><label>🧾 ตรวจสลิปอัตโนมัติ (SlipOK · ต้องตั้ง Edge Function ก่อน)</label><select id="setSlipVerify"><option value="0" ${!s.slipVerify?'selected':''}>ปิด (พนักงานตรวจเอง)</option><option value="1" ${s.slipVerify?'selected':''}>เปิด (ลูกค้าแนบสลิป ระบบตรวจให้)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">เปิดแล้วลูกค้าโอน→แนบสลิป→ผ่านเข้าครัวอัตโนมัติ · ไม่ผ่าน→ส่งพนักงานตรวจมือ</div></div>
           <div class="field"><label>🔒 ล็อกหน้าจออัตโนมัติเมื่อไม่ใช้งาน</label>
             <select id="setSession">${[['0','ไม่ล็อกอัตโนมัติ'],['10','10 นาที'],['30','30 นาที'],['60','1 ชั่วโมง'],['240','4 ชั่วโมง'],['720','12 ชั่วโมง']].map(([v,t])=>`<option value="${v}" ${String(s.sessionTimeoutMin||0)===v?'selected':''}>${t}</option>`).join('')}</select></div>
@@ -6485,7 +6500,19 @@ const SETTINGS = (()=>{
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
-    { const qo=$('#setQrOnlinePay'); if(qo) s.qrOnlinePay=qo.value==='1'; } { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
+    { const qo=$('#setQrOnlinePay'); if(qo) s.qrOnlinePay=qo.value==='1'; }
+    // ⭐ ค่าที่ลูกค้าต้องใช้ ต้องเก็บที่ "สาขา" ด้วย (มือถือลูกค้าไม่ได้ sync settings)
+    { const _b=STORE.curBranch();
+      if(_b){ _b.qrOnlinePay=!!s.qrOnlinePay; _b.qrPayPolicy=s.qrPayPolicy;
+              try{ CLOUD.pushItem('branches',_b); }catch(e){} }
+      const _all=$('#setQrAll');
+      if(_all && _all.checked && AUTH.isHQ()){                      // 👑 กระจายให้ทุกสาขาในครั้งเดียว
+        let n=0;
+        (STORE.get().branches||[]).forEach(b=>{ if(!b||b.deletedAt) return;
+          b.qrOnlinePay=!!s.qrOnlinePay; b.qrPayPolicy=s.qrPayPolicy; b.slipVerify=!!s.slipVerify;
+          try{ CLOUD.pushItem('branches',b); }catch(e){} n++; });
+        if(n) UI.toast('ใช้การตั้งค่าลูกค้ากับ '+n+' สาขาแล้ว ✅','ok');
+      } } { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
