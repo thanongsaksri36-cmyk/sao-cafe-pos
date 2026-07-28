@@ -3838,7 +3838,7 @@ const DISC = (()=>{
     if(!mem){
       UI.confirm2('ไม่พบสมาชิก','เพิ่ม '+phone+' เป็นสมาชิกใหม่?',()=>{
         mem={id:STORE.uuid(),phone,name:'สมาชิกใหม่',points:0,tier:'bronze',totalSpent:0,birthday:'',visits:0,history:[]};
-        STORE.get().members.push(mem); STORE.save(); POS.setMember(mem); showMember(mem); UI.toast('เพิ่มสมาชิกแล้ว','ok');
+        STORE.get().members.push(mem); MEMBER.sync(mem); POS.setMember(mem); showMember(mem); UI.toast('เพิ่มสมาชิกแล้ว','ok');
       });
       return;
     }
@@ -4158,13 +4158,25 @@ const MEMBER = (()=>{
   function tierTh(k){ return (TIERS.find(t=>t.k===k)||TIERS[0]).t; }
   function tierFor(spent){ let r=TIERS[0]; TIERS.forEach(t=>{ if(spent>=t.min) r=t; }); return r.k; }
   function cfg(){ const s=STORE.get().settings; return {per:(s.ptEarnPerBaht!=null?s.ptEarnPerBaht:100), val:(s.ptValueBaht!=null?s.ptValueBaht:1)}; }
+  // ⭐ ทุกครั้งที่แก้ข้อมูลสมาชิก ต้องดันขึ้น cloud ด้วย ไม่งั้นแต้มไม่ข้ามสาขา
+  function sync(m){
+    STORE.save();
+    try{ if(m) CLOUD.pushItem('members',m); }catch(e){ console.error('push member',e); }
+  }
+  // ปิดบังเบอร์: ผู้ดูแลเห็นเต็ม · พนักงานเห็นแค่หัว-ท้าย (กันเอาเบอร์ลูกค้าไปใช้)
+  function maskPhone(p){
+    const s=String(p||'').replace(/[^0-9]/g,'');
+    if(AUTH.isHQ && AUTH.isHQ()) return String(p||'');
+    if(s.length<7) return s ? (s.slice(0,2)+'xxxx') : '-';
+    return s.slice(0,3)+'-xxx-'+s.slice(-4);
+  }
   function earn(member,order){
     const m=STORE.find('members',member.id); if(!m) return;
     const per=cfg().per; const pts=per>0?Math.floor(order.total/(per*100)):0;   // ใช้จ่ายทุก per บาท = 1 แต้ม
     m.points+=pts; m.totalSpent+=order.total; m.visits=(m.visits||0)+1;
     m.tier=tierFor(m.totalSpent);
     m.history=m.history||[]; m.history.push({orderId:order.id,total:order.total,points:pts,at:order.createdAt});
-    STORE.save();
+    sync(m);
   }
   // ---- ปุ่มสมาชิกหน้าขาย: ค้นหา/สมัคร/แลกแต้ม-ของรางวัล ง่ายๆ ----
   function open(){
@@ -4195,7 +4207,7 @@ const MEMBER = (()=>{
     const name=($('#memName').value||'').trim()||'สมาชิกใหม่';
     const birthday=(($('#memBirth')||{}).value||'').trim();
     const mem={id:STORE.uuid(),phone,name,points:0,tier:'bronze',totalSpent:0,birthday,visits:0,history:[]};
-    STORE.get().members.push(mem); STORE.save(); POS.setMember(mem); renderBox(mem); UI.toast('สมัครสมาชิกสำเร็จ ✅','ok');
+    STORE.get().members.push(mem); sync(mem); POS.setMember(mem); renderBox(mem); UI.toast('สมัครสมาชิกสำเร็จ ✅','ok');
   }
   function renderBox(mem){
     const c=cfg(); const rewards=(STORE.get().settings.rewards||[]);
@@ -4235,14 +4247,14 @@ const MEMBER = (()=>{
     const pts=parseInt(($('#memRedeemPts').value||'0'))||0;
     if(pts<=0){ UI.toast('ใส่จำนวนแต้ม','err'); return; }
     if(m.points<pts){ UI.toast('แต้มไม่พอ (มี '+m.points+')','err'); return; }
-    const baht=pts*cfg().val; m.points-=pts; STORE.save();
+    const baht=pts*cfg().val; m.points-=pts; sync(m);
     POS.setMember(m); POS.setDiscount({type:'points',value:Math.round(baht*100),label:'แลก '+pts+' แต้ม'});
     UI.close('genOverlay'); UI.toast('แลก '+pts+' แต้ม = ลด ฿'+baht,'ok');
   }
   function redeemReward(id,rid){
     const m=STORE.find('members',id); const r=(STORE.get().settings.rewards||[]).find(x=>x.id===rid); if(!m||!r) return;
     if(m.points<r.points){ UI.toast('แต้มไม่พอ (ต้องการ '+r.points+')','err'); return; }
-    m.points-=r.points; STORE.save();
+    m.points-=r.points; sync(m);
     POS.setMember(m); POS.setDiscount({type:'points',value:r.discount,label:'🎁 '+r.name});
     UI.close('genOverlay'); UI.toast('แลก: '+r.name,'ok');
   }
@@ -4250,11 +4262,11 @@ const MEMBER = (()=>{
     const m=POS.getMember(); if(!m){ UI.toast('เลือกสมาชิกก่อน','err'); return; }
     const mem=STORE.find('members',m.id);
     if(mem.points<50){ UI.toast('แต้มไม่พอ (ต้องการ 50)','err'); return; }
-    mem.points-=50; STORE.save();
+    mem.points-=50; sync(mem);
     POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม'});
     POS.setMember(mem); DISC.showMember(mem); UI.toast('แลกแต้มสำเร็จ ลด ฿50','ok');
   }
-  return {tierTh,tierFor,earn,redeem,open,find,create,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
+  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
 })();
 
 /* ============================================================
@@ -6000,26 +6012,53 @@ const BO = (()=>{
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="add-fab" onclick="BO.editMember()">+ เพิ่มสมาชิก</button></div>
       <table><thead><tr><th>ชื่อ</th><th>เบอร์</th><th>ระดับ</th><th>🎂 วันเกิด</th><th>แต้ม</th><th>ยอดสะสม</th><th>เข้าใช้</th><th></th></tr></thead><tbody>
       ${mem.map(m=>`<tr>
-        <td><b>${esc(m.name)}</b></td><td>${esc(m.phone)}</td>
+        <td><b>${esc(m.name)}</b></td><td style="font-variant-numeric:tabular-nums">${esc(MEMBER.maskPhone(m.phone))}</td>
         <td>${MEMBER.tierTh(m.tier)}</td><td>${esc(m.birthday||'-')}</td><td><b style="color:var(--gold)">${m.points}</b></td>
         <td>${STORE.baht(m.totalSpent)}</td><td>${m.visits||0} ครั้ง</td>
-        <td style="text-align:right"><button class="sub-tab" onclick="BO.editMember('${m.id}')">แก้ไข</button></td>
+        <td style="text-align:right"><button class="sub-tab" onclick="BO.editMember('${m.id}')">แก้ไข</button>${AUTH.isHQ()?`<button class="sub-tab" style="color:var(--danger)" onclick="BO.delMember('${m.id}')">ลบ</button>`:''}</td>
       </tr>`).join('')||'<tr><td colspan="8"><div class="empty">ยังไม่มีสมาชิก</div></td></tr>'}
-      </tbody></table>`;
+      </tbody></table>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">${AUTH.isHQ()
+        ? '👑 คุณเป็นผู้ดูแล — เห็นเบอร์เต็ม · แก้แต้มและลบสมาชิกได้ (ทุกการแก้แต้มถูกบันทึกไว้)'
+        : '🔒 เบอร์ถูกปิดบังบางส่วนเพื่อความเป็นส่วนตัวของลูกค้า · แก้แต้ม/ลบสมาชิก ทำได้เฉพาะผู้ดูแลระบบ'}<br>
+        สมาชิกใช้ร่วมกันทุกสาขา — แก้ที่นี่มีผลกับทุกสาขาทันที</p>`;
   }
   function editMember(id){
     const m=id?STORE.find('members',id):null;
-    UI.ask(m?'แก้ไขสมาชิก':'เพิ่มสมาชิก',[
+    const hq=AUTH.isHQ();
+    // สมาชิกใช้ร่วมทุกสาขา -> แก้แต้มด้วยมือได้เฉพาะผู้ดูแล (กันสาขาเติมแต้มให้ตัวเอง)
+    const fields=[
       {key:'name',label:'ชื่อ',value:m?m.name:''},
       {key:'phone',label:'เบอร์โทร',value:m?m.phone:''},
-      {key:'points',label:'แต้มสะสม',type:'number',value:m?m.points:0},
       {key:'birthday',label:'วันเกิด (เช่น 01/01)',value:m?m.birthday:''}
-    ],(o)=>{
-      if(!o.phone.trim()){ UI.toast('ใส่เบอร์โทร','err'); return; }
-      if(m){ m.name=o.name; m.phone=o.phone; m.points=parseInt(o.points)||0; m.birthday=o.birthday; }
-      else STORE.get().members.push({id:STORE.uuid(),phone:o.phone,name:o.name||'สมาชิก',points:parseInt(o.points)||0,tier:'bronze',totalSpent:0,birthday:o.birthday,visits:0,history:[]});
-      STORE.save(); render(); UI.toast('บันทึกแล้ว','ok');
+    ];
+    if(hq) fields.splice(2,0,{key:'points',label:'แต้มสะสม (👑 ผู้ดูแลเท่านั้น)',type:'number',value:m?m.points:0});
+    UI.ask(m?'แก้ไขสมาชิก':'เพิ่มสมาชิก',fields,(o)=>{
+      if(!String(o.phone||'').trim()){ UI.toast('ใส่เบอร์โทร','err'); return; }
+      let _st=null;
+      if(m){
+        m.name=o.name; m.phone=o.phone; m.birthday=o.birthday;
+        if(hq){
+          const np=parseInt(o.points)||0;
+          if(np!==m.points){                                  // 📝 บันทึกร่องรอยว่าใครแก้แต้ม
+            m.history=m.history||[];
+            m.history.push({type:'adjust', from:m.points, to:np, by:((AUTH.get()||{}).name||'-'), at:STORE.now()});
+            m.points=np;
+          }
+        }
+        _st=m;
+      } else {
+        _st={id:STORE.uuid(),phone:o.phone,name:o.name||'สมาชิก',points:hq?(parseInt(o.points)||0):0,tier:'bronze',totalSpent:0,birthday:o.birthday,visits:0,history:[]};
+        STORE.get().members.push(_st);
+      }
+      MEMBER.sync(_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
+  }
+  function delMember(id){
+    if(!AUTH.isHQ()){ UI.toast('ลบสมาชิกได้เฉพาะผู้ดูแลระบบ (สมาชิกใช้ร่วมทุกสาขา)','err'); return; }
+    const m=STORE.find('members',id); if(!m) return;
+    UI.confirm2('ลบสมาชิก','ลบ "'+m.name+'" ('+m.phone+') ออกจากระบบ?\nแต้ม '+m.points+' แต้ม จะหายไปด้วย',
+      ()=>{ m.deletedAt=STORE.now(); MEMBER.sync(m); render(); UI.toast('ลบสมาชิกแล้ว','ok'); },true);
   }
 
   function renderPromo(){
@@ -6209,7 +6248,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {render,setTab,togglePin,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
+  return {render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -6391,7 +6430,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.63</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.64</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
