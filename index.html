@@ -3117,8 +3117,29 @@ const STORE = (()=>{
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
       settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
-      branchCounters:{'BR-001':{orderNo:1,receiptNo:1}}
+      branchCounters:{'BR-001':{orderNo:1,receiptNo:1}},
+      _isSeed:1
     };
+  }
+  // ติดธง _seed ทุกรายการตั้งต้น — กันเครื่องใหม่ดันเมนูตัวอย่างขึ้น cloud ทับร้านจริง
+  function markSeed(D){
+    try{ ['categories','products','modifiers','ingredients','members','promos','staff','tables','branches']
+      .forEach(k=>(D[k]||[]).forEach(o=>{ if(o) o._seed=1; })); }catch(e){}
+    return D;
+  }
+  // ข้อมูลจริงจาก cloud มาถึงแล้ว -> ทิ้งข้อมูลตั้งต้นที่ซ้ำซ้อน
+  function dropSeed(){
+    try{
+      const D=DB; let n=0;
+      ['categories','products','modifiers','ingredients','promos','tables','branches','staff'].forEach(k=>{
+        const arr=D[k]||[]; if(!arr.some(o=>o&&o._seed)) return;
+        const hasReal=arr.some(o=>o&&!o._seed);
+        if(!hasReal) return;                                  // ยังไม่มีของจริง เก็บตัวอย่างไว้ก่อน
+        const keep=arr.filter(o=>!(o&&o._seed)); n+=arr.length-keep.length; D[k]=keep;
+      });
+      if(n){ delete D._isSeed; save(); console.info('ลบข้อมูลตัวอย่าง '+n+' รายการ (มีข้อมูลจริงจาก cloud แล้ว)'); }
+      return n;
+    }catch(e){ return 0; }
   }
 
   function migrate(data){
@@ -3222,7 +3243,7 @@ const STORE = (()=>{
   function load(){
     try{
       const raw=localStorage.getItem(KEY);
-      if(!raw){ DB=seed(); stampBranches(DB); save(); return DB; }
+      if(!raw){ DB=markSeed(seed()); stampBranches(DB); save(); return DB; }
       let data=JSON.parse(raw);
       if(!data.meta || data.meta.version!==VERSION){ data=migrate(data); ensureHQ(data); DB=data; save(); return DB; }
       ensureHQ(data); DB=data; return DB;
@@ -3260,7 +3281,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,ensureHQ:()=>ensureHQ(DB)};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -6209,7 +6230,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.49</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.51</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6331,7 +6352,8 @@ const SETTINGS = (()=>{
           ${(CLOUD.hasShopCol&&!CLOUD.hasShopCol())?'<b style="color:var(--danger)">⚠️ ฐานข้อมูลยังไม่ได้ตั้งค่าแยกร้าน — กรุณารันไฟล์ SQL ก่อน (ตอนนี้ยังใช้ข้อมูลรวมกันอยู่)</b>':'<span style="color:var(--success);font-weight:600">✅ ระบบแยกร้านทำงานอยู่</span>'}</p>
         </div>
         <p style="font-size:14px;margin-bottom:10px">สถานะ: <b>${CLOUD.statusText()}</b>${CLOUD.isAuthed&&CLOUD.isAuthed()?` · 🔐 ${esc(CLOUD.authEmail()||'')}`:''}</p>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">📡 Realtime: ${CLOUD.rtStatusText?esc(CLOUD.rtStatusText()):'-'} · 📦 คิวรอซิงค์: <b>${CLOUD.pendingCount?CLOUD.pendingCount():0}</b> รายการ</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px">📡 Realtime: ${CLOUD.rtStatusText?esc(CLOUD.rtStatusText()):'-'} · 📦 คิวรอซิงค์: <b>${CLOUD.pendingCount?CLOUD.pendingCount():0}</b> รายการ
+          ${(CLOUD.pendingCount&&CLOUD.pendingCount()>0)?' <button class="sub-tab" style="padding:2px 8px;font-size:11px" onclick="SETTINGS.queueInfo()">🔍 ทำไมค้าง?</button>':''}</p>
         ${CLOUD.isAuthed&&CLOUD.isAuthed()
           ? `<div style="background:var(--bg);border:1px solid var(--success);border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">🔐 ล็อกอินบัญชีสาขาแล้ว: <b>${esc(CLOUD.authEmail())}</b> — ข้อมูลถูกกั้นตามสิทธิ์ DB <button class="sub-tab" style="color:var(--danger);margin-left:6px" onclick="SETTINGS.cloudSignOut()">ออกจากระบบ cloud</button></div>`
           : `<div style="background:var(--bg);border:1px dashed var(--border);border-radius:10px;padding:12px;margin-bottom:10px">
@@ -6456,6 +6478,35 @@ const SETTINGS = (()=>{
         UI.toast('ล้าง '+r.n+' รายการ · คืนพื้นที่ '+r.mb+' MB','ok');
         setTimeout(cleanup,300);
       });
+  }
+  // ดูว่าคิวค้างเพราะอะไร + จัดการได้
+  function queueInfo(){
+    const q=CLOUD.queueDump(), err=CLOUD.lastQError();
+    const by={}; q.forEach(j=>{ by[j.table]=(by[j.table]||0)+1; });
+    const orders=by['orders']||0, other=q.length-orders;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>📦 คิวรอซิงค์ '+q.length+' รายการ</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+
+        (err?('<div style="background:rgba(192,57,43,.1);border:1px solid #C0392B;border-radius:8px;padding:10px;margin-bottom:10px;font-size:13px">'+
+              '<b>สาเหตุ</b><br>ตาราง: <b>'+esc(err.table)+'</b><br>รหัส: <b>'+esc(err.code||'-')+'</b><br>'+esc(err.msg||'')+'</div>')
+            :'<p style="font-size:13px;color:var(--muted);margin-bottom:10px">ยังไม่มีข้อความผิดพลาด — อาจกำลังส่งอยู่ หรือยังไม่ได้ลองส่ง</p>')+
+        Object.keys(by).sort().map(t=>'<div style="display:flex;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px"><span style="flex:1">'+esc(t)+'</span><b>'+by[t]+'</b></div>').join('')+
+        '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">'+
+        (orders?('⚠️ มี <b>'+orders+'</b> บิลขายค้างอยู่ — <b>ห้ามล้าง</b> ต้องส่งขึ้น cloud ให้ได้ก่อน<br>'):'')+
+        (other?('ℹ️ อีก '+other+' รายการเป็นเมนู/ตั้งค่า ล้างทิ้งได้ ข้อมูลจริงอยู่บน cloud แล้ว'):'')+'</p>'+
+      '</div>'+
+      '<div class="modal-f">'+
+        '<button class="btn-gold" onclick="SETTINGS.queueRetry()">🔄 ลองส่งอีกครั้ง</button>'+
+        (other?'<button class="btn-ghost" onclick="SETTINGS.queueClear()">🗑️ ล้างเฉพาะที่ไม่ใช่บิลขาย</button>':'')+
+        '<button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button>'+
+      '</div>';
+    UI.open('genOverlay');
+  }
+  async function queueRetry(){ UI.toast('กำลังลองส่งใหม่…','ok'); await CLOUD.flushQ(); setTimeout(queueInfo,600); }
+  function queueClear(){
+    UI.confirm2('ล้างคิวที่ไม่ใช่บิลขาย?','บิลขายจะไม่ถูกแตะ\nรายการเมนู/ตั้งค่าที่ค้าง จะถูกลบจากคิว (ข้อมูลจริงอยู่บน cloud แล้ว)',
+      ()=>{ const n=CLOUD.queueClearNonOrders(); UI.toast('ล้าง '+n+' รายการออกจากคิว','ok'); setTimeout(queueInfo,300); });
   }
   function copyText(t){
     try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t); }catch(e){}
@@ -6609,7 +6660,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,shrinkImgs,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -6793,7 +6844,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
 const BRANCH = (()=>{
   function list(){ return STORE.get().branches||[]; }
   function cur(){ return STORE.curBranch(); }
-  function renderChip(){ try{ SETTINGS.applyBrandColor(); }catch(e){} const b=cur(); const el=$('#branchName'); if(el) el.textContent=b?b.name:'—'; const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
+  function renderChip(){ try{ SETTINGS.applyBrandColor(); }catch(e){} const b=cur(); const el=$('#branchName'); if(el) el.textContent=b?b.name:(STORE.bid()+' (กำลังโหลด…)'); const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
   function typeTh(t){ return t==='franchise'?'แฟรนไชส์':'เจ้าของเอง'; }
   function switcher(){
     if(!AUTH.isHQ()){ UI.toast('สลับสาขาได้เฉพาะผู้ดูแลระบบ (HQ) — ตั้งได้ที่ พนักงาน → ดูได้ทุกสาขา','err'); return; }
@@ -7323,22 +7374,30 @@ const CLOUD = (()=>{
     for(let i=q.length-1;i>=0;i--){ const k=q[i].table+':'+q[i].row.id; if(seen[k])continue; seen[k]=1; out.unshift(q[i]); }
     saveQ(out);
   }
-  let _flushing=false;
+  let _flushing=false, _qErr=null;
+  function lastQError(){ return _qErr; }
   async function flushQ(){
     if(status!=='online'||!client||_flushing) return;      // กันรันซ้อน (ถูกเรียกจาก 3 ทาง)
     _flushing=true;
     try{
-      const done=new Set();
+      const done=new Set(); let firstErr=null;
       for(const j of loadQ()){
         try{
           const r = (!authUser && j.table==='orders') ? await client.from(j.table).insert(j.row) : await client.from(j.table).upsert(j.row);
           if(!r || !r.error || r.error.code==='23505') done.add(j.table+':'+((j.row&&j.row.id)||''));
-        }catch(e){}
+          else if(!firstErr){ firstErr={table:j.table, code:r.error.code, msg:r.error.message};
+                              console.error('ส่งขึ้น cloud ไม่สำเร็จ',j.table,r.error); }
+        }catch(e){ if(!firstErr) firstErr={table:j.table, code:'EXC', msg:String(e&&e.message||e)}; }
       }
+      _qErr=firstErr;
       saveQ(loadQ().filter(j=>!done.has(j.table+':'+((j.row&&j.row.id)||''))));   // ลบเฉพาะที่สำเร็จ งานใหม่ระหว่างส่งไม่หาย
     } finally { _flushing=false; }
   }
   function pendingCount(){ return loadQ().length; }
+  function queueDump(){ try{ return loadQ().map(j=>({table:j.table, id:(j.row&&j.row.id)||''})); }catch(e){ return []; } }
+  function queueClearNonOrders(){                    // ล้างได้เฉพาะที่ไม่ใช่บิลขาย (บิล = เงินจริง ห้ามทิ้ง)
+    try{ const q=loadQ(); const keep=q.filter(j=>j.table==='orders'); saveQ(keep); return q.length-keep.length; }catch(e){ return 0; }
+  }
   // ---- ส่งออเดอร์ขึ้น cloud (เข้าคิวถ้าออฟไลน์/ล้มเหลว ไม่หาย) ----
   async function pushOrder(o){
     if(!o) return; o._uat=Date.now(); try{ STORE.save(); }catch(e){}       // ⭐ เซฟ _uat ลงเครื่อง
@@ -7358,6 +7417,7 @@ const CLOUD = (()=>{
   async function pushItem(table,obj){
     if(!obj) return;
     if(obj._strip){ console.warn('ข้ามการอัป: รายการนี้ถูกล้างรูปในเครื่อง (cloud ยังมีของจริง)'); return; }
+    if(obj._seed){ return; }                       // ⭐ ข้อมูลตัวอย่างของเครื่องใหม่ ห้ามขึ้น cloud
     obj._uat=Date.now(); try{ STORE.save(); }catch(e){}   // ⭐ เซฟ _uat ลงเครื่อง กัน cloud ทับของที่เพิ่งแก้
     let row=rowOf(obj,obj._uat);
     if(status==='online'&&client){
@@ -7387,7 +7447,7 @@ const CLOUD = (()=>{
       const master=['products','categories','ingredients','modifiers','tables_','members','promos','staff'];
       for(const [t,arr] of map){
         if(arr&&arr.length){
-          const safe=arr.filter(x=>!x._strip);        // ⭐ ของที่ถูกล้างรูป/สลิปในเครื่อง ห้ามเขียนทับ cloud
+          const safe=arr.filter(x=>!x._strip&&!x._seed);   // ⭐ ของที่ถูกล้าง / ข้อมูลตัวอย่าง ห้ามขึ้น cloud
           if(safe.length){
             let rows=safe.map(x=>rowOf(x,now));
             let r=await client.from(t).upsert(rows);
@@ -7588,6 +7648,7 @@ const CLOUD = (()=>{
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
+      try{ STORE.dropSeed(); }catch(e){}     // ⭐ ได้ข้อมูลจริงแล้ว -> ทิ้งเมนู/พนักงานตัวอย่างของเครื่องใหม่
       try{ STORE.ensureHQ(); }catch(e){}     // ⭐ ดึงรายชื่อจากส่วนกลางมาแล้ว -> ถอด HQ ชั่วคราวของเครื่องสาขาทิ้ง
       STORE.save();
       try{ BO.dedupeMenu(true); }catch(e){}   // ล้างข้อมูลซ้ำอัตโนมัติหลัง sync (กันของเก่าใน cloud งอกกลับ)
@@ -7599,7 +7660,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,archCount,ensureRange,archFrom,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
