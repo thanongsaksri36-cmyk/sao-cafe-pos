@@ -3732,7 +3732,7 @@ const POS = (()=>{
     if(s.service>0) html+=`<div class="sr"><span>Service ${m.serviceCharge}%</span><span>${STORE.baht(s.service)}</span></div>`;
     if(s.vat>0) html+=`<div class="sr"><span>VAT ${m.vatRate}%${m.vatIncluded?' (รวมแล้ว)':''}</span><span>${STORE.baht(s.vat)}</span></div>`;
     html+=`<div class="sr tot"><span>สุทธิ</span><span>${STORE.baht(s.total)}</span></div>`;
-    $('#summary').innerHTML=html;
+    $('#summary').innerHTML=bdayBanner()+html;
   }
   // ---- พักบิล / เรียกคืน ----
   function hold(){
@@ -3759,6 +3759,20 @@ const POS = (()=>{
   function getState(){ return {cart,orderType,discount,member,orderNo,calc}; }
   function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
   function setDiscount(d){ discount=d; renderCart(); }
+  // แถบ 🎂 เตือนพนักงาน — โผล่ทันทีที่ผูกสมาชิกที่เข้าเงื่อนไข
+  function bdayBanner(){
+    try{
+      if(!member) return '';
+      if(discount && discount.bdayTier) return '';
+      const k=MEMBER.bdTier(member); if(!k) return '';
+      const o=MEMBER.bdOffer(member); if(!o) return '';
+      return '<div style="background:rgba(192,57,43,.10);border:1.5px solid var(--danger);border-radius:12px;padding:10px 12px;margin-bottom:10px">'
+        +'<div style="font-size:13px;font-weight:700;color:var(--danger);margin-bottom:6px">🎂 '+esc(member.name||'ลูกค้า')
+        +(k==='day'?' วันเกิดวันนี้!':' เดือนนี้วันเกิด')+'</div>'
+        +'<button class="btn-gold" style="width:100%;padding:9px;border-radius:9px;background:var(--danger)" onclick="MEMBER.applyBirthday(\''+member.id+'\')">'
+        +'กดใช้ส่วนลด '+esc(MEMBER.bdLabelOf(o))+'</button></div>';
+    }catch(e){ return ''; }
+  }
   function setMember(m){ member=m; renderCart(); }
   function getCart(){ return cart; }
   function getMember(){ return member; }
@@ -3909,9 +3923,25 @@ const PROMO = (()=>{
    ============================================================ */
 const PAY = (()=>{
   let method='cash', cashIn=0;
+  let _bdAsked=false;
+  function resetBdayAsk(){ _bdAsked=false; }
   function open(){
     const cart=POS.getCart();
     if(!cart.length){ UI.toast('ยังไม่มีรายการ','err'); return; }
+    // 🎂 กันลืมส่วนลดวันเกิด — เตือนครั้งเดียวต่อบิล
+    try{
+      const _m=POS.getMember(), _d=POS.getDiscount();
+      if(_m && !(_d&&_d.bdayTier) && !_bdAsked){
+        const k=MEMBER.bdTier(_m), o=MEMBER.bdOffer(_m);
+        if(k&&o){
+          _bdAsked=true;
+          UI.confirm2('🎂 ลูกค้าคนนี้'+(k==='day'?'วันเกิดวันนี้':'เดือนนี้วันเกิด'),
+            (_m.name||'ลูกค้า')+' ยังไม่ได้ใช้ส่วนลด '+MEMBER.bdLabelOf(o)+'\n\nกดยืนยัน = ใช้ส่วนลดแล้วค่อยชำระ\nกดยกเลิก = ข้ามไปชำระเลย',
+            ()=>{ MEMBER.applyBirthday(_m.id); setTimeout(open,250); });
+          return;
+        }
+      }
+    }catch(e){}
     if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะ + นับเงินเข้าก่อนเริ่มขาย','err'); NAV.go('shift'); return; }
     method='cash'; cashIn=0;
     const total=POS.calc().total;
@@ -3993,6 +4023,8 @@ const PAY = (()=>{
     STORE.get().orders.push(order);
     INV.deduct(order);                 // ตัดสต็อกตามสูตร
     if(member) MEMBER.earn(member,order); // สะสมแต้ม
+    try{ if(member && discount && discount.bdayTier) MEMBER.markBirthdayUsed(member.id, discount.bdayTier); }catch(e){}
+    try{ PAY.resetBdayAsk(); }catch(e){}
     if(st){ st.sales=(st.sales||0)+s.total; } // ยอดต่อพนักงาน
     SHIFT.recordSale(order);           // บันทึกเข้ากะ
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(order),'sale');
@@ -4107,7 +4139,7 @@ const PAY = (()=>{
       if(!q||q.indexOf('<svg')<0) return '';
       return '<div class="rdiv"></div>'
         +'<div class="rc" style="padding:2px 0 6px">'
-        +'<b style="font-size:13px">🎂 '+(bonus>0?('สมัครครั้งแรก รับ '+(pts+bonus)+' แต้ม'):('สแกนรับ '+pts+' แต้ม จากบิลนี้'))+'</b>'
+        +'<b style="font-size:14px">'+(bonus>0?('สมัครครั้งแรก รับ '+(pts+bonus)+' แต้ม'):('สแกนรับ '+pts+' แต้ม จากบิลนี้'))+'</b>'
         +'<div style="margin:5px auto;width:150px">'+q+'</div>'
         +'<small>'+(bonus>0?('รวมโบนัสสมัครใหม่ '+bonus+' แต้ม · '):'')+'กรอกเบอร์ + วันเกิด รับส่วนลดวันเกิด<br>ใช้ได้ภายใน 24 ชั่วโมง</small></div>';
     }catch(e){ return ''; }
@@ -4183,6 +4215,7 @@ const PAY = (()=>{
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
+        ${joinQR(order)}
         <div class="rc">${esc(m.shopName)} · ขอบคุณค่ะ<br>${esc(STORE.get().settings.receiptFooter)}</div>
       </div>`;
   }
@@ -4193,7 +4226,7 @@ const PAY = (()=>{
     if(st.kdsServeSlip) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
     setTimeout(()=>printDocs(docs),200);
   }
-  return {open,setMethod,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
+  return {open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
 })();
 
 /* ============================================================
@@ -4280,20 +4313,58 @@ const MEMBER = (()=>{
         ${rewards.map(r=>`<div class="disc-opt" onclick="MEMBER.redeemReward('${mem.id}','${r.id}')"><span>${esc(r.name)}</span><span style="color:var(--gold);font-weight:600">${r.points} แต้ม</span></div>`).join('')}`:''}
     </div>`;
   }
-  function bp(){ return STORE.get().settings.birthdayPromo||{value:0}; }
-  function birthdayEligible(mem){
-    const b=bp(); if(!b||!(b.value>0)||!mem.birthday) return false;
-    const p=mem.birthday.split('/'); const d=parseInt(p[0]), mo=parseInt(p[1]); const t=new Date();
-    if(isNaN(mo)) return false;
-    if((b.mode||'month')==='day') return d===t.getDate() && mo===(t.getMonth()+1);
-    return mo===(t.getMonth()+1);   // ทั้งเดือนเกิด
+  // โปรวันเกิด 2 ระดับ — วันเกิดพอดี / วันอื่นในเดือนเกิด
+  // รองรับค่าเก่า {value,type,mode} อัตโนมัติ
+  function bp(){
+    const raw=STORE.get().settings.birthdayPromo||{};
+    if(raw.day||raw.month) return raw;                       // รูปแบบใหม่
+    const v=Number(raw.value||0), t=raw.type||'percent';     // แปลงจากของเดิม
+    return { day:{value:v,type:t},
+             month:(raw.mode==='day')?{value:0,type:t}:{value:v,type:t},
+             monthOnce:false };
   }
-  function birthdayLabel(){ const b=bp(); return b.type==='amount'?('ลด ฿'+b.value):('ลด '+b.value+'%'); }
+  const bdNum=(x)=>({value:Number((x||{}).value||0), type:((x||{}).type||'percent')});
+  // คืน 'day' | 'month' | '' — ว่าลูกค้าคนนี้เข้าเงื่อนไขระดับไหนวันนี้
+  function bdTier(mem){
+    if(!mem||!mem.birthday) return '';
+    const p=String(mem.birthday).split('/'); const d=parseInt(p[0]), mo=parseInt(p[1]);
+    if(isNaN(mo)) return '';
+    const t=new Date(); if(mo!==(t.getMonth()+1)) return '';
+    const b=bp();
+    if(d===t.getDate() && bdNum(b.day).value>0) return 'day';
+    if(bdNum(b.month).value>0){
+      if(b.monthOnce && (((mem.bdayUsed||{}).month)===t.getFullYear())) return '';   // ใช้ไปแล้วปีนี้
+      return 'month';
+    }
+    return '';
+  }
+  function bdOffer(mem){ const k=bdTier(mem); return k?bdNum(bp()[k]):null; }
+  function birthdayEligible(mem){ return !!bdTier(mem); }
+  function bdLabelOf(o){ return o? (o.type==='amount'?('ลด ฿'+o.value):('ลด '+o.value+'%')) : ''; }
+  function birthdayLabel(){ return bdLabelOf(bdNum(bp().day)); }
   function applyBirthday(id){
-    const m=STORE.find('members',id), b=bp(); if(!m||!(b.value>0)) return;
+    const m=STORE.find('members',id); if(!m) return;
+    const k=bdTier(m); if(!k){ UI.toast('ไม่เข้าเงื่อนไขโปรวันเกิด','err'); return; }
+    const o=bdNum(bp()[k]);
     POS.setMember(m);
-    POS.setDiscount({type:b.type, value:b.type==='amount'?STORE.toSatang(b.value):b.value, label:'🎂 วันเกิด'});
-    UI.close('genOverlay'); UI.toast('ใช้ส่วนลดวันเกิด '+birthdayLabel()+' 🎂','ok');
+    POS.setDiscount({type:o.type, value:o.type==='amount'?STORE.toSatang(o.value):o.value,
+                     label:(k==='day'?'🎂 วันเกิด':'🎂 เดือนเกิด'), bdayTier:k, bdayMemberId:m.id});
+    try{ UI.close('genOverlay'); }catch(e){}
+    UI.toast('ใช้ส่วนลด'+(k==='day'?'วันเกิด':'เดือนเกิด')+' '+bdLabelOf(o)+' 🎂','ok');
+    try{ POS.renderCart(); }catch(e){}
+  }
+  // เรียกหลังปิดการขาย — จำว่าปีนี้ใช้ไปแล้ว
+  function markBirthdayUsed(memberId,tier){
+    const m=STORE.find('members',memberId); if(!m||!tier) return;
+    m.bdayUsed=m.bdayUsed||{}; m.bdayUsed[tier]=new Date().getFullYear();
+    sync(m);
+  }
+  // รายชื่อวันเกิดเดือนนี้ (ไว้ส่งโปรล่วงหน้า)
+  function birthdayThisMonth(){
+    const mo=new Date().getMonth()+1;
+    return (STORE.get().members||[]).filter(m=>{ if(!m||m.deletedAt||!m.birthday) return false;
+      const p=String(m.birthday).split('/'); return parseInt(p[1])===mo; })
+      .sort((a,b)=>(parseInt(String(a.birthday).split('/')[0])||0)-(parseInt(String(b.birthday).split('/')[0])||0));
   }
   function use(id){ const m=STORE.find('members',id); if(m){ POS.setMember(m); UI.close('genOverlay'); UI.toast('ใช้สมาชิก '+m.name,'ok'); } }
   function redeemPts(id){
@@ -4320,7 +4391,7 @@ const MEMBER = (()=>{
     POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม'});
     POS.setMember(mem); DISC.showMember(mem); UI.toast('แลกแต้มสำเร็จ ลด ฿50','ok');
   }
-  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
+  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,bdTier,bdOffer,bdLabelOf,markBirthdayUsed,birthdayThisMonth,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
 })();
 
 /* ============================================================
@@ -6193,17 +6264,36 @@ const BO = (()=>{
 
   function renderPromo(){
     const promos=STORE.scoped('promos').filter(p=>!p.deletedAt);
-    const bd=STORE.get().settings.birthdayPromo||{value:0,type:'percent',mode:'month'};
+    const _bdRaw=STORE.get().settings.birthdayPromo||{};
+    const bd=(_bdRaw.day||_bdRaw.month)?_bdRaw:{ day:{value:Number(_bdRaw.value||0),type:_bdRaw.type||'percent'},
+                month:(_bdRaw.mode==='day')?{value:0,type:_bdRaw.type||'percent'}:{value:Number(_bdRaw.value||0),type:_bdRaw.type||'percent'},
+                monthOnce:false };
+    const _bdOn=(Number((bd.day||{}).value||0)>0)||(Number((bd.month||{}).value||0)>0);
+    const _sel=(a,b)=>a===b?'selected':'';
+    const bdayList=MEMBER.birthdayThisMonth();
     $('#boBody').innerHTML=`
       <div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
-        <h3 style="font-size:15px;margin-bottom:10px">🎂 โปรโมชั่นวันเกิดสมาชิก ${(bd.value>0)?'<span class="pill ok">เปิด</span>':'<span class="pill no">ปิด</span>'}</h3>
+        <h3 style="font-size:15px;margin-bottom:10px">🎂 โปรโมชั่นวันเกิดสมาชิก ${_bdOn?'<span class="pill ok">เปิด</span>':'<span class="pill no">ปิด</span>'}</h3>
         <div class="row2">
-          <div class="field" style="margin:0"><label>ลด (ใส่ 0 = ปิด)</label><input id="bdVal" type="number" min="0" value="${bd.value||0}"></div>
-          <div class="field" style="margin:0"><label>หน่วย</label><select id="bdType"><option value="percent" ${bd.type==='percent'?'selected':''}>เปอร์เซ็นต์ (%)</option><option value="amount" ${bd.type==='amount'?'selected':''}>บาท</option></select></div>
+          <div class="field" style="margin:0"><label>🎂 ลด<b>วันเกิดพอดี</b> (0 = ปิด)</label><input id="bdVal" type="number" min="0" value="${(bd.day||{}).value||0}"></div>
+          <div class="field" style="margin:0"><label>หน่วย</label><select id="bdType"><option value="percent" ${_sel((bd.day||{}).type,'percent')}>เปอร์เซ็นต์ (%)</option><option value="amount" ${_sel((bd.day||{}).type,'amount')}>บาท</option></select></div>
+          <div class="field" style="margin:0"><label>📅 ลด<b>วันอื่นในเดือนเกิด</b> (0 = ไม่ให้)</label><input id="bdMVal" type="number" min="0" value="${(bd.month||{}).value||0}"></div>
+          <div class="field" style="margin:0"><label>หน่วย</label><select id="bdMType"><option value="percent" ${_sel((bd.month||{}).type,'percent')}>เปอร์เซ็นต์ (%)</option><option value="amount" ${_sel((bd.month||{}).type,'amount')}>บาท</option></select></div>
         </div>
-        <div class="field" style="margin-top:8px"><label>ช่วงที่ใช้ได้</label><select id="bdMode"><option value="month" ${bd.mode!=='day'?'selected':''}>ทั้งเดือนเกิด</option><option value="day" ${bd.mode==='day'?'selected':''}>เฉพาะวันเกิด</option></select></div>
+        <div class="field" style="margin-top:8px"><label>ส่วนลดเดือนเกิด ใช้ได้บ่อยแค่ไหน</label><select id="bdOnce">
+          <option value="1" ${bd.monthOnce?'selected':''}>ครั้งเดียวต่อปี (แนะนำ)</option>
+          <option value="0" ${bd.monthOnce?'':'selected'}>ทุกครั้งที่มาในเดือนเกิด</option></select>
+          <div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">ส่วนลด "วันเกิดพอดี" ใช้ได้เสมอ ไม่ถูกจำกัดด้วยข้อนี้</div></div>
         <button class="btn-gold" style="margin-top:10px;padding:10px 18px;border-radius:10px" onclick="BO.saveBdayPromo()">💾 บันทึกโปรวันเกิด</button>
-        <p style="color:var(--muted);font-size:12px;margin-top:8px">เปิดบิลสมาชิกที่ตรงวันเกิด/เดือนเกิด → จะมีปุ่ม 🎂 ใช้ส่วนลดวันเกิดให้กดอัตโนมัติ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:8px">เปิดบิลสมาชิกที่ตรงวันเกิด/เดือนเกิด → แถบ 🎂 จะขึ้นบนตะกร้าเอง · ถ้าลืมกด ระบบเตือนตอนกดชำระเงิน</p>
+        ${bdayList.length?`<div style="border-top:1px dashed var(--line);margin-top:12px;padding-top:10px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:6px">🎉 วันเกิดเดือนนี้ ${bdayList.length} คน</div>
+          <div style="max-height:190px;overflow:auto">${bdayList.map(m=>`<div style="display:flex;gap:8px;align-items:center;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line)">
+            <span style="width:40px;color:var(--gold);font-weight:700">${esc(String(m.birthday).split('/')[0])}</span>
+            <span style="flex:1">${esc(m.name||'-')}</span>
+            <small style="color:var(--muted)">${esc(MEMBER.maskPhone(m.phone))}</small>
+            <small style="color:${(m.bdayUsed||{}).month===new Date().getFullYear()?'var(--success)':'var(--muted)'}">${(m.bdayUsed||{}).month===new Date().getFullYear()?'ใช้แล้ว':'ยังไม่ใช้'}</small>
+          </div>`).join('')}</div></div>`:''}
       </div>
       <h3 style="font-size:15px;margin-bottom:8px">🏷️ โค้ดส่วนลด / Happy Hour</h3>
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="add-fab" onclick="BO.editPromo()">+ เพิ่มโปรโมชั่น</button></div>
@@ -6220,7 +6310,11 @@ const BO = (()=>{
   }
   function saveBdayPromo(){
     const s=STORE.get().settings;
-    s.birthdayPromo={value:Math.max(0,parseFloat(($('#bdVal')||{}).value)||0),type:($('#bdType')||{}).value||'percent',mode:($('#bdMode')||{}).value||'month'};
+    s.birthdayPromo={
+      day:  {value:Math.max(0,parseFloat(($('#bdVal') ||{}).value)||0), type:($('#bdType') ||{}).value||'percent'},
+      month:{value:Math.max(0,parseFloat(($('#bdMVal')||{}).value)||0), type:($('#bdMType')||{}).value||'percent'},
+      monthOnce: (($('#bdOnce')||{}).value||'1')==='1'
+    };
     STORE.save(); render(); UI.toast('บันทึกโปรวันเกิดแล้ว','ok');
   }
   function togglePromo(id){ const p=STORE.find('promos',id); if(p){ p.active=!p.active; STORE.save(); CLOUD.pushItem('promos',p); render(); } }
@@ -6560,7 +6654,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.68</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.70</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
