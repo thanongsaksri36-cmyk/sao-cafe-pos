@@ -6391,7 +6391,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.62</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.63</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7084,12 +7084,17 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
   }
   async function test(){
     const st=STORE.get().settings;
-    if(!st.tgNotify){ UI.toast('เปิดสวิตช์แจ้งเตือนก่อน แล้วกดบันทึก','err'); return; }
-    if(!token()){ UI.toast('ใส่ Bot Token ก่อน (จาก @BotFather)','err'); return; }
-    if(!chat()){ UI.toast('ใส่ Chat ID ของสาขานี้ก่อน','err'); return; }
+    const viaFn = CLOUD.isAuthed && CLOUD.isAuthed();      // token อยู่ที่ server แล้ว ไม่ต้องมีในเครื่อง
+    // ไล่เช็คทีละข้อ บอกให้ชัดว่าติดตรงไหน
+    if(!st.tgNotify){ UI.toast('① เปิดสวิตช์ "เปิดแจ้งเตือน" เป็น เปิด ก่อน แล้วกดบันทึก','err'); return; }
+    if(!FEAT.on('lineNotify')){ UI.toast('② สาขานี้ยังไม่ได้เปิดแพ็กเกจ 💬 แจ้งเตือนเข้ามือถือ — ไปที่ 🎁 แพ็กเกจเสริม','err'); return; }
+    if(!chat()){ UI.toast('③ ยังไม่ได้ผูกกลุ่ม Telegram — กดปุ่ม 🔗 หากลุ่มอัตโนมัติ','err'); return; }
+    if(!viaFn && !token()){ UI.toast('④ ยังไม่ได้เข้าสู่ระบบ cloud และไม่มี Bot Token ในเครื่อง','err'); return; }
     UI.toast('กำลังส่งทดสอบ...','ok');
+    _lastErr='';
     const ok=await send('🔔 ทดสอบแจ้งเตือนจากระบบ POS ✅');
-    UI.toast(ok?'ส่งแล้ว! เช็คใน Telegram':'ส่งไม่สำเร็จ — เช็ค Token/Chat ID (ผู้รับต้องกด Start บอทก่อน)', ok?'ok':'err');
+    if(ok){ UI.toast('ส่งแล้ว! เช็คใน Telegram '+(_fnOk?'(ผ่าน server ✅ ปลอดภัย)':'(ส่งตรงจากเครื่องนี้)'),'ok'); }
+    else  { UI.toast('ส่งไม่สำเร็จ — '+(_lastErr||'เช็คกลุ่ม/บอท (ต้องชวนบอทเข้ากลุ่มก่อน)'),'err'); }
   }
   // สแกนออเดอร์ค้างครัวเกินเวลาที่ตั้ง -> แจ้งครั้งเดียวต่อออเดอร์
   function slowScan(){
