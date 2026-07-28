@@ -3115,7 +3115,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',qrOnlinePay:false,slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}},
       _isSeed:1
@@ -4445,14 +4445,20 @@ const QR = (()=>{
   }
   function chQty(pid,d){ const c=qcart.find(x=>x.productId===pid); if(!c)return; c.qty+=d; if(c.qty<=0) qcart=qcart.filter(x=>x.productId!==pid); if(!qcart.length){ render(); return; } renderCartReview(); }
   function setTable(t){ qtable=t; renderCartReview(); }
-  function toPay(){ if(!qcart.length) return; stage='pay'; renderPay(); }
+  function toPay(){
+    if(!qcart.length) return;
+    // ปิดจ่ายออนไลน์อยู่ -> ข้ามหน้าเลือกวิธี ส่งเป็น "จ่ายที่เคาน์เตอร์" เลย ลูกค้ากดน้อยลง 1 ครั้ง
+    if(!STORE.get().settings.qrOnlinePay){ payBy('cash'); return; }
+    stage='pay'; renderPay();
+  }
   function renderPay(){
     const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">เลือกวิธีชำระ</div><small>${qtable?'โต๊ะ '+esc(qtable)+' · ':''}ยอด ${STORE.baht(sub)}</small></div>
       <div style="flex:1;overflow-y:auto;padding:20px;max-width:480px;margin:0 auto;width:100%;text-align:center">
+        ${STORE.get().settings.qrOnlinePay?`
         <button class="qrc-checkout" style="background:var(--green);margin-bottom:14px" onclick="QR.payBy('promptpay')">📱 สแกนจ่าย PromptPay</button>
-        <button class="qrc-checkout" style="background:var(--gold);margin-bottom:14px" onclick="QR.payBy('transfer')">🏦 โอนเงิน</button>
+        <button class="qrc-checkout" style="background:var(--gold);margin-bottom:14px" onclick="QR.payBy('transfer')">🏦 โอนเงิน</button>`:''}
         <button class="qrc-checkout" style="background:var(--text);margin-bottom:14px" onclick="QR.payBy('cash')">💵 จ่ายเงินสดที่เคาน์เตอร์</button>
         <button class="btn btn-ghost" style="width:100%" onclick="QR.checkout()">← กลับไปตะกร้า</button>
       </div>`;
@@ -4600,20 +4606,71 @@ const QR = (()=>{
     STORE.save(); CLOUD.pushOrder(order); PENDING.updateBadge();
     stage='done'; renderTrack(order,method,!!_slip);
   }
+  // ---- ติดตามสถานะออเดอร์แบบสด (ลูกค้าเห็นเองว่าถึงไหนแล้ว) ----
+  let _trackTimer=null, _trackOrder=null;
+  const STEPS=[
+    {k:'pay',   t:'รอชำระเงิน', ic:'🧾'},
+    {k:'making',t:'กำลังทำ',    ic:'🍳'},
+    {k:'ready', t:'พร้อมรับ',   ic:'🔔'}
+  ];
+  function stepOf(st,pay){
+    if(st==='void') return -1;
+    if(st==='done') return 3;
+    if(st==='ready') return 2;
+    if(pay==='paid') return 1;
+    return 0;
+  }
+  function stopTrack(){ if(_trackTimer){ clearInterval(_trackTimer); _trackTimer=null; } }
+  async function pollTrack(){
+    if(!_trackOrder) return;
+    try{
+      const r=await CLOUD.orderStatus(_trackOrder.id);
+      if(r&&r.status){
+        const before=stepOf(_trackOrder.status,_trackOrder.payStatus);
+        _trackOrder.status=r.status; _trackOrder.payStatus=r.payStatus;
+        const now=stepOf(r.status,r.payStatus);
+        if(now!==before){ paintTrack(); if(now===2) try{ navigator.vibrate&&navigator.vibrate([120,60,120]); }catch(e){} }
+        if(now>=3||now<0) stopTrack();
+      }
+    }catch(e){}
+  }
   function renderTrack(order,method,hasSlip){
-    const open=method==='open';
-    const icon=open?'🍳':'🧾';
-    const msg=open?'อาหารกำลังเข้าครัว · ชำระเงินตอนกลับที่เคาน์เตอร์':(method==='cash'?'กรุณาชำระเงินสดที่เคาน์เตอร์':(hasSlip?'พนักงานกำลังตรวจสลิปที่คุณแนบ 📎':'พนักงานกำลังตรวจสอบการชำระเงิน'));
-    const note=open?'ขอบคุณค่ะ พบกันตอนชำระเงิน 😊':'ออเดอร์จะเข้าครัวหลังพนักงานยืนยันการชำระเงิน';
-    $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:40px">
-      <div style="font-size:72px">${icon}</div>
-      <h2 style="font-family:'Playfair Display',serif;margin:14px 0">${open?'รับออเดอร์แล้ว!':'ส่งคำสั่งแล้ว!'}</h2>
-      <p style="font-size:20px">ออเดอร์ <b style="color:var(--gold)">${esc(order.no)}</b>${order.table?' · โต๊ะ '+esc(order.table):''}</p>
-      <p style="color:var(--muted);margin:10px 0 26px">${msg}<br>ยอดรวม <b>${STORE.baht(order.total)}</b><br><small>${note}</small></p>
+    _trackOrder={id:order.id,no:order.no,table:order.table,total:order.total,status:order.status,payStatus:order.payStatus,method:method,hasSlip:!!hasSlip};
+    paintTrack(); stopTrack(); _trackTimer=setInterval(pollTrack,8000); setTimeout(pollTrack,2500);
+  }
+  function paintTrack(){
+    const o=_trackOrder; if(!o) return;
+    const cur=stepOf(o.status,o.payStatus);
+    if(cur<0){
+      $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:40px">
+        <div style="font-size:72px">❌</div><h2 style="margin:14px 0">ออเดอร์ถูกยกเลิก</h2>
+        <p style="color:var(--muted)">กรุณาติดต่อพนักงานที่เคาน์เตอร์</p>
+        <button class="qrc-checkout" style="max-width:240px;margin:18px auto 0" onclick="QR.render()">สั่งใหม่</button></div>`;
+      return;
+    }
+    const bar=STEPS.map((st,i)=>{
+      const done=cur>i, on=cur===i;
+      const col=done?'var(--green)':(on?'var(--gold)':'var(--line)');
+      const txt=(done||on)?'#fff':'var(--muted)';
+      return `<div style="flex:1;text-align:center">
+        <div style="width:44px;height:44px;border-radius:50%;background:${col};color:${txt};display:flex;align-items:center;justify-content:center;font-size:20px;margin:0 auto 6px${on?';box-shadow:0 0 0 5px rgba(166,124,61,.22)':''}">${done?'✓':st.ic}</div>
+        <small style="color:${on?'var(--gold)':'var(--muted)'};font-weight:${on?'600':'400'}">${st.t}</small></div>`;
+    }).join('<div style="align-self:flex-start;margin-top:22px;flex:0 0 22px;height:2px;background:var(--line)"></div>');
+    const head = cur>=3 ? {ic:'🎉',t:'รับเครื่องดื่มแล้ว',m:'ขอบคุณที่อุดหนุนค่ะ 😊'}
+               : cur===2 ? {ic:'🔔',t:'พร้อมรับแล้ว!',m:'เชิญรับที่เคาน์เตอร์ได้เลยค่ะ'}
+               : cur===1 ? {ic:'🍳',t:'กำลังทำให้อยู่',m:'อีกสักครู่นะคะ'}
+               : {ic:'🧾',t:'รับออเดอร์แล้ว',m:'กรุณาชำระเงินที่เคาน์เตอร์'};
+    $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:32px 20px;max-width:460px;width:100%">
+      <div style="font-size:64px">${head.ic}</div>
+      <h2 style="font-family:'Playfair Display',serif;margin:10px 0 4px">${head.t}</h2>
+      <p style="font-size:19px;margin:0">ออเดอร์ <b style="color:var(--gold)">${esc(o.no)}</b>${o.table?' · โต๊ะ '+esc(o.table):''}</p>
+      <p style="color:var(--muted);margin:6px 0 22px">ยอดรวม <b>${STORE.baht(o.total)}</b></p>
+      <div style="display:flex;align-items:flex-start;margin-bottom:18px">${bar}</div>
+      <p style="color:var(--muted);margin-bottom:22px">${head.m}<br><small style="opacity:.7">หน้านี้อัปเดตสถานะให้อัตโนมัติ · เปิดค้างไว้ได้เลย</small></p>
       <button class="qrc-checkout" style="max-width:240px;margin:0 auto" onclick="QR.render()">สั่งเพิ่ม</button>
     </div>`;
   }
-  return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,saveQR,uploadSlip,attachManual,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
+  return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,stopTrack,saveQR,uploadSlip,attachManual,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
 })();
 
 /* ============================================================
@@ -6271,7 +6328,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.54</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.55</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6320,6 +6377,7 @@ const SETTINGS = (()=>{
           </div>`:''}
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
+          <div class="field"><label>💳 ให้ลูกค้าจ่ายออนไลน์เอง (PromptPay / โอน + แนบสลิป)</label><select id="setQrOnlinePay"><option value="0" ${!s.qrOnlinePay?'selected':''}>ปิด — จ่ายที่เคาน์เตอร์อย่างเดียว (ประหยัดพื้นที่ DB)</option><option value="1" ${s.qrOnlinePay?'selected':''}>เปิด — ลูกค้าโอนเองได้ (เก็บรูปสลิป กินพื้นที่มาก)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">รูปสลิป 1 ใบ ≈ 300 KB · Supabase ฟรี 500 MB → เก็บได้ ~1,600 ใบ · เปิดเมื่อพร้อมอัปแพ็กเกจ</div></div>
           <div class="field"><label>🧾 ตรวจสลิปอัตโนมัติ (SlipOK · ต้องตั้ง Edge Function ก่อน)</label><select id="setSlipVerify"><option value="0" ${!s.slipVerify?'selected':''}>ปิด (พนักงานตรวจเอง)</option><option value="1" ${s.slipVerify?'selected':''}>เปิด (ลูกค้าแนบสลิป ระบบตรวจให้)</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">เปิดแล้วลูกค้าโอน→แนบสลิป→ผ่านเข้าครัวอัตโนมัติ · ไม่ผ่าน→ส่งพนักงานตรวจมือ</div></div>
           <div class="field"><label>🔒 ล็อกหน้าจออัตโนมัติเมื่อไม่ใช้งาน</label>
             <select id="setSession">${[['0','ไม่ล็อกอัตโนมัติ'],['10','10 นาที'],['30','30 นาที'],['60','1 ชั่วโมง'],['240','4 ชั่วโมง'],['720','12 ชั่วโมง']].map(([v,t])=>`<option value="${v}" ${String(s.sessionTimeoutMin||0)===v?'selected':''}>${t}</option>`).join('')}</select></div>
@@ -6426,7 +6484,8 @@ const SETTINGS = (()=>{
     const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
-    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value; { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
+    s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
+    { const qo=$('#setQrOnlinePay'); if(qo) s.qrOnlinePay=qo.value==='1'; } { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
@@ -7610,6 +7669,19 @@ const CLOUD = (()=>{
       return {ok:true,n};
     }catch(e){ return {ok:false,msg:String(e&&e.message||e)}; }
   }
+  // ลูกค้า QR ถามสถานะออเดอร์ตัวเอง (ต้องรู้ id ที่เดาไม่ได้) — ผ่าน RPC ไม่เปิดตาราง orders ให้ anon
+  async function orderStatus(id){
+    if(!client||!id) return null;
+    try{
+      const r=await client.rpc('qr_order_status',{p_id:String(id)});
+      if(r&&!r.error&&r.data&&r.data.length){ const x=r.data[0]; return {status:x.status,payStatus:x.pay_status}; }
+    }catch(e){}
+    try{ // สำรอง: ถ้ายังไม่ได้สร้าง RPC และเครื่องนี้ล็อกอินอยู่
+      const r=await client.from('orders').select('data').eq('id',id).limit(1);
+      if(r&&!r.error&&r.data&&r.data.length){ const o=r.data[0].data||{}; return {status:o.status,payStatus:o.payStatus}; }
+    }catch(e){}
+    return null;
+  }
   function archCount(){ try{ return (STORE.get().orders||[]).filter(o=>o._arch).length; }catch(e){ return 0; } }
   // จำว่าโหลดย้อนหลังมาถึงวันไหนแล้ว จะได้ไม่ยิงซ้ำ
   let _archFrom=Infinity;
@@ -7706,7 +7778,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,orderStatus,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
