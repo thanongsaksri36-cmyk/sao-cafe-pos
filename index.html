@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1B3A2F">
 <title>SAO CAFE — ระบบ POS ร้านกาแฟ</title>
+
+<!-- ===== ติดตั้งเป็นแอปบนหน้าจอโฮม (PWA) ===== -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="application-name" content="SAO POS">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SAO POS">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -34,7 +44,10 @@ button{font-family:'Prompt';cursor:pointer;border:none}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
 
 /* ---------- Header ---------- */
-header{background:var(--green);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;flex-shrink:0;box-shadow:0 2px 12px rgba(27,58,47,.25);z-index:56}
+header{background:var(--green);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;flex-shrink:0;
+  padding-top:calc(8px + env(safe-area-inset-top,0px));
+  padding-left:calc(16px + env(safe-area-inset-left,0px));
+  padding-right:calc(16px + env(safe-area-inset-right,0px));box-shadow:0 2px 12px rgba(27,58,47,.25);z-index:56}
 .brand{display:flex;align-items:center;gap:12px}
 .logo{font-family:'Playfair Display',serif;font-size:32px;font-weight:700;letter-spacing:1px}
 .logo small{display:block;font-family:'Prompt';font-size:12px;letter-spacing:4px;color:var(--gold-light);font-weight:400;text-align:center;margin-top:-2px}
@@ -3304,6 +3317,80 @@ const STORE = (()=>{
   }
   function atHQ(){ return bid()===hqBid(); }
   return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
+})();
+
+/* ============================================================
+   1.4 PWA — ติดตั้งเป็นแอปบนหน้าจอโฮม (เต็มจอ ไม่มีแถบ URL)
+   ============================================================ */
+const PWA = (()=>{
+  let deferred=null;
+  // กำลังเปิดแบบแอปอยู่หรือเปล่า
+  function standalone(){
+    try{ return window.matchMedia('(display-mode: standalone)').matches
+              || window.matchMedia('(display-mode: window-controls-overlay)').matches
+              || navigator.standalone===true; }catch(e){ return false; }
+  }
+  function isIOS(){
+    try{ const ua=navigator.userAgent||'';
+      return /iPad|iPhone|iPod/.test(ua) || (navigator.platform==='MacIntel' && (navigator.maxTouchPoints||0)>1);
+    }catch(e){ return false; }
+  }
+  function canPrompt(){ return !!deferred; }
+  function init(){
+    try{
+      window.addEventListener('beforeinstallprompt',(e)=>{
+        e.preventDefault(); deferred=e;
+        if(typeof NAV!=='undefined'&&NAV.cur&&NAV.cur()==='settings') try{ SETTINGS.render(); }catch(x){}
+      });
+      window.addEventListener('appinstalled',()=>{ deferred=null; try{ UI.toast('ติดตั้งแอปแล้ว ✅ เปิดจากไอคอนหน้าจอโฮมได้เลย','ok'); }catch(x){} });
+    }catch(e){}
+  }
+  async function install(){
+    if(standalone()){ UI.toast('กำลังใช้งานแบบแอปอยู่แล้ว ✅','ok'); return; }
+    if(deferred){
+      try{ deferred.prompt(); const r=await deferred.userChoice; deferred=null;
+        UI.toast(r&&r.outcome==='accepted'?'กำลังติดตั้ง…':'ยกเลิกการติดตั้ง', r&&r.outcome==='accepted'?'ok':'err');
+      }catch(e){ UI.toast('ติดตั้งไม่สำเร็จ: '+(e.message||e),'err'); }
+      return;
+    }
+    howto();
+  }
+  function isWin(){ try{ return /Windows/i.test(navigator.userAgent||''); }catch(e){ return false; } }
+  function howto(){
+    const ios=isIOS();
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>📲 ติดตั้งเป็นแอป</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+
+        '<p style="font-size:13px;color:var(--muted);margin-bottom:12px">ติดตั้งแล้วได้ไอคอนบนหน้าจอ · เปิดเต็มจอ ไม่มีแถบ URL · เห็นเมนูเพิ่มอีกแถว</p>'+
+        (ios
+          ? '<div style="background:var(--surface-2);border-radius:12px;padding:14px;font-size:14px;line-height:2">'
+            +'<b>iPad / iPhone (Safari)</b><br>'
+            +'1. กดปุ่ม <b>แชร์</b> (สี่เหลี่ยมมีลูกศรขึ้น) ด้านบน<br>'
+            +'2. เลื่อนหา <b>"เพิ่มไปยังหน้าจอโฮม"</b><br>'
+            +'3. กด <b>เพิ่ม</b> มุมขวาบน</div>'
+            +'<div style="background:rgba(180,69,31,.1);border:1px solid #B4451F;border-radius:10px;padding:11px;margin-top:10px;font-size:13px;line-height:1.7">'
+            +'⚠️ <b>สำคัญบน iPhone/iPad</b><br>แอปที่ติดตั้งจะแยกข้อมูลจาก Safari — ให้ <b>ติดตั้งก่อน</b> แล้วค่อยเข้าไป<b>ล็อกอินและตั้งค่าในแอป</b> ไม่งั้นต้องตั้งใหม่</div>'
+          : '<div style="background:var(--surface-2);border-radius:12px;padding:14px;font-size:14px;line-height:2">'
+            +'<b>Android (Chrome)</b><br>'
+            +'1. กดปุ่ม <b>⋮</b> มุมขวาบน<br>'
+            +'2. เลือก <b>"ติดตั้งแอป"</b> หรือ <b>"เพิ่มลงในหน้าจอหลัก"</b><br>'
+            +'3. กด <b>ติดตั้ง</b></div>'
+            +'<div style="background:var(--surface-2);border-radius:12px;padding:14px;margin-top:10px;font-size:14px;line-height:2">'
+            +'<b>คอมพิวเตอร์ (Chrome / Edge)</b><br>'
+            +'กดไอคอน <b>⊕ ติดตั้ง</b> ท้ายช่อง URL</div>')+
+        (isWin()
+          ? '<div style="background:rgba(166,124,61,.12);border:1px solid var(--gold);border-radius:10px;padding:12px;margin-top:10px;font-size:13px;line-height:1.8">'
+            +'🖨️ <b>เครื่องนี้เป็น Windows — แนะนำใช้ไฟล์ .bat แทน</b><br>'
+            +'ได้ทั้ง <b>หน้าต่างแอปเต็มจอ</b> และ <b>พิมพ์ใบเสร็จเงียบ</b> (ไม่เด้งหน้าต่าง Print)<br>'
+            +'แอปที่ติดตั้งแบบ PWA <b>พิมพ์เงียบไม่ได้</b><br>'
+            +'<button class="btn-gold" style="width:100%;padding:10px;margin-top:8px" onclick="UI.close(\'genOverlay\');SETTINGS.downloadBat()">⬇️ โหลดไฟล์เปิดร้าน (.bat)</button></div>'
+          : '')+
+      '</div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
+    UI.open('genOverlay');
+  }
+  return {init,install,howto,standalone,canPrompt,isIOS};
 })();
 
 /* ============================================================
@@ -6654,7 +6741,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.70</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.72</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6839,6 +6926,7 @@ const SETTINGS = (()=>{
       <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-top:16px">
         <h3 style="margin-bottom:14px;font-size:16px">จัดการข้อมูล</h3>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="add-fab" style="background:${PWA.standalone()?'var(--success)':'var(--green)'};color:#fff" onclick="PWA.install()">${PWA.standalone()?'✅ ใช้งานแบบแอปอยู่':'📲 ติดตั้งเป็นแอป'}</button>
           <button class="add-fab" onclick="SETTINGS.backup()">⬇️ สำรองข้อมูล (JSON)</button>
           <button class="add-fab" style="background:#B4451F;color:#fff" onclick="SETTINGS.cleanup()">🧹 ล้างพื้นที่เครื่อง</button>
           <button class="add-fab" style="background:var(--gold)" onclick="document.getElementById('restoreFile').click()">⬆️ กู้คืนข้อมูล</button>
@@ -7056,8 +7144,9 @@ const SETTINGS = (()=>{
         '@echo off',
         'title SAO POS - Auto Print Mode',
         'rem ============================================================',
-        'rem  SAO POS - open Chrome in silent print mode (no print dialog)',
+        'rem  SAO POS - app window + silent printing (no URL bar, no print dialog)',
         'rem  HOW TO USE: double-click this file every time you open shop',
+        'rem  TIP: right-click > Send to > Desktop  to make a shortcut',
         'rem ============================================================',
         'set "POS_URL='+url+'"',
         '',
@@ -7074,7 +7163,9 @@ const SETTINGS = (()=>{
         'rem separate profile so --kiosk-printing always applies',
         'set "POSPROFILE=%LocalAppData%'+BS+'SAO_POS_Chrome"',
         '',
-        'start "" "%CH%" --kiosk-printing --user-data-dir="%POSPROFILE%" --no-first-run --no-default-browser-check --new-window "%POS_URL%"'
+        'rem  --app       = app window: no URL bar, no tabs (looks like a real app)',
+        'rem  --kiosk-printing = print immediately, no print dialog',
+        'start "" "%CH%" --app="%POS_URL%" --kiosk-printing --user-data-dir="%POSPROFILE%" --no-first-run --no-default-browser-check --disable-features=Translate --disable-pinch --overscroll-history-navigation=0'
       ].join('\r\n')+'\r\n';
       const blob=new Blob([L],{type:'application/octet-stream'});
       const a=document.createElement('a');
@@ -8540,6 +8631,7 @@ const APP = (()=>{
   }
   function init(){
     STORE.load();
+    try{ PWA.init(); }catch(e){}
     applyShopFromLink();               // ⭐ ต้องทำก่อน CLOUD.init เพื่อให้ต่อ cloud ด้วยรหัสร้านที่ถูก
     applyBrand();
     CLOUD.init();

@@ -1,0 +1,27 @@
+{
+  "name": "SAO CAFE POS — ระบบขายหน้าร้าน",
+  "short_name": "SAO POS",
+  "description": "ระบบ POS ร้านกาแฟ ขายได้แม้เน็ตหลุด · สต็อก · สมาชิก · หลายสาขา",
+  "id": "/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#1B3A2F",
+  "theme_color": "#1B3A2F",
+  "lang": "th",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "food"],
+  "icons": [
+    { "src": "icons/icon-192.png",     "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png",     "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "หน้าขาย",    "short_name": "ขาย",    "url": "./",         "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "จอครัว",     "short_name": "ครัว",   "url": "./#kds",     "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "รายงานขาย",  "short_name": "รายงาน", "url": "./#report",  "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
