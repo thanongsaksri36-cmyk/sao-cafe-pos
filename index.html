@@ -6032,9 +6032,10 @@ const BO = (()=>{
     if(s.hq){ const otherHQ=STORE.get().staff.filter(x=>!x.deletedAt&&x.hq&&x.id!==id&&x.active).length; if(otherHQ===0){ UI.toast('ลบไม่ได้ ต้องมีผู้ดูแลระบบ (HQ) อย่างน้อย 1 คน','err'); return; } }
     UI.confirm2('ลบพนักงาน','ลบ "'+s.name+'" ออกจากระบบ?',()=>{ s.deletedAt=STORE.now(); s.active=false; STORE.save(); CLOUD.pushItem('staff',s); render(); UI.toast('ลบพนักงานแล้ว','ok'); },true);
   }
-  function editStaff(id){
+  function editStaff(id,preBranch){
     const s=id?STORE.find('staff',id):null;
     const hqUser=AUTH.isHQ(), branches=STORE.get().branches||[];
+    const defB=preBranch||(s?(s.branchId||STORE.bid()):STORE.bid());
     const fields=[
       {key:'name',label:'ชื่อ',value:s?s.name:''},
       {key:'role',label:'ตำแหน่ง',type:'select',value:s?s.role:'cashier',options:[{v:'owner',t:'เจ้าของ/ผจก.สาขา'},{v:'manager',t:'ผู้จัดการ'},{v:'cashier',t:'แคชเชียร์'},{v:'barista',t:'บาริสต้า'}]},
@@ -6042,13 +6043,17 @@ const BO = (()=>{
       {key:'active',label:'สถานะ',type:'select',value:s?(s.active?'1':'0'):'1',options:[{v:'1',t:'ทำงาน'},{v:'0',t:'พักงาน'}]}
     ];
     if(hqUser){
-      fields.push({key:'branch',label:'สังกัดสาขา',type:'select',value:s?(s.branchId||STORE.bid()):STORE.bid(),options:branches.map(b=>({v:b.id,t:b.name}))});
+      fields.push({key:'branch',label:'สังกัดสาขา',type:'select',value:defB,options:branches.map(b=>({v:b.id,t:b.name}))});
       fields.push({key:'hq',label:'ดูได้ทุกสาขา (HQ/ผู้ดูแลระบบ)',type:'select',value:s&&s.hq?'1':'0',options:[{v:'0',t:'ไม่ (เห็นเฉพาะสาขาตัวเอง)'},{v:'1',t:'ใช่ (เห็นทุกสาขา สลับได้)'}]});
     }
     UI.ask(s?'แก้ไขพนักงาน':'เพิ่มพนักงาน',fields,(o)=>{
       if(!/^\d{4}$/.test(o.pin)){ UI.toast('PIN ต้องเป็นตัวเลข 4 หลัก','err'); return; }
-      const bId = hqUser ? (o.branch||STORE.bid()) : (s?s.branchId:STORE.bid());
+      const bId = hqUser ? (o.branch||defB) : (s?s.branchId:STORE.bid());
       const hqFlag = hqUser ? (o.hq==='1') : (s?!!s.hq:false);
+      // กัน PIN ซ้ำ — ซ้ำในสาขาเดียวกัน หรือซ้ำกับผู้ดูแล HQ = เข้าผิดคนได้
+      const dup=(STORE.get().staff||[]).find(x=> x && !x.deletedAt && x.active!==false && x.pin===o.pin
+                 && x.id!==(s&&s.id) && (x.hq===true || hqFlag || (x.branchId||'BR-001')===bId));
+      if(dup){ UI.toast('PIN '+o.pin+' ซ้ำกับ "'+dup.name+'" — ใช้ PIN อื่น','err'); return; }
       let _st;
       if(s){ s.name=o.name; s.role=o.role; s.pin=o.pin; s.active=o.active==='1'; s.branchId=bId; s.hq=hqFlag; _st=s; }
       else { _st={id:STORE.uuid(),name:o.name||'พนักงาน',pin:o.pin,role:o.role,active:o.active==='1',sales:0,hoursLog:[],branchId:bId,hq:hqFlag}; STORE.get().staff.push(_st); }
@@ -6230,7 +6235,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.51</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.52</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6943,6 +6948,7 @@ const BRANCH = (()=>{
     const b=list().find(x=>x.id===bid); if(!b){ manage(); return; }
     const url=location.origin+location.pathname+'?shop='+encodeURIComponent(STORE.shopId())+'&b='+encodeURIComponent(b.id);
     const menuN=(STORE.get().products||[]).filter(p=>(p.branchId||'BR-001')===bid&&!p.deletedAt).length;
+    const staffN=(STORE.get().staff||[]).filter(x=>!x.deletedAt&&x.active!==false&&!x.hq&&(x.branchId||'BR-001')===bid).length;
     const msg='สวัสดีครับ ระบบ POS ของสาขา '+(b.name||b.id)+' พร้อมใช้งานแล้วครับ\n\n'
       +'เปิดลิงก์นี้ในเครื่องที่จะใช้ขาย (iPad / คอม / มือถือ)\n'+url+'\n\n'
       +'เปิดปุ๊บระบบตั้งค่าให้อัตโนมัติ ไม่ต้องพิมพ์อะไร\n'
@@ -6954,7 +6960,11 @@ const BRANCH = (()=>{
         '<div style="background:var(--card2,rgba(0,0,0,.04));border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">'+
           'รหัสสาขา <b>'+esc(b.id)+'</b> · เมนู <b>'+menuN+'</b> รายการ'+
           (menuN?'':' <span style="color:#C00">— ยังไม่มีเมนู ต้องเพิ่มก่อนสาขาถึงจะขายได้</span>')+
+          '<br>พนักงานของสาขา <b>'+staffN+'</b> คน'+
         '</div>'+
+        (staffN?'':'<div style="background:rgba(192,57,43,.1);border:1px solid #C0392B;border-radius:10px;padding:10px;margin-bottom:10px;font-size:13px">'+
+          '⚠️ <b>ยังไม่มีพนักงานของสาขานี้</b><br>ถ้าไม่เพิ่ม สาขาจะต้องใช้ PIN ของผู้ดูแล ซึ่งจะ<b>เห็นและสลับไปทุกสาขาได้</b><br>'+
+          '<button class="btn-gold" style="width:100%;padding:9px;margin-top:8px" onclick="UI.close(\'genOverlay\');BO.editStaff(\'\',\''+esc(bid)+'\')">➕ เพิ่มพนักงานให้สาขานี้</button></div>')+
         '<label style="font-size:12px;color:var(--muted)">ลิงก์สำหรับสาขา</label>'+
         '<div style="font-size:11px;word-break:break-all;border:1px solid var(--line);border-radius:8px;padding:8px;margin:4px 0 10px">'+esc(url)+'</div>'+
         '<button class="btn-gold" style="width:100%;padding:11px;margin-bottom:8px" onclick="SETTINGS.copyText(\''+esc(url)+'\')">📋 คัดลอกลิงก์</button>'+
