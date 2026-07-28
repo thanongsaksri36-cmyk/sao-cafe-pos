@@ -3134,7 +3134,7 @@ const STORE = (()=>{
       tables:[1,2,3,4,5,6,7,8].map(i=>({id:uuid(),name:'T'+i,zone:'ในร้าน',active:true})),
       suppliers:[], stockmoves:[],
       branches:[{id:'BR-001',name:'สาขาสำนักงานใหญ่',type:'owned',ownerName:'',phone:'',lineTarget:'',priceTier:'',active:true,createdAt:now()}],
-      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',qrOnlinePay:false,slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
+      settings:{theme:'light',sound:true,receiptFooter:'ขอบคุณที่อุดหนุน SAO CAFE ☕',autoKDS:true,qrPayPolicy:'pay_first',qrOnlinePay:false,slipVerify:false,sessionTimeoutMin:0,ptEarnPerBaht:100,ptValueBaht:1,joinMinBaht:100,joinBonusPts:10,rewards:[],birthdayPromo:{value:0,type:'percent',mode:'month'},fixedCosts:[],geminiKey:'',openaiKey:'',claudeKey:'',aiProvider:'gemini',aiModel:'',paperWidth:'80',receiptScale:'normal',receiptWeight:'normal',cartStyle:'compact',autoPrint:false,printMethod:'browser',kdsServeSlip:false,requireShift:false,autoDrawer:false,lineNotify:false,tgNotify:false,tgToken:'',tgEvents:{sale:true,shift:true,count:true,cashout:true,qr:true,slow:true,open:true,voided:true,payqr:true,paytransfer:true,lowstock:true},tgSlowMin:10,sndQR:true},
       counters:{orderNo:1,receiptNo:1},
       branchCounters:{'BR-001':{orderNo:1,receiptNo:1}},
       _isSeed:1
@@ -4096,17 +4096,20 @@ const PAY = (()=>{
       if(!order || order.memberId) return '';                 // ผูกสมาชิกที่เคาน์เตอร์แล้ว ไม่ต้องพิมพ์
       if(!isPaidOrder(order)) return '';                      // บิลยังไม่ปิด
       if(!FEAT.on('memberJoin')) return '';                   // สาขานี้ยังไม่ได้เปิดบริการ
-      const per=(STORE.get().settings.ptEarnPerBaht!=null?STORE.get().settings.ptEarnPerBaht:100);
+      const st=STORE.get().settings;
+      const minB=(st.joinMinBaht!=null?st.joinMinBaht:100);
+      if((order.total||0) < minB*100) return '';              // ยอดไม่ถึงขั้นต่ำ ไม่พิมพ์ (ประหยัดกระดาษ)
+      const per=(st.ptEarnPerBaht!=null?st.ptEarnPerBaht:100);
       const pts=per>0?Math.floor((order.total||0)/(per*100)):0;
-      if(pts<=0) return '';                                   // ยอดน้อยเกินกว่าจะได้แต้ม ไม่ต้องรก
+      const bonus=(st.joinBonusPts!=null?st.joinBonusPts:10);
       const url=location.origin+location.pathname+'?join='+encodeURIComponent(order.id);
       let q=''; try{ const g=qrcode(0,'M'); g.addData(url); g.make(); q=g.createSvgTag({cellSize:4,margin:1}); }catch(e){ return ''; }
       if(!q||q.indexOf('<svg')<0) return '';
       return '<div class="rdiv"></div>'
         +'<div class="rc" style="padding:2px 0 6px">'
-        +'<b style="font-size:13px">🎂 สแกนรับ '+pts+' แต้ม จากบิลนี้</b>'
+        +'<b style="font-size:13px">🎂 '+(bonus>0?('สมัครครั้งแรก รับ '+(pts+bonus)+' แต้ม'):('สแกนรับ '+pts+' แต้ม จากบิลนี้'))+'</b>'
         +'<div style="margin:5px auto;width:150px">'+q+'</div>'
-        +'<small>กรอกเบอร์ + วันเกิด รับส่วนลดวันเกิด<br>ใช้ได้ภายใน 24 ชั่วโมง</small></div>';
+        +'<small>'+(bonus>0?('รวมโบนัสสมัครใหม่ '+bonus+' แต้ม · '):'')+'กรอกเบอร์ + วันเกิด รับส่วนลดวันเกิด<br>ใช้ได้ภายใน 24 ชั่วโมง</small></div>';
     }catch(e){ return ''; }
   }
   function qrSvg(data){
@@ -4822,7 +4825,8 @@ const JOIN = (()=>{
   function form(){
     box(wrap(
       '<div style="font-size:56px">🎂</div>'
-      +'<h2 style="font-family:\'Playfair Display\',serif;margin:10px 0 2px">รับ '+(info.points||0)+' แต้ม</h2>'
+      +'<h2 style="font-family:\'Playfair Display\',serif;margin:10px 0 2px">รับ '+((info.points||0)+(info.bonus||0))+' แต้ม</h2>'
+      +((info.bonus>0)?('<p style="color:var(--gold);font-size:13px;margin:0 0 4px">('+(info.points||0)+' แต้มจากบิล + โบนัสสมัครใหม่ '+info.bonus+' แต้ม)</p>'):'')
       +'<p style="color:var(--muted);margin-bottom:4px">จากบิลนี้ '+esc(info.branchName||'')+'</p>'
       +'<p style="color:var(--gold);font-weight:600;margin-bottom:18px">'+STORE.baht(info.total||0)+'</p>'
       +'<div style="text-align:left">'
@@ -4857,6 +4861,7 @@ const JOIN = (()=>{
   function done(r){
     box(wrap('<div style="font-size:64px">🎉</div>'
       +'<h2 style="font-family:\'Playfair Display\',serif;margin:12px 0 4px">ได้ '+(r.earned||0)+' แต้มแล้ว</h2>'
+      +((r.bonus>0)?('<p style="color:var(--gold);font-size:14px;margin:0 0 6px">🎁 รวมโบนัสสมาชิกใหม่ '+r.bonus+' แต้ม</p>'):'')
       +'<p style="font-size:20px;color:var(--gold);font-weight:700;margin-bottom:6px">รวมมี '+(r.points||0)+' แต้ม</p>'
       +'<p style="color:var(--muted);line-height:1.8">ครั้งหน้าบอกเบอร์ที่เคาน์เตอร์<br>เพื่อสะสมแต้มต่อได้เลยค่ะ</p>'
       +(r.birthday?'<p style="color:var(--muted);font-size:13px;margin-top:14px">🎂 เดือนเกิดของคุณรับสิทธิพิเศษด้วยนะคะ</p>':'')));
@@ -6555,7 +6560,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.67</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.68</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6648,6 +6653,8 @@ const SETTINGS = (()=>{
           <div class="field"><label>หรือกำหนดเอง (นาที · เว้นว่าง = ใช้ด้านบน)</label><input id="setSessionCustom" type="number" min="0" placeholder="เช่น 45" value="${[0,10,30,60,240,720].includes(s.sessionTimeoutMin)?'':(s.sessionTimeoutMin||'')}"></div>
           <div class="row2">
             <div class="field"><label>🏅 สะสมแต้ม: ใช้จ่ายกี่บาท = 1 แต้ม</label><input id="setPtPer" type="number" min="0" value="${s.ptEarnPerBaht!=null?s.ptEarnPerBaht:100}"></div>
+            <div class="field"><label>🎂 พิมพ์ QR สมัครสมาชิก เมื่อยอดบิลถึง (บาท)</label><input id="setJoinMin" type="number" min="0" value="${s.joinMinBaht!=null?s.joinMinBaht:100}"><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">บิลต่ำกว่านี้ไม่พิมพ์ QR · ใส่ 0 = พิมพ์ทุกบิล</div></div>
+            <div class="field"><label>🎁 แต้มโบนัส สมัครครั้งแรกผ่าน QR</label><input id="setJoinBonus" type="number" min="0" value="${s.joinBonusPts!=null?s.joinBonusPts:10}"><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">ให้เฉพาะคนที่ยังไม่เคยเป็นสมาชิก · ไม่ให้ซ้ำ</div></div>
             <div class="field"><label>แลกแต้ม: 1 แต้ม = กี่บาท</label><input id="setPtVal" type="number" min="0" step="0.01" value="${s.ptValueBaht!=null?s.ptValueBaht:1}"></div>
           </div>
           <button class="btn-gold" style="width:100%;padding:13px;border-radius:10px;margin-top:8px" onclick="SETTINGS.save()">💾 บันทึกการตั้งค่า</button>
@@ -6761,8 +6768,12 @@ const SETTINGS = (()=>{
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
+    { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
+      const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
     s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
-    STORE.save(); applyTheme(); UI.toast('บันทึกการตั้งค่าแล้ว','ok');
+    STORE.save(); applyTheme();
+    try{ CLOUD.pushMeta(); }catch(e){}          // ⭐ ให้สาขาอื่น + Edge Function ใช้ค่าใหม่ทันที
+    UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   // ลิงก์เปิดสาขา — เลือกสาขา แล้วได้ลิงก์ส่งให้สาขานั้นเปิดเครื่องได้เลย
   function branchLink(){
@@ -7877,6 +7888,22 @@ const CLOUD = (()=>{
     const c=STORE.bcounter(); return kind==='order'?c.orderNo++:c.receiptNo++;   // offline fallback: local
   }
   // ---- อัปข้อมูลทั้งหมดขึ้น cloud (ครั้งแรก/seed) ----
+  // ดันการตั้งค่าร้าน (อัตราแต้ม/VAT/ชื่อร้าน ฯลฯ) ขึ้น cloud — ต้องเรียกทุกครั้งที่กดบันทึกตั้งค่า
+  // ไม่งั้นสาขาอื่นและ Edge Function จะใช้ค่าเก่า
+  async function pushMeta(silent){
+    if(status!=='online'||!client) return false;
+    try{
+      const D=STORE.get(), now=STORE.now();
+      const _meta=Object.assign({},D.meta); delete _meta.currentBranchId;
+      const _set=Object.assign({},D.settings); LOCAL_KEYS.forEach(k=>{ delete _set[k]; });
+      const _mrow={id:SID(),data:{meta:_meta,settings:_set,counters:D.counters,branchCounters:D.branchCounters},updated_at:now};
+      if(shopCol) _mrow.shop_id=SID();
+      let r=await client.from('app_meta').upsert(_mrow);
+      if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; delete _mrow.shop_id; r=await client.from('app_meta').upsert(_mrow); }
+      if(r&&r.error){ if(!silent) UI.toast('ตั้งค่ายังไม่ขึ้น cloud: '+r.error.message,'err'); return false; }
+      return true;
+    }catch(e){ console.error('pushMeta',e); return false; }
+  }
   async function pushAll(){
     if(status!=='online'){ UI.toast('ยังไม่ออนไลน์ — กดทดสอบเชื่อมต่อก่อน','err'); return; }
     UI.toast('กำลังอัปขึ้น cloud...','ok');
@@ -7899,12 +7926,7 @@ const CLOUD = (()=>{
             if(orph.length){ let q=client.from(t).delete().in('id',orph); if(shopCol) q=q.eq('shop_id',SID()); await q; } }catch(e){ console.error('clean',t,e); }
         }
       }
-      const _meta=Object.assign({},D.meta); delete _meta.currentBranchId;                       // ⭐ ไม่ส่งสาขาที่เครื่องนี้เลือกขึ้นไป
-      const _set=Object.assign({},D.settings); LOCAL_KEYS.forEach(k=>{ delete _set[k]; });        // ⭐ ไม่ส่งค่าตั้งเฉพาะเครื่อง
-      const _mrow={id:SID(),data:{meta:_meta,settings:_set,counters:D.counters,branchCounters:D.branchCounters},updated_at:now};
-      if(shopCol) _mrow.shop_id=SID();
-      let _mr=await client.from('app_meta').upsert(_mrow);
-      if(_mr&&_mr.error&&noCol(_mr.error)&&shopCol){ shopCol=false; delete _mrow.shop_id; await client.from('app_meta').upsert(_mrow); }
+      await pushMeta(true);
       UI.toast('อัปข้อมูลขึ้น cloud สำเร็จ ✅','ok');
     }catch(e){ UI.toast('อัปไม่สำเร็จ: '+(e.message||e),'err'); }
   }
@@ -8127,7 +8149,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
