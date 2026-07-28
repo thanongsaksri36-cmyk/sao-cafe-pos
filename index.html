@@ -3316,7 +3316,8 @@ const FEAT = (()=>{
     {k:'qrOrder',   ic:'📱', name:'QR สั่งจากโต๊ะ',      why:'ลูกค้าสแกนสั่งเอง',        cost:'พื้นที่ + traffic'},
     {k:'ai',        ic:'🤖', name:'ผู้ช่วย AI',          why:'ถามยอดขาย · แนะนำโปร',     cost:'ค่า token ทุกครั้งที่ถาม'},
     {k:'slipVerify',ic:'🧾', name:'ตรวจสลิปอัตโนมัติ',   why:'SlipOK ตรวจให้',           cost:'จ่ายต่อการตรวจ 1 ใบ'},
-    {k:'lineNotify',ic:'💬', name:'แจ้งเตือนเข้ามือถือ',  why:'ขายได้ · ปิดกะ · เบิกเงิน · ออเดอร์ค้าง (ส่งผ่าน Telegram)', cost:'ต้องตั้งบอท 1 ครั้ง'}
+    {k:'lineNotify',ic:'💬', name:'แจ้งเตือนเข้ามือถือ',  why:'ขายได้ · ปิดกะ · เบิกเงิน · ออเดอร์ค้าง (ส่งผ่าน Telegram)', cost:'ต้องตั้งบอท 1 ครั้ง'},
+    {k:'memberJoin',ic:'🎂', name:'QR สมัครสมาชิกท้ายใบเสร็จ', why:'ลูกค้าสแกนกรอกเอง รับแต้มย้อนหลัง', cost:'พื้นที่เก็บข้อมูลลูกค้า'}
   ];
   const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   function all(b){
@@ -4034,6 +4035,7 @@ const PAY = (()=>{
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
+        ${joinQR(order)}
         <div class="rc">${esc(m.shopName)} · ขอบคุณค่ะ<br>${esc(STORE.get().settings.receiptFooter)}</div>
       </div></div>
       <div class="modal-f">
@@ -4087,6 +4089,25 @@ const PAY = (()=>{
       const qr=qrcode(0,'M'); qr.addData(payload); qr.make();
       return qr.createSvgTag({cellSize:6,margin:2});  // ขนาด px คงที่ (ห้าม scalable ไม่งั้นยุบ 0)
     }catch(e){ return '<p style="color:var(--danger)">สร้าง QR ไม่ได้</p>'; }
+  }
+  // ---- QR สมัครสมาชิกท้ายใบเสร็จ (แพ็กเกจเสริม · เฉพาะบิลที่ยังไม่ผูกสมาชิก) ----
+  function joinQR(order){
+    try{
+      if(!order || order.memberId) return '';                 // ผูกสมาชิกที่เคาน์เตอร์แล้ว ไม่ต้องพิมพ์
+      if(!isPaidOrder(order)) return '';                      // บิลยังไม่ปิด
+      if(!FEAT.on('memberJoin')) return '';                   // สาขานี้ยังไม่ได้เปิดบริการ
+      const per=(STORE.get().settings.ptEarnPerBaht!=null?STORE.get().settings.ptEarnPerBaht:100);
+      const pts=per>0?Math.floor((order.total||0)/(per*100)):0;
+      if(pts<=0) return '';                                   // ยอดน้อยเกินกว่าจะได้แต้ม ไม่ต้องรก
+      const url=location.origin+location.pathname+'?join='+encodeURIComponent(order.id);
+      let q=''; try{ const g=qrcode(0,'M'); g.addData(url); g.make(); q=g.createSvgTag({cellSize:4,margin:1}); }catch(e){ return ''; }
+      if(!q||q.indexOf('<svg')<0) return '';
+      return '<div class="rdiv"></div>'
+        +'<div class="rc" style="padding:2px 0 6px">'
+        +'<b style="font-size:13px">🎂 สแกนรับ '+pts+' แต้ม จากบิลนี้</b>'
+        +'<div style="margin:5px auto;width:150px">'+q+'</div>'
+        +'<small>กรอกเบอร์ + วันเกิด รับส่วนลดวันเกิด<br>ใช้ได้ภายใน 24 ชั่วโมง</small></div>';
+    }catch(e){ return ''; }
   }
   function qrSvg(data){
     let h=0; for(let i=0;i<data.length;i++){ h=(h*31+data.charCodeAt(i))>>>0; }
@@ -4767,6 +4788,80 @@ const QR = (()=>{
     </div>`;
   }
   return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,stopTrack,saveQR,uploadSlip,attachManual,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
+})();
+
+/* ============================================================
+   JOIN — ลูกค้าสแกน QR ท้ายใบเสร็จ มาสมัครสมาชิก + รับแต้มย้อนหลัง
+   เขียนอย่างเดียว อ่านไม่ได้ · ผ่าน Edge Function ทั้งหมด
+   ============================================================ */
+const JOIN = (()=>{
+  let oid='', info=null;
+  const box=(html)=>{ const el=document.querySelector('#qrRoot'); if(el) el.innerHTML=html; };
+  const wrap=(inner)=>'<div style="margin:auto;padding:26px 20px;max-width:420px;width:100%;text-align:center">'+inner+'</div>';
+
+  async function start(orderId){
+    oid=String(orderId||'');
+    document.querySelector('#lockScreen').classList.add('hide');
+    const hd=document.querySelector('header'); if(hd) hd.style.display='none';
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.querySelector('#v-qr').classList.add('active');
+    box(wrap('<div style="font-size:56px">🎂</div><h2 style="margin:12px 0">กำลังตรวจสอบ…</h2>'));
+    CLOUD.init();
+    let tries=0; while(CLOUD.getStatus()!=='online'&&tries<20){ await new Promise(r=>setTimeout(r,300)); tries++; }
+    let r=null;
+    try{ r=await CLOUD.invokeFn('member-join',{action:'info',orderId:oid}); }catch(e){ r={ok:false,reason:String(e&&e.message||e)}; }
+    if(!r||!r.ok){ return fail((r&&r.reason)||'ลิงก์ใช้ไม่ได้'); }
+    info=r; form();
+  }
+  function fail(msg){
+    box(wrap('<div style="font-size:56px">🙏</div>'
+      +'<h2 style="font-family:\'Playfair Display\',serif;margin:12px 0 6px">ขออภัยค่ะ</h2>'
+      +'<p style="color:var(--muted);line-height:1.8">'+esc(msg)+'</p>'
+      +'<p style="color:var(--muted);font-size:13px;margin-top:16px">สอบถามพนักงานที่เคาน์เตอร์ได้เลยค่ะ</p>'));
+  }
+  function form(){
+    box(wrap(
+      '<div style="font-size:56px">🎂</div>'
+      +'<h2 style="font-family:\'Playfair Display\',serif;margin:10px 0 2px">รับ '+(info.points||0)+' แต้ม</h2>'
+      +'<p style="color:var(--muted);margin-bottom:4px">จากบิลนี้ '+esc(info.branchName||'')+'</p>'
+      +'<p style="color:var(--gold);font-weight:600;margin-bottom:18px">'+STORE.baht(info.total||0)+'</p>'
+      +'<div style="text-align:left">'
+      +'<label style="font-size:13px;color:var(--muted)">เบอร์โทร *</label>'
+      +'<input id="jPhone" inputmode="numeric" maxlength="15" placeholder="08x-xxx-xxxx" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid var(--line);font-size:17px;margin:4px 0 12px">'
+      +'<label style="font-size:13px;color:var(--muted)">ชื่อ (ไม่บังคับ)</label>'
+      +'<input id="jName" maxlength="40" placeholder="เช่น คุณเอ" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid var(--line);font-size:16px;margin:4px 0 12px">'
+      +'<label style="font-size:13px;color:var(--muted)">วันเกิด (ไม่บังคับ) — ไว้รับส่วนลดวันเกิด</label>'
+      +'<input id="jBirth" inputmode="numeric" maxlength="5" placeholder="วว/ดด เช่น 01/01" style="width:100%;padding:13px;border-radius:12px;border:1.5px solid var(--line);font-size:16px;margin:4px 0 14px">'
+      +'<label style="display:flex;gap:9px;align-items:flex-start;font-size:13px;line-height:1.6;cursor:pointer;background:var(--surface-2);padding:11px;border-radius:10px">'
+      +'<input type="checkbox" id="jConsent" style="width:19px;height:19px;flex:0 0 auto;margin-top:1px">'
+      +'<span>ยินยอมให้ร้านเก็บชื่อ เบอร์โทร และวันเกิด เพื่อสะสมแต้มและแจ้งสิทธิพิเศษ</span></label>'
+      +'</div>'
+      +'<button class="qrc-checkout" style="width:100%;margin-top:16px" onclick="JOIN.submit()">รับแต้ม</button>'
+      +'<div id="jMsg" style="margin-top:12px;font-size:13px;min-height:20px"></div>'));
+  }
+  async function submit(){
+    const msg=document.querySelector('#jMsg');
+    const phone=((document.querySelector('#jPhone')||{}).value||'').replace(/[^0-9]/g,'');
+    const name =((document.querySelector('#jName') ||{}).value||'').trim();
+    const birth=((document.querySelector('#jBirth')||{}).value||'').trim();
+    const ok   = (document.querySelector('#jConsent')||{}).checked;
+    if(phone.length<9){ msg.innerHTML='<span style="color:var(--danger)">ใส่เบอร์โทรให้ครบ</span>'; return; }
+    if(!ok){ msg.innerHTML='<span style="color:var(--danger)">กรุณาติ๊กยินยอมก่อนค่ะ</span>'; return; }
+    msg.innerHTML='<span style="color:var(--muted)">กำลังบันทึก…</span>';
+    let r=null;
+    try{ r=await CLOUD.invokeFn('member-join',{action:'join',orderId:oid,phone,name,birthday:birth,consent:true}); }
+    catch(e){ r={ok:false,reason:String(e&&e.message||e)}; }
+    if(!r||!r.ok){ msg.innerHTML='<span style="color:var(--danger)">'+esc((r&&r.reason)||'บันทึกไม่สำเร็จ')+'</span>'; return; }
+    done(r);
+  }
+  function done(r){
+    box(wrap('<div style="font-size:64px">🎉</div>'
+      +'<h2 style="font-family:\'Playfair Display\',serif;margin:12px 0 4px">ได้ '+(r.earned||0)+' แต้มแล้ว</h2>'
+      +'<p style="font-size:20px;color:var(--gold);font-weight:700;margin-bottom:6px">รวมมี '+(r.points||0)+' แต้ม</p>'
+      +'<p style="color:var(--muted);line-height:1.8">ครั้งหน้าบอกเบอร์ที่เคาน์เตอร์<br>เพื่อสะสมแต้มต่อได้เลยค่ะ</p>'
+      +(r.birthday?'<p style="color:var(--muted);font-size:13px;margin-top:14px">🎂 เดือนเกิดของคุณรับสิทธิพิเศษด้วยนะคะ</p>':'')));
+  }
+  return {start,submit};
 })();
 
 /* ============================================================
@@ -6460,7 +6555,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.66</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.67</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8336,6 +8431,7 @@ const APP = (()=>{
     try{ SETTINGS.applyBrandColor(); }catch(e){}
     // โหมดลูกค้า: เปิดจาก QR ที่โต๊ะ (?t=T5) -> เข้าหน้าสั่งเลย ไม่ต้องใส่ PIN
     const params=new URLSearchParams(location.search);
+    if(params.get('join')){ JOIN.start(params.get('join')); return; }          // ลูกค้าสแกน QR ท้ายใบเสร็จ
     if(params.get('order')==='1'||params.get('t')){ const _b=params.get('b'); if(_b) STORE.setBid(_b); CUSTOMER.start(params.get('t')||''); return; }
     BRANCH.renderChip();               // แสดงสาขาปัจจุบันบน header
     POS.restoreCart();                 // คืนตะกร้าที่ค้างไว้ (ถ้ามี)
