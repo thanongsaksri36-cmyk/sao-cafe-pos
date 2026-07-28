@@ -3294,7 +3294,7 @@ const FEAT = (()=>{
     {k:'qrOrder',   ic:'📱', name:'QR สั่งจากโต๊ะ',      why:'ลูกค้าสแกนสั่งเอง',        cost:'พื้นที่ + traffic'},
     {k:'ai',        ic:'🤖', name:'ผู้ช่วย AI',          why:'ถามยอดขาย · แนะนำโปร',     cost:'ค่า token ทุกครั้งที่ถาม'},
     {k:'slipVerify',ic:'🧾', name:'ตรวจสลิปอัตโนมัติ',   why:'SlipOK ตรวจให้',           cost:'จ่ายต่อการตรวจ 1 ใบ'},
-    {k:'lineNotify',ic:'💬', name:'แจ้งเตือน LINE',      why:'ปิดกะ · เบิกเงิน · ออเดอร์', cost:'โควตา Edge Function'}
+    {k:'lineNotify',ic:'💬', name:'แจ้งเตือนเข้ามือถือ',  why:'ขายได้ · ปิดกะ · เบิกเงิน · ออเดอร์ค้าง (ส่งผ่าน Telegram)', cost:'ต้องตั้งบอท 1 ครั้ง'}
   ];
   const today=()=>{ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
   function all(b){
@@ -6383,8 +6383,15 @@ const SHIFT = (()=>{
 const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
+    // ช่อง Bot Token — เห็นเฉพาะผู้ดูแล (สร้างเป็นสตริงก่อน เลี่ยง template ซ้อนกัน)
+    const tokenField = AUTH.isHQ()
+      ? ('<div class="field"><label>🤖 Bot Token — 👑 ผู้ดูแลเท่านั้น'
+         + ' <small style="color:var(--muted)">(deploy function notify แล้ว ให้เก็บ token ที่ Supabase Secrets แทน ช่องนี้เว้นว่างได้)</small></label>'
+         + '<div style="display:flex;gap:8px"><input id="setTgToken" type="password" value="'+esc(s.tgToken||'')+'" placeholder="123456789:AAH..." autocomplete="off" style="flex:1">'
+         + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
+      : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.60</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.62</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6508,8 +6515,13 @@ const SETTINGS = (()=>{
       <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-top:16px">
         <h3 style="margin-bottom:14px;font-size:16px">🔔 แจ้งเตือน Telegram (เจ้าของสาขานี้)</h3>
         <div class="field"><label>เปิดแจ้งเตือน (ปิดกะ / ตรวจนับเงิน / เบิกเงินออก)</label><select id="setTgOn"><option value="0" ${!s.tgNotify?'selected':''}>ปิด</option><option value="1" ${s.tgNotify?'selected':''}>เปิด</option></select></div>
-        <div class="field"><label>🤖 Bot Token (ตัวเดียวใช้ร่วมทุกสาขา · จาก @BotFather)</label><div style="display:flex;gap:8px"><input id="setTgToken" type="password" value="${esc(s.tgToken||'')}" placeholder="123456789:AAH..." autocomplete="off" style="flex:1"><button class="add-fab" type="button" onclick="const i=$('#setTgToken');i.type=i.type==='password'?'text':'password'">👁️</button></div></div>
-        <div class="field"><label>💬 Chat ID ของสาขานี้ (เลขของเจ้าของสาขา · ของใครของมัน)</label><input id="setTgChat" value="${esc(cb.tgChat||'')}" placeholder="เช่น 123456789" autocomplete="off"></div>
+        ${tokenField}
+        <div class="field"><label>💬 กลุ่ม Telegram ของสาขานี้</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <input id="setTgChat" value="${esc(cb.tgChat||'')}" placeholder="ยังไม่ได้ผูกกลุ่ม" autocomplete="off" style="flex:1;min-width:180px" ${AUTH.isHQ()?'':'readonly'}>
+            ${AUTH.isHQ()?'<button class="add-fab" type="button" onclick="LINEN.findChats()">🔗 หากลุ่มอัตโนมัติ</button>':''}
+          </div>
+          <div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">${AUTH.isHQ()?'ให้สาขาสร้างกลุ่ม → ชวนบอทเข้ากลุ่ม → พิมพ์ข้อความ 1 ครั้ง แล้วกดหากลุ่มอัตโนมัติ':'🔒 ผูกกลุ่มโดยส่วนกลาง'}</div></div>
         <div class="field"><label>เลือกเหตุการณ์ที่ให้แจ้ง</label>
           <div style="display:flex;flex-direction:column;gap:7px;font-size:14px">
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer"><input type="checkbox" id="tgEvSale" ${(s.tgEvents||{}).sale!==false?'checked':''} style="width:18px;height:18px"> 🛒 ขายได้ (แจ้งทุกบิลที่ปิดขาย)</label>
@@ -6574,7 +6586,7 @@ const SETTINGS = (()=>{
   function save(){
     const m=STORE.get().meta, s=STORE.get().settings;
     m.shopName=$('#setShop').value; { const bs=$('#setBrandSub'); if(bs) m.brandSub=bs.value.trim(); } m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim(); { const o=$('#setOpenai'); if(o)s.openaiKey=o.value.trim(); const c=$('#setClaude'); if(c)s.claudeKey=c.value.trim(); const pv=$('#setAiProvider'); if(pv)s.aiProvider=pv.value; const am=$('#setAiModel'); if(am)s.aiModel=am.value.trim(); } try{ APP.applyBrand(); }catch(e){}
-    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
+    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc&&AUTH.isHQ()) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt&&AUTH.isHQ()) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
@@ -6725,6 +6737,7 @@ const SETTINGS = (()=>{
     try{ NAV.build(); }catch(e){}
     render();
   }
+  function eyeTg(){ const i=$('#setTgToken'); if(i) i.type = (i.type==='password'?'text':'password'); }
   function copyText(t){
     try{ if(navigator.clipboard&&navigator.clipboard.writeText) navigator.clipboard.writeText(t); }catch(e){}
     UI.toast('คัดลอกลิงก์แล้ว ✅','ok');
@@ -6877,7 +6890,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -7029,11 +7042,45 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
       const st=STORE.get().settings; if(!st.tgNotify) return false;
       if(!FEAT.on('lineNotify')) return false;                         // ⭐ แพ็กเกจเสริมที่สาขายังไม่ได้เปิด
       if(ev && st.tgEvents && st.tgEvents[ev]===false) return false;   // เหตุการณ์นี้ถูกปิดไว้
+      // ① ผ่าน Edge Function — token อยู่ที่ server เครื่องสาขาไม่ต้องมี
+      if(CLOUD.isAuthed && CLOUD.isAuthed()){
+        try{
+          const r=await CLOUD.invokeFn('notify',{action:'send',branchId:STORE.bid(),text,ev});
+          if(r && r.ok){ _fnOk=true; return true; }
+          if(r && r.reason){ _lastErr=r.reason; console.warn('notify:',r.reason); }
+          if(_fnOk) return false;
+        }catch(e){ _lastErr=String(e&&e.message||e); console.warn('notify fn',_lastErr); }
+      }
+      // ② สำรอง: ยังไม่ได้ deploy function — ยิงตรงจากเครื่องที่มี token
       const tk=token(), ch=chat(); if(!tk||!ch) return false;
       const bn=(STORE.curBranch()||{}).name||'';
       const r=await fetch('https://api.telegram.org/bot'+tk+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:ch,text:'['+bn+'] '+text})});
       return r.ok;
     }catch(e){ console.error('tg notify',e); return false; }
+  }
+  let _fnOk=false, _lastErr='';
+  function lastErr(){ return _lastErr; }
+  function viaServer(){ return _fnOk; }
+  async function findChats(){
+    if(!AUTH.isHQ()){ UI.toast('เฉพาะผู้ดูแลระบบ','err'); return; }
+    UI.toast('กำลังค้นหากลุ่ม…','ok');
+    let r=null;
+    try{ r=await CLOUD.invokeFn('notify',{action:'chats'}); }
+    catch(e){ UI.toast('เรียกไม่สำเร็จ: '+(e&&e.message||e),'err'); return; }
+    if(!r||!r.ok){ UI.toast((r&&r.reason)||'ค้นหาไม่สำเร็จ','err'); return; }
+    const list=r.chats||[];
+    if(!list.length){ UI.toast('ยังไม่เจอกลุ่ม — ให้สาขาชวนบอทเข้ากลุ่มแล้วพิมพ์ข้อความ 1 ครั้งก่อน','err'); return; }
+    const bs=(STORE.get().branches||[]).filter(b=>!b.deletedAt);
+    UI.ask('🔗 ผูกกลุ่ม Telegram เข้าสาขา',[
+      {key:'chat',label:'กลุ่มที่เจอ',type:'select',value:list[0].id,options:list.map(c=>({v:c.id,t:c.title+' ('+c.type+')'}))},
+      {key:'br',  label:'ผูกกับสาขา', type:'select',value:STORE.bid(),options:bs.map(b=>({v:b.id,t:b.name||b.id}))}
+    ],(o)=>{
+      const b=bs.find(x=>x.id===o.br); if(!b){ UI.toast('ไม่พบสาขา','err'); return; }
+      b.tgChat=String(o.chat); STORE.save();
+      try{ CLOUD.pushItem('branches',b); }catch(e){}
+      UI.toast('ผูกกลุ่มเข้า '+(b.name||b.id)+' แล้ว ✅','ok');
+      if(typeof NAV!=='undefined'&&NAV.cur&&NAV.cur()==='settings') SETTINGS.render();
+    });
   }
   async function test(){
     const st=STORE.get().settings;
@@ -7053,7 +7100,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
       .forEach(o=>{ o.slowNotified=true; STORE.save(); CLOUD.pushOrder(o);
         send('⏰ ออเดอร์ '+o.no+(o.table?' โต๊ะ '+o.table:'')+' ค้างครัวเกิน '+mins+' นาที · '+o.items.map(i=>i.qty+'×'+i.name).join(', ').slice(0,200),'slow'); });
   }
-  return {send,test,slowScan,saleMsg,voidMsg,qrMsg,daySummary,thDT,SEP};
+  return {send,test,findChats,lastErr,viaServer,slowScan,saleMsg,voidMsg,qrMsg,daySummary,thDT,SEP};
 })();
 
 /* ============================================================
