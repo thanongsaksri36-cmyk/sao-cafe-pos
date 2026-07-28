@@ -251,6 +251,15 @@ tr:hover td{background:var(--surface-2)}
 #lockScreen.hide{display:none}
 #setupScreen{position:fixed;inset:0;background:var(--green-dark);z-index:120;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center}
 #setupScreen.hide{display:none}
+#cloudScreen{position:fixed;inset:0;background:var(--green-dark);z-index:130;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center}
+#cloudScreen.hide{display:none}
+#cloudScreen h2{font-family:'Playfair Display',serif;font-size:24px;margin:14px 0 4px}
+#cloudScreen p{color:var(--gold-light);font-size:13px;line-height:1.7;margin-bottom:16px;max-width:340px}
+#cloudScreen input{width:min(330px,88vw);padding:14px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:16px;margin-bottom:10px;font-family:'Prompt'}
+#cloudScreen input::placeholder{color:rgba(255,255,255,.35)}
+#cloudScreen .cl-btn{width:min(330px,88vw);padding:15px;border-radius:12px;background:var(--gold);color:#fff;font-size:16px;font-weight:600;border:0;margin-top:4px}
+#cloudScreen .cl-btn:disabled{opacity:.45}
+#cloudScreen .cl-msg{margin-top:14px;font-size:13px;min-height:38px;line-height:1.6;max-width:340px}
 #setupScreen h2{font-family:'Playfair Display',serif;font-size:26px;margin:14px 0 4px}
 #setupScreen p{color:var(--gold-light);font-size:13px;line-height:1.7;margin-bottom:18px;max-width:340px}
 #setupScreen input{width:min(320px,86vw);padding:15px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:19px;text-align:center;letter-spacing:2px;text-transform:uppercase;font-family:'Prompt'}
@@ -575,6 +584,16 @@ tr:hover td{background:var(--surface-2)}
   <div class="pindots" id="lockDots"></div>
   <div class="pinpad" id="lockPad"></div>
   <div class="lock-msg" id="lockMsg">ใส่ PIN 4 หลัก (พิมพ์จากคีย์บอร์ดได้)</div>
+</div>
+
+<div id="cloudScreen" class="hide">
+  <div class="lock-logo">SAO CAFE<small>เข้าสู่ระบบสาขา</small></div>
+  <h2>🔐 บัญชีสาขา</h2>
+  <p>ใส่อีเมลและรหัสผ่านที่ได้รับจากส่วนกลาง<br>ทำครั้งเดียว ครั้งต่อไปเปิดใช้ได้เลย</p>
+  <input id="clEmail" type="email" placeholder="อีเมลสาขา" autocomplete="username" spellcheck="false">
+  <input id="clPass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password">
+  <button class="cl-btn" id="clGo" onclick="APP.cloudGo()">เข้าสู่ระบบ</button>
+  <div class="cl-msg" id="clMsg"></div>
 </div>
 
 <div id="setupScreen" class="hide">
@@ -3233,7 +3252,10 @@ const STORE = (()=>{
         if(n) try{ console.warn('ถอดสิทธิ์ HQ ชั่วคราวออก '+n+' บัญชี (มีผู้ดูแลจากส่วนกลางแล้ว)'); }catch(e){}
         return data;
       }
-      // ยังไม่มี HQ เลย -> ให้ owner เป็น HQ ชั่วคราว พร้อมติดธงไว้ให้ถอดได้ทีหลัง
+      // มีข้อมูลพนักงานจริงจาก cloud แล้ว (ไม่ใช่ข้อมูลตัวอย่าง) -> ห้ามเลื่อนตัวเองเป็น HQ
+      // ไม่งั้นเครื่องแฟรนไชส์จะกลายเป็นผู้ดูแลเอง หลังปิดสิทธิ์อ่าน staff ของ HQ
+      if(alive.some(x=>!x._seed)) return data;
+      // ยังเป็นข้อมูลตัวอย่างล้วน -> ให้ owner เป็น HQ ชั่วคราว พร้อมติดธงไว้ให้ถอดได้ทีหลัง
       if(alive.length && !alive.some(x=>x.hq===true)){
         alive.forEach(x=>{ if(x.role==='owner'){ x.hq=true; x._autoHQ=true; } });
       }
@@ -6438,7 +6460,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.65</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.66</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8244,6 +8266,48 @@ const APP = (()=>{
     STORE.setBid(br.id); markSetup();
     setTimeout(()=>location.reload(),800);
   }
+  // ===== ต้องล็อกอินบัญชีสาขาก่อนใส่ PIN =====
+  // เหตุผล: รายชื่อพนักงาน (พร้อม PIN) ถูกกันไว้หลัง RLS แล้ว เครื่องที่ไม่ล็อกอินจะไม่มีข้อมูลให้ใช้
+  function realStaff(){
+    try{ return (STORE.get().staff||[]).filter(x=>x&&!x.deletedAt&&x.active!==false&&!x._seed).length; }
+    catch(e){ return 0; }
+  }
+  function needCloudLogin(){
+    try{
+      if(CLOUD.isAuthed && CLOUD.isAuthed()) return false;   // ล็อกอินแล้ว
+      if(realStaff()>0) return false;                        // มีพนักงานจริงในเครื่องแล้ว (เครื่องเก่า) — ไม่บล็อก
+      return true;
+    }catch(e){ return false; }
+  }
+  function cloudShow(){
+    const el=$('#cloudScreen'); if(!el) return;
+    el.classList.remove('hide');
+    $('#lockScreen').classList.add('hide');
+    const e=$('#clEmail'); if(e){ e.focus(); }
+    const go=()=>cloudGo();
+    ['clEmail','clPass'].forEach(id=>{ const x=$('#'+id); if(x) x.onkeydown=(ev)=>{ if(ev.key==='Enter') go(); }; });
+  }
+  async function cloudGo(){
+    const msg=$('#clMsg'), btn=$('#clGo');
+    const email=(($('#clEmail')||{}).value||'').trim();
+    const pass =(($('#clPass') ||{}).value||'');
+    if(!email||!pass){ msg.innerHTML='<span style="color:#F0A0A0">ใส่อีเมลและรหัสผ่านให้ครบ</span>'; return; }
+    btn.disabled=true; msg.innerHTML='<span style="color:var(--gold-light)">กำลังเข้าสู่ระบบ…</span>';
+    let ok=false, why='';
+    try{
+      const r=await CLOUD.signIn(email,pass);          // คืน {data,error}
+      if(r && r.error){ why=r.error.message||''; }
+      else ok=true;
+    }catch(err){ why=String(err&&err.message||err); }
+    if(!ok && !(CLOUD.isAuthed&&CLOUD.isAuthed())){
+      btn.disabled=false;
+      msg.innerHTML='<span style="color:#F0A0A0">เข้าสู่ระบบไม่สำเร็จ</span><br><small style="color:var(--gold-light)">'+esc(why||'ตรวจอีเมล/รหัสผ่านอีกครั้ง')+'</small>';
+      return;
+    }
+    msg.innerHTML='<span style="color:#9BD5A8">สำเร็จ · กำลังโหลดข้อมูลสาขา…</span>';
+    try{ await CLOUD.pullSync(); }catch(e){}
+    setTimeout(()=>location.reload(),700);
+  }
   function setupSkip(){
     UI.confirm2('ข้ามการตั้งรหัสสาขา?',
       'เครื่องนี้จะใช้สาขาเดิม: '+((STORE.curBranch()||{}).name||STORE.bid())+'\n\nถ้าคุณเป็นสาขาใหม่ ให้ใส่รหัสแทน — ไม่งั้นยอดขายจะไปรวมกับสาขาอื่น',
@@ -8279,6 +8343,8 @@ const APP = (()=>{
     window.addEventListener('beforeunload',(e)=>{ if(POS.hasCart()){ e.preventDefault(); e.returnValue=''; return ''; } });
     if(!AUTH.tryRestore()) AUTH.lock();  // รีเฟรชแล้วยังล็อกอินอยู่ (ไม่ต้องใส่ PIN ใหม่)
     if(needSetup()) setupShow();         // เครื่องใหม่ -> ให้ใส่รหัสสาขาก่อน
+    // 🔒 ยังไม่ได้ล็อกอินบัญชีสาขา และไม่มีพนักงานในเครื่อง -> ต้องล็อกอินก่อน
+    setTimeout(()=>{ try{ if(!needSetup() && needCloudLogin()) cloudShow(); }catch(e){} }, 2500);
     if(_shopAsk) setTimeout(askShopSwitch,600);
     setTimeout(()=>{ try{ STORE.autoPurgeOrders(); }catch(e){} }, 8000);      // ให้ sync เสร็จก่อนค่อยล้าง
     setInterval(()=>{ try{ STORE.autoPurgeOrders(); }catch(e){} }, 3600000);   // ทุกชั่วโมง
@@ -8337,7 +8403,7 @@ const APP = (()=>{
       if(e.key==='Enter'&&$('#payOverlay').classList.contains('show')){ PAY.complete(); }
     });
   }
-  return {init,applyBrand,updateSyncChip,setupGo,setupPick,setupSkip,setupReset};
+  return {init,applyBrand,updateSyncChip,setupGo,setupPick,setupSkip,setupReset,cloudGo};
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
