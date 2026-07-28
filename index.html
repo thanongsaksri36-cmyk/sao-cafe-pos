@@ -5961,18 +5961,39 @@ const BO = (()=>{
     });
   }
 
+  let _showPin=false;
+  function togglePin(){ _showPin=!_showPin; renderStaff(); }
   function renderStaff(){
-    const staff=STORE.get().staff.filter(s=>!s.deletedAt && (s.hq||(s.branchId||'BR-001')===STORE.bid()));
+    const hq=AUTH.isHQ(), myB=STORE.bid(), me=AUTH.get();
+    const bmap={}; (STORE.get().branches||[]).forEach(b=>bmap[b.id]=b.name);
+    // HQ เห็นพนักงานทุกสาขา (แก้ไขได้หมด) · สาขาเห็นเฉพาะของตัวเอง + ผู้ดูแล
+    const staff=STORE.get().staff.filter(s=>!s.deletedAt && (hq || s.hq || (s.branchId||'BR-001')===myB))
+      .sort((a,b)=>(a.hq?0:1)-(b.hq?0:1) || String(a.branchId||'').localeCompare(String(b.branchId||'')) || String(a.name||'').localeCompare(String(b.name||''),'th'));
+    // เห็น PIN ได้เมื่อ: เป็น HQ (เห็นหมด) · หรือเป็นพนักงานสาขาตัวเองที่ไม่ใช่ HQ
+    const canSee=(x)=> hq ? true : (!x.hq && (x.branchId||'BR-001')===myB);
+    const pinCell=(x)=>{
+      if(!canSee(x)) return '<span style="color:var(--muted)">••••</span> <small style="color:var(--muted)">(ผู้ดูแล)</small>';
+      return _showPin ? ('<b style="letter-spacing:2px;font-variant-numeric:tabular-nums">'+esc(x.pin||'')+'</b>') : '••••';
+    };
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px"><button class="add-fab" onclick="BO.rolePerms()">⚙️ สิทธิ์ตำแหน่ง</button><button class="add-fab" onclick="BO.editStaff()">+ เพิ่มพนักงาน</button></div>
-      <table><thead><tr><th>ชื่อ</th><th>ตำแหน่ง</th><th>PIN</th><th>ยอดขายสะสม</th><th>สถานะ</th><th></th></tr></thead><tbody>
-      ${staff.map(s=>`<tr>
-        <td><b>${esc(s.name)}</b>${s.hq?' <span class="pill ok" style="font-size:10px">HQ ทุกสาขา</span>':' <small style="color:var(--muted)">'+esc((STORE.get().branches.find(b=>b.id===(s.branchId||'BR-001'))||{}).name||'')+'</small>'}</td><td>${AUTH.roleTh(s.role)}</td>
-        <td>••••</td><td>${STORE.baht(s.sales||0)}</td>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="sub-tab" onclick="BO.togglePin()">${_showPin?'🙈 ซ่อน PIN':'👁️ ดู PIN'}</button>
+        <button class="add-fab" onclick="BO.rolePerms()">⚙️ สิทธิ์ตำแหน่ง</button>
+        <button class="add-fab" onclick="BO.editStaff()">+ เพิ่มพนักงาน</button></div>
+      ${hq?'<p style="font-size:12px;color:var(--muted);margin-bottom:8px">👑 คุณเป็นผู้ดูแล — เห็นและแก้ไขพนักงานได้ทุกสาขา</p>':''}
+      <table><thead><tr><th>ชื่อ</th><th>สาขา</th><th>ตำแหน่ง</th><th>PIN</th><th>ยอดขายสะสม</th><th>สถานะ</th><th></th></tr></thead><tbody>
+      ${staff.map(s=>`<tr${s.hq?' style="background:rgba(166,124,61,.06)"':''}>
+        <td><b>${esc(s.name)}</b></td>
+        <td>${s.hq?'<span class="pill ok" style="font-size:10px">👑 ทุกสาขา</span>':'<small>'+esc(bmap[s.branchId||'BR-001']||s.branchId||'')+'</small>'}</td>
+        <td>${AUTH.roleTh(s.role)}</td>
+        <td>${pinCell(s)}</td><td>${STORE.baht(s.sales||0)}</td>
         <td><span class="pill ${s.active?'ok':'no'}">${s.active?'ทำงาน':'พักงาน'}</span></td>
-        <td style="text-align:right"><button class="sub-tab" onclick="BO.editStaff('${s.id}')">แก้ไข</button>${(AUTH.get()&&AUTH.get().id===s.id)?'':`<button class="sub-tab" style="color:var(--danger)" onclick="BO.delStaff('${s.id}')">ลบ</button>`}</td>
+        <td style="text-align:right"><button class="sub-tab" onclick="BO.editStaff('${s.id}')">แก้ไข</button>${(me&&me.id===s.id)?'':`<button class="sub-tab" style="color:var(--danger)" onclick="BO.delStaff('${s.id}')">ลบ</button>`}</td>
       </tr>`).join('')}
-      </tbody></table>`;
+      </tbody></table>
+      <p style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7">
+        🔒 พนักงานสาขาจะเห็น PIN เฉพาะของสาขาตัวเอง — <b>PIN ของผู้ดูแลถูกซ่อนเสมอ</b><br>
+        👑 = บัญชีผู้ดูแล เห็นและสลับได้ทุกสาขา · ตั้งให้เฉพาะคนที่ไว้ใจเท่านั้น</p>`;
   }
   function renderExpenses(){
     const fx=(STORE.get().settings.fixedCosts||[]).filter(c=>(c.branchId||'BR-001')===STORE.bid());
@@ -6060,7 +6081,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {render,setTab,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
+  return {render,setTab,togglePin,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -6235,7 +6256,7 @@ const SETTINGS = (()=>{
   function render(){
     const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.52</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.53</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
