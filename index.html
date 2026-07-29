@@ -4127,7 +4127,9 @@ const PAY = (()=>{
     KDS.updateBadge();
     UI.toast('ขายสำเร็จ '+STORE.baht(s.total),'ok');
   }
+  let _lastOrd=null;
   function receipt(order){
+    _lastOrd=order;                                   // ⭐ จำไว้ ปุ่มพิมพ์จะได้แนบใบครัวได้
     const m=STORE.binfo(), items=order.items;
     const rows=items.map(it=>{
       const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
@@ -4202,7 +4204,12 @@ const PAY = (()=>{
   function print(){
     const el=$('#rcptPrint'); if(!el){ try{ UI.toast('ไม่พบใบเสร็จให้พิมพ์','err'); }catch(e){} return; }
     const c=el.cloneNode(true); c.removeAttribute('id'); try{ c.style.display=''; }catch(e){}
-    _emit(c.outerHTML);
+    const docs=[c.outerHTML];
+    const st=STORE.get().settings;
+    if(st.kdsServeSlip && _lastOrd){                  // ⭐ เปิดสวิตช์ใบครัวไว้ = แนบมาด้วยเลย
+      try{ docs.push(KDS.serveSlipHtml(_lastOrd)); }catch(e){ console.error('kitchen',e); }
+    }
+    printDocs(docs,true);                             // กดเอง = พิมพ์เสมอ
   }
   // สร้าง QR แบบ visual (ไม่ใช่ payload จริงตาม EMVCo แต่สแกนอ่านได้เป็น text) — ใช้ deterministic pattern
   // สร้าง QR PromptPay จริง: ใช้รูปที่อัปโหลดถ้ามี ไม่งั้นสร้างจากเบอร์/เลขบัตร+ยอด
@@ -4253,7 +4260,7 @@ const PAY = (()=>{
     }
     return `<svg width="200" height="200" viewBox="0 0 ${n*cell} ${n*cell}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
   }
-  function kitchenSlip(orderId){ const o=STORE.find('orders',orderId); if(o) KDS.serveSlip(o); }
+  function kitchenSlip(orderId){ const o=STORE.find('orders',orderId)||_lastOrd; if(o) KDS.serveSlip(o,true); }
   function fullTaxInvoice(orderId){
     const o=STORE.find('orders',orderId); if(!o) return;
     UI.ask('ใบกำกับภาษีเต็มรูป — ข้อมูลผู้ซื้อ',[
@@ -4292,9 +4299,9 @@ const PAY = (()=>{
     if(_recent.some(x=>x.h===h)) return true;
     _recent.push({h,t}); return false;
   }
-  function printDocs(docs){
+  function printDocs(docs,force){
     if(!docs||!docs.length) return;
-    const keep=docs.filter(d=>d&&!_dup(d));
+    const keep=docs.filter(d=>d&&(force||!_dup(d)));
     if(!keep.length) return;
     _emit(keep.map((d,i)=>`<div${i?' class="pgbrk"':''}>${d}</div>`).join(''));
   }
@@ -4600,7 +4607,7 @@ const KDS = (()=>{
       `<div class="rc" style="font-size:22px;font-weight:800;margin:2px 0 4px">${where}</div>`+
       `<div class="rc" style="font-size:13px">${esc(o.no)} · ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div><div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
   }
-  function serveSlip(o){ PAY.printDocs([serveSlipHtml(o)]); }
+  function serveSlip(o,force){ PAY.printDocs([serveSlipHtml(o)],force); }
   function updateBadge(){
     const n=active().length, b=$('#kdsBdg');
     if(b){ b.textContent=n; b.classList.toggle('hidden',n===0); }
@@ -6761,7 +6768,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.75</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.77</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6869,7 +6876,7 @@ const SETTINGS = (()=>{
             <button class="add-fab" style="width:100%;justify-content:center" onclick="SETTINGS.downloadBat()">⬇️ ดาวน์โหลดไฟล์เปิดร้าน (.bat)</button>
             <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">ใช้กับคอม Windows เท่านั้น · เปิดร้านด้วยไฟล์นี้ทุกครั้ง แทนการเปิด Chrome ปกติ<br>ถ้า Chrome เตือนว่าไฟล์อาจไม่ปลอดภัย → กด <b>เก็บไว้ (Keep)</b></div>
           </div>
-          <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ</label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
+          <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.printDiag()">🔍 ตรวจระบบพิมพ์</button></label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
         <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
@@ -7232,6 +7239,48 @@ const SETTINGS = (()=>{
     if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
     try{ CLOUD.pushMeta(true); }catch(e){} render(); UI.toast('ลบโลโก้แล้ว','ok'); }
 
+  // ===== ตรวจระบบพิมพ์ — บอกตรง ๆ ว่าตั้งค่านี้ ขาย 1 บิลจะได้อะไรบ้าง =====
+  function printDiag(){
+    const st=STORE.get().settings;
+    const auto=!!st.autoPrint, kit=!!st.kdsServeSlip, meth=st.printMethod||'browser';
+    const bt = meth==='bluetooth';
+    const YN=(v,y,n)=>'<b style="color:'+(v?'#2E7D32':'#C0392B')+'">'+(v?y:n)+'</b>';
+    const row=(k,v)=>'<div style="display:flex;padding:7px 0;border-bottom:1px solid var(--line)"><span style="flex:1">'+k+'</span>'+v+'</div>';
+
+    let willGet, fix='', warn='';
+    if(auto && kit)      willGet='✅ ใบเสร็จ + ใบครัว (อัตโนมัติ)';
+    else if(auto&&!kit)  { willGet='⚠️ ใบเสร็จอย่างเดียว'; fix='kit'; }
+    else if(!auto&&kit)  willGet='✅ ใบเสร็จ + ใบครัว (เมื่อกดปุ่ม 🖨 พิมพ์)';
+    else                 { willGet='❌ ไม่พิมพ์อะไรเลย จนกว่าจะกดปุ่ม 🖨 พิมพ์'; fix='both'; }
+    if(bt) warn='<p style="font-size:12px;color:#B4451F;margin-top:10px;line-height:1.7">⚠️ โหมด Bluetooth ESC/POS พิมพ์ได้แต่ตัวอักษร <b>โลโก้จะไม่ขึ้น</b> — ถ้าอยากได้โลโก้ ให้เปลี่ยนเป็น "ผ่านเบราว์เซอร์"</p>';
+
+    let btn='';
+    if(fix) btn='<button class="btn-gold" style="width:100%;padding:11px;margin-top:12px" onclick="SETTINGS.fixPrint()">🔧 ตั้งให้พิมพ์ใบเสร็จ + ใบครัว อัตโนมัติ</button>';
+
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>🔍 ตรวจระบบพิมพ์</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+
+        row('วิธีพิมพ์', '<b>'+(bt?'Bluetooth ESC/POS':'ผ่านเบราว์เซอร์')+'</b>')+
+        row('พิมพ์อัตโนมัติเมื่อขายเสร็จ', YN(auto,'เปิด','ปิด'))+
+        row('แนบใบครัว', YN(kit,'เปิด','ปิด'))+
+        '<div style="background:var(--bg);border-radius:10px;padding:12px;margin-top:12px">'+
+          '<small style="color:var(--muted)">ขาย 1 บิล จะได้:</small><div style="font-size:15px;margin-top:4px">'+willGet+'</div></div>'+
+        warn+btn+
+        '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">'+
+        'ปุ่ม <b>🖨 พิมพ์</b> ในหน้าใบเสร็จ จะพิมพ์ใบครัวให้อัตโนมัติถ้าเปิดสวิตช์ "แนบใบครัว" ไว้<br>'+
+        'ค่าพวกนี้เก็บ<b>แยกรายเครื่อง</b> — ตั้งที่เครื่องไหน มีผลเฉพาะเครื่องนั้น</p>'+
+      '</div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button>'+
+      '<button class="btn-gold" onclick="SETTINGS.testKitchen()">🍽️ ทดสอบพิมพ์ใบครัว</button></div>';
+    UI.open('genOverlay');
+  }
+  function fixPrint(){
+    const st=STORE.get().settings; st.autoPrint=true; st.kdsServeSlip=true;
+    if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    render(); UI.toast('ตั้งค่าแล้ว — ขายเสร็จจะพิมพ์ใบเสร็จ + ใบครัวอัตโนมัติ','ok');
+    setTimeout(printDiag,400);
+  }
   // ทดสอบใบครัวทันที ไม่ต้องรอขายจริง
   function testKitchen(){
     const D=STORE.get(), p=(D.products||[])[0];
@@ -7239,7 +7288,7 @@ const SETTINGS = (()=>{
       items:[{name:(p&&p.name)||'กาแฟร้อน',qty:2,mods:[{name:'หวานน้อย'}],note:'ไม่ใส่หลอด'},
              {name:'ชาเย็น',qty:1,mods:[],note:''}] };
     demo.no='ทดสอบ '+new Date().toLocaleTimeString('th-TH');   // ให้ต่างทุกครั้ง ไม่โดนตัวกันพิมพ์ซ้ำ
-    try{ KDS.serveSlip(demo); UI.toast('ส่งใบครัวเข้าเครื่องพิมพ์แล้ว','ok'); }
+    try{ KDS.serveSlip(demo,true); UI.toast('ส่งใบครัวเข้าเครื่องพิมพ์แล้ว','ok'); }
     catch(e){ UI.toast('พิมพ์ใบครัวไม่ได้: '+e.message,'err'); }
   }
   function testPrint(){
@@ -7299,7 +7348,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,printDiag,fixPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
