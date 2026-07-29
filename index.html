@@ -4308,7 +4308,9 @@ const PAY = (()=>{
   }
   function autoPrint(order){
     const st=STORE.get().settings; if(!st.autoPrint) return;
-    if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order); return; }
+    if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order);
+      if(st.kdsServeSlip) setTimeout(()=>printDocs([KDS.serveSlipHtml(order)]),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
+      return; }
     const docs=[rcptHtml(order)];                          // ใบเสร็จ (สร้างจากออเดอร์ตรง ๆ)
     if(st.kdsServeSlip) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
     setTimeout(()=>printDocs(docs),200);
@@ -4576,7 +4578,8 @@ const KDS = (()=>{
     const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${it.qty}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
     const tp=({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[o.type]||'';
     const where=o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp;
-    return `<div class="receipt"><div class="rc"><h3>🍽️ ใบครัว</h3></div>`+
+    const head = (m.logo?`<img src="${m.logo}" style="max-width:44%;max-height:56px;margin:0 auto 2px;display:block">`:'')+`<h3>🍽️ ใบครัว</h3><div style="font-size:12px">${esc(m.shopName||'')}</div>`;
+    return `<div class="receipt"><div class="rc">${head}</div>`+
       `<div class="rc" style="font-size:22px;font-weight:800;margin:2px 0 4px">${where}</div>`+
       `<div class="rc" style="font-size:13px">${esc(o.no)} · ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div><div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
   }
@@ -6741,7 +6744,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.73</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.74</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6855,7 +6858,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
-        <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา)</label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
+        <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้เฉพาะโหมด Bluetooth ESC/POS<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select>
             <div style="margin-top:6px;font-size:12px;color:var(--muted)">${esc(PENDING.voiceInfo?PENDING.voiceInfo():'')} <button class="sub-tab" style="margin-left:8px" onclick="PENDING.testVoice()">🔊 ทดสอบเสียงเตือน</button></div></div>
@@ -6953,7 +6956,9 @@ const SETTINGS = (()=>{
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
     s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
-    STORE.save(); applyTheme();
+    m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
+    const _ok=STORE.save(); applyTheme();
+    if(!_ok){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — กดล้างพื้นที่ก่อน แล้วตั้งค่าใหม่','err'); try{ cleanup(); }catch(e){} return; }
     try{ CLOUD.pushMeta(); }catch(e){}          // ⭐ ให้สาขาอื่น + Edge Function ใช้ค่าใหม่ทันที
     UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
@@ -7187,12 +7192,37 @@ const SETTINGS = (()=>{
   function pickLogo(){
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const reader=new FileReader();
-      reader.onload=(e)=>{ const img=new Image(); img.onload=()=>{ const max=320; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc); const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h); STORE.get().meta.logo=cv.toDataURL('image/png'); STORE.save(); render(); UI.toast('อัปโหลดโลโก้แล้ว','ok'); }; img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err'); img.src=e.target.result; };
+      reader.onload=(e)=>{ const img=new Image(); img.onload=()=>{
+        const max=320; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc)||1; h=Math.round(h*sc)||1;
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const cx=cv.getContext('2d');
+        cx.drawImage(img,0,0,w,h);
+        let out=cv.toDataURL('image/png');
+        if(out.length>180000){                                   // รูปถ่าย/ไฟล์ใหญ่ -> พื้นขาว + JPEG (เล็กกว่า ~10 เท่า)
+          cx.globalCompositeOperation='destination-over'; cx.fillStyle='#fff'; cx.fillRect(0,0,w,h);
+          out=cv.toDataURL('image/jpeg',0.86);
+        }
+        if(out.length>400000){ UI.toast('รูปใหญ่เกินไป ลองใช้รูปที่เล็กกว่านี้','err'); return; }
+        const prev=STORE.get().meta.logo||'';
+        STORE.get().meta.logo=out; STORE.get().meta._rev=STORE.now();
+        if(!STORE.save()){ STORE.get().meta.logo=prev; render(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง','err'); return; }
+        try{ CLOUD.pushMeta(true); }catch(err){}
+        render(); UI.toast('อัปโหลดโลโก้แล้ว ('+Math.round(out.length/1024)+' KB)','ok');
+      }; img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err'); img.src=e.target.result; };
       reader.readAsDataURL(file); };
     inp.click();
   }
-  function clearLogo(){ STORE.get().meta.logo=''; STORE.save(); render(); UI.toast('ลบโลโก้แล้ว','ok'); }
+  function clearLogo(){ STORE.get().meta.logo=''; STORE.get().meta._rev=STORE.now();
+    if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    try{ CLOUD.pushMeta(true); }catch(e){} render(); UI.toast('ลบโลโก้แล้ว','ok'); }
 
+  // ทดสอบใบครัวทันที ไม่ต้องรอขายจริง
+  function testKitchen(){
+    const D=STORE.get(), p=(D.products||[])[0];
+    const demo={ id:'TEST', no:'ทดสอบ', type:'dine-in', table:'1',
+      items:[{name:(p&&p.name)||'กาแฟร้อน',qty:2,mods:[{name:'หวานน้อย'}],note:'ไม่ใส่หลอด'},
+             {name:'ชาเย็น',qty:1,mods:[],note:''}] };
+    try{ KDS.serveSlip(demo); }catch(e){ UI.toast('พิมพ์ใบครัวไม่ได้: '+e.message,'err'); }
+  }
   function testPrint(){
     const demo={id:'test',no:'#ทดสอบ',receiptNo:0,type:'dine-in',table:'',items:[{name:'ทดสอบพิมพ์',base:5000,modPrice:0,mods:[],qty:1}],subtotal:5000,discount:0,vat:0,service:0,total:5000,method:'cash',paid:5000,change:0,staffName:(AUTH.get()||{}).name||'-',createdAt:STORE.now()};
     const st=STORE.get().settings;
@@ -7250,7 +7280,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -8284,7 +8314,11 @@ const CLOUD = (()=>{
   const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
   function mergeMeta(D,o){
     if(!o) return;
-    if(o.meta){ const keepBid=(D.meta||{}).currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
+    if(o.meta){
+      const mine=(D.meta||{}), incRev=+(o.meta._rev||0), myRev=+(mine._rev||0);
+      if(incRev<myRev){ /* cloud เก่ากว่าเครื่อง -> ไม่ทับ (กันชื่อร้าน/โลโก้หายตอน sync) */ }
+      else { const keepBid=mine.currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
+    }
     if(o.settings){ const mine={}; LOCAL_KEYS.forEach(k=>{ if((D.settings||{})[k]!==undefined) mine[k]=D.settings[k]; }); D.settings=Object.assign({},D.settings,o.settings,mine); }
     if(o.counters) D.counters=Object.assign({},D.counters,o.counters);
     if(o.branchCounters){ D.branchCounters=D.branchCounters||{};
