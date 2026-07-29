@@ -4166,7 +4166,13 @@ const PAY = (()=>{
     UI.open('genOverlay');
   }
   // ===== พิมพ์จากหน้าเดิม (ไม่ใช้ window.open — Safari/iPad บล็อก popup) =====
-  function _emit(inner){
+  let _pq=[], _pbusy=false;
+  function _emit(inner){ if(!inner) return; _pq.push(inner); _pnext(); }
+  function _pnext(){
+    if(_pbusy||!_pq.length) return;
+    _pbusy=true; _emit0(_pq.shift());
+  }
+  function _emit0(inner){
     const st=STORE.get().settings;
     const pw=st.paperWidth||'80';                            // 58 หรือ 80 mm
     const base=pw==='58'?12:14;                              // ⭐ ใหญ่ขึ้นจากเดิม (11/12) ให้พิมพ์ออกมาชัด
@@ -4185,7 +4191,9 @@ const PAY = (()=>{
     host.innerHTML=inner;
     document.body.classList.add('printing');
     let done=false;
-    const cleanup=()=>{ if(done) return; done=true; document.body.classList.remove('printing'); host.innerHTML=''; try{ window.removeEventListener('afterprint',cleanup); }catch(e){} };
+    const cleanup=()=>{ if(done) return; done=true; document.body.classList.remove('printing'); host.innerHTML='';
+      try{ window.removeEventListener('afterprint',cleanup); }catch(e){}
+      _pbusy=false; setTimeout(_pnext,500); };     // ⭐ ปล่อยคิวถัดไป หลังงานนี้จบจริง
     try{ window.addEventListener('afterprint',cleanup,{once:true}); }catch(e){}
     setTimeout(cleanup,20000);                                // กันค้าง ถ้าเบราว์เซอร์ไม่ยิง afterprint (iOS)
     try{ void host.offsetHeight; window.print(); }             // เรียกทันทีในจังหวะที่ผู้ใช้แตะ (iOS ต้องการ)
@@ -4277,9 +4285,18 @@ const PAY = (()=>{
     UI.open('genOverlay');
   }
   // พิมพ์หลายใบในครั้งเดียว (เลี่ยงเบราว์เซอร์บล็อกหน้าต่างที่ 2)
+  let _recent=[];
+  function _dup(d){                                  // ใบเดิมเป๊ะ ๆ ภายใน 8 วิ = ซ้ำ ไม่พิมพ์อีก
+    const t=Date.now(); _recent=_recent.filter(x=>t-x.t<8000);
+    let h=0; const str=String(d); for(let i=0;i<str.length;i++){ h=((h<<5)-h+str.charCodeAt(i))|0; }
+    if(_recent.some(x=>x.h===h)) return true;
+    _recent.push({h,t}); return false;
+  }
   function printDocs(docs){
     if(!docs||!docs.length) return;
-    _emit(docs.map((d,i)=>`<div${i?' class="pgbrk"':''}>${d}</div>`).join(''));
+    const keep=docs.filter(d=>d&&!_dup(d));
+    if(!keep.length) return;
+    _emit(keep.map((d,i)=>`<div${i?' class="pgbrk"':''}>${d}</div>`).join(''));
   }
   function rcptHtml(order){   // สร้าง HTML ใบเสร็จจากออเดอร์โดยตรง (พิมพ์ได้แม้ไม่ได้เปิดหน้าใบเสร็จ เช่น ตรวจสลิปผ่านอัตโนมัติ)
     const m=STORE.binfo(), items=order.items||[];
@@ -4795,7 +4812,7 @@ const QR = (()=>{
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
     STORE.get().orders.push(order); STORE.bcounter().orderNo++;
-    INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
+    INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip && !STORE.get().settings.autoPrint) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
     try{ LINEN.send('✅ ลูกค้าสแกนสั่ง+โอนผ่าน (ตรวจสลิปอัตโนมัติ) '+order.no+(order.table?' โต๊ะ '+order.table:'')+' · '+STORE.baht(order.total),'qr'); }catch(e){}
     stage='done';
     $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:40px">
@@ -4868,7 +4885,7 @@ const QR = (()=>{
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
     STORE.get().orders.push(order); STORE.bcounter().orderNo++;
-    INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
+    INV.deduct(order); STORE.save(); CLOUD.pushOrder(order); if(STORE.get().settings.kdsServeSlip && !STORE.get().settings.autoPrint) KDS.serveSlip(order); KDS.updateBadge(); PENDING.updateBadge();
     stage='done'; renderTrack(order,'open');
   }
   async function _submitOrder(method,slipImg){
@@ -5134,7 +5151,7 @@ const PENDING = (()=>{
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total;
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     INV.deduct(o); SHIFT.recordSale(o);                                                          // ⭐ เงินสดเข้าลิ้นชัก
-    STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
+    STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip && !STORE.get().settings.autoPrint) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
     try{ PAY.autoPrint(o); }catch(e){}
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('รับเงินแล้ว ส่งเข้าครัว '+(o.table?'โต๊ะ '+o.table:o.no),'ok');
@@ -6744,7 +6761,7 @@ const SETTINGS = (()=>{
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.74</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.75</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7221,7 +7238,9 @@ const SETTINGS = (()=>{
     const demo={ id:'TEST', no:'ทดสอบ', type:'dine-in', table:'1',
       items:[{name:(p&&p.name)||'กาแฟร้อน',qty:2,mods:[{name:'หวานน้อย'}],note:'ไม่ใส่หลอด'},
              {name:'ชาเย็น',qty:1,mods:[],note:''}] };
-    try{ KDS.serveSlip(demo); }catch(e){ UI.toast('พิมพ์ใบครัวไม่ได้: '+e.message,'err'); }
+    demo.no='ทดสอบ '+new Date().toLocaleTimeString('th-TH');   // ให้ต่างทุกครั้ง ไม่โดนตัวกันพิมพ์ซ้ำ
+    try{ KDS.serveSlip(demo); UI.toast('ส่งใบครัวเข้าเครื่องพิมพ์แล้ว','ok'); }
+    catch(e){ UI.toast('พิมพ์ใบครัวไม่ได้: '+e.message,'err'); }
   }
   function testPrint(){
     const demo={id:'test',no:'#ทดสอบ',receiptNo:0,type:'dine-in',table:'',items:[{name:'ทดสอบพิมพ์',base:5000,modPrice:0,mods:[],qty:1}],subtotal:5000,discount:0,vat:0,service:0,total:5000,method:'cash',paid:5000,change:0,staffName:(AUTH.get()||{}).name||'-',createdAt:STORE.now()};
