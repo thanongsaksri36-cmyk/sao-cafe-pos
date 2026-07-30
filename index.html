@@ -3017,6 +3017,9 @@ const STORE = (()=>{
     out.push({k:'ความเคลื่อนไหวสต็อก', b:sz(D.stockmoves), n:(D.stockmoves||[]).length, act:'moves'});
     out.push({k:'สลิปโอนเงิน', b:(D.orders||[]).reduce((a,o)=>a+(o.slipImg?String(o.slipImg).length*2:0),0),
               n:(D.orders||[]).filter(o=>o.slipImg).length, act:'zipslip'});
+    { const lg=(D.branches||[]).reduce((a,b)=>a+(b.logo?String(b.logo).length*2:0),0)+((D.meta||{}).logo?String(D.meta.logo).length*2:0);
+      const nlg=(D.branches||[]).filter(b=>b.logo).length+((D.meta||{}).logo?1:0);
+      out.push({k:'โลโก้ร้าน/สาขา', b:lg, n:nlg, act:''}); }
     out.push({k:'เมนู+วัตถุดิบ+อื่น ๆ', b:sz(D.products)-out[0].b+sz(D.ingredients)+sz(D.branches)+sz(D.staff)+sz(D.cashlog)+sz(D.shifts), n:0, act:''});
     return out.filter(x=>x.b>0).sort((a,b)=>b.b-a.b);
   }
@@ -3253,7 +3256,11 @@ const STORE = (()=>{
   // รหัสเครื่อง 2 ตัว (คงที่ต่อเครื่อง) — กันเลขบิลชนกันเมื่อขายหลายเครื่องพร้อมกัน
   function deviceTag(){ try{ let t=localStorage.getItem('saocafe_dev'); if(!t){ t=Math.random().toString(36).slice(2,4).toUpperCase(); localStorage.setItem('saocafe_dev',t); } return t; }catch(e){ return 'XX'; } }
   function bcounter(){ if(!DB.branchCounters) DB.branchCounters={}; const b=bid(); if(!DB.branchCounters[b]) DB.branchCounters[b]={orderNo:1,receiptNo:1}; return DB.branchCounters[b]; }
-  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||''; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
+  function binfo(){ const b=curBranch()||{}; const m=Object.assign({},DB.meta||{}); m.branchName=b.name||m.branchName||'';
+    // ⭐ แบรนด์ระดับสาขา — ว่าง = ใช้ของส่วนกลาง (ไม่ต้อง migrate ข้อมูลเดิม)
+    if(b.brandName) m.shopName=b.brandName;
+    if(b.brandSub)  m.brandSub=b.brandSub;
+    if(b.logo)      m.logo=b.logo; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
   function ensureHQ(data){
     try{
       const alive=(data.staff||[]).filter(x=>!x.deletedAt&&x.active!==false);
@@ -4139,9 +4146,9 @@ const PAY = (()=>{
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>🧾 ใบเสร็จ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div class="receipt" id="rcptPrint">
-        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
+        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
         <div class="rdiv"></div>
-        <div>เลขที่: ${esc(order.no)} · ${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[order.type]}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
+        <div>${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[order.type]||''}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
         <div>พนักงาน: ${esc(order.staffName)} · ${new Date(order.createdAt).toLocaleString('th-TH')}</div>
         <div class="rdiv"></div>
         <table><tbody>${rows}</tbody></table>
@@ -4309,9 +4316,9 @@ const PAY = (()=>{
     const m=STORE.binfo(), items=order.items||[];
     const rows=items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`; }).join('');
     return `<div class="receipt">
-        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
+        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
         <div class="rdiv"></div>
-        <div>เลขที่: ${esc(order.no)} · ${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[order.type]||''}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
+        <div>${({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[order.type]||''}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
         <div>พนักงาน: ${esc(order.staffName||'')} · ${new Date(order.createdAt).toLocaleString('th-TH')}</div>
         <div class="rdiv"></div>
         <table><tbody>${rows}</tbody></table>
@@ -4598,14 +4605,17 @@ const KDS = (()=>{
   }
   // ใบเสิร์ฟ: พิมพ์รายการในออเดอร์ ไว้ให้พนักงานเสิร์ฟ+ทวนลูกค้า (เปิด/ปิดได้ในตั้งค่า)
   function serveSlipHtml(o){
-    const m=STORE.get().meta;
+    const m=STORE.binfo();
     const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${it.qty}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
     const tp=({'dine-in':'ทานที่ร้าน','takeaway':'กลับบ้าน','delivery':'เดลิเวอรี่'})[o.type]||'';
     const where=o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp;
-    const head = (m.logo?`<img src="${m.logo}" style="max-width:44%;max-height:56px;margin:0 auto 2px;display:block">`:'')+`<h3>🍽️ ใบครัว</h3><div style="font-size:12px">${esc(m.shopName||'')}</div>`;
+    // ⭐ ไม่ใส่โลโก้ — ประหยัดกระดาษ · เลขออเดอร์อยู่บนสุด ตัวใหญ่สุด เห็นชัดตอนเรียกคิว
+    const head = `<div style="font-size:2.4em;font-weight:900;line-height:1.1;letter-spacing:.5px">${esc(o.no)}</div>`
+      + `<div style="font-size:1.05em;font-weight:700;margin-top:1px">🍽️ ใบครัว</div>`;
     return `<div class="receipt"><div class="rc">${head}</div>`+
-      `<div class="rc" style="font-size:22px;font-weight:800;margin:2px 0 4px">${where}</div>`+
-      `<div class="rc" style="font-size:13px">${esc(o.no)} · ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div><div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
+      `<div class="rc" style="font-size:1.5em;font-weight:800;margin:3px 0 2px">${where}</div>`+
+      `<div class="rc" style="font-size:.9em">${esc(m.branchName||'')}${m.branchName?' · ':''}${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div>`+
+      `<div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
   }
   function serveSlip(o,force){ PAY.printDocs([serveSlipHtml(o)],force); }
   function updateBadge(){
@@ -5414,7 +5424,7 @@ const REPORT = (()=>{
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>🧾 Z-Report (ปิดยอด)</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div class="receipt">
-        <div class="rc"><h3>${esc(STORE.get().meta.shopName)}</h3>${esc((STORE.curBranch()||{}).name||'')}<br>Z-REPORT<br>${new Date().toLocaleString('th-TH')}</div>
+        <div class="rc"><h3>${esc(STORE.binfo().shopName)}</h3>${esc(STORE.binfo().branchName||'')}<br>Z-REPORT<br>${new Date().toLocaleString('th-TH')}</div>
         <div class="rdiv"></div>
         <table><tbody>
           <tr><td>จำนวนบิล</td><td style="text-align:right">${orders.length}</td></tr>
@@ -5835,7 +5845,7 @@ const BO = (()=>{
     const url=orderUrl(t.name);
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🔗 QR โต๊ะ ${esc(t.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b" style="text-align:center"><div id="rcptPrint"><div style="text-align:center;font-family:'Prompt'"><div style="font-weight:700;font-size:20px">${esc(STORE.get().meta.shopName)}</div><div style="font-size:28px;font-weight:800;margin:6px 0">โต๊ะ ${esc(t.name)}</div><div>${qrFor(url)}</div><div style="font-size:13px;margin-top:6px">สแกนเพื่อสั่งอาหาร</div></div></div>
+      <div class="modal-b" style="text-align:center"><div id="rcptPrint"><div style="text-align:center;font-family:'Prompt'"><div style="font-weight:700;font-size:20px">${esc(STORE.binfo().shopName)}</div><div style="font-size:28px;font-weight:800;margin:6px 0">โต๊ะ ${esc(t.name)}</div><div>${qrFor(url)}</div><div style="font-size:13px;margin-top:6px">สแกนเพื่อสั่งอาหาร</div></div></div>
       <p style="font-size:11px;color:var(--muted);margin-top:8px;word-break:break-all">${esc(url)}</p></div>
       <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="PAY.print()">🖨️ พิมพ์</button></div>`;
     UI.open('genOverlay');
@@ -5846,7 +5856,7 @@ const BO = (()=>{
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🖨️ QR ทุกโต๊ะ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div id="rcptPrint"><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;font-family:'Prompt'">
-      ${ts.map(t=>`<div style="text-align:center;border:1px solid #ccc;border-radius:10px;padding:10px"><div style="font-weight:700">${esc(STORE.get().meta.shopName)}</div><div style="font-size:20px;font-weight:800;margin:4px 0">โต๊ะ ${esc(t.name)}</div>${qrFor(orderUrl(t.name))}<div style="font-size:12px">สแกนสั่งอาหาร</div></div>`).join('')}
+      ${ts.map(t=>`<div style="text-align:center;border:1px solid #ccc;border-radius:10px;padding:10px"><div style="font-weight:700">${esc(STORE.binfo().shopName)}</div><div style="font-size:20px;font-weight:800;margin:4px 0">โต๊ะ ${esc(t.name)}</div>${qrFor(orderUrl(t.name))}<div style="font-size:12px">สแกนสั่งอาหาร</div></div>`).join('')}
       </div></div></div>
       <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="PAY.print()">🖨️ พิมพ์ทั้งหมด</button></div>`;
     UI.open('genOverlay');
@@ -6759,7 +6769,7 @@ const SHIFT = (()=>{
    ============================================================ */
 const SETTINGS = (()=>{
   function render(){
-    const m=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
+    const m=STORE.get().meta, m0=STORE.get().meta, s=STORE.get().settings, cb=STORE.curBranch()||{};
     // ช่อง Bot Token — เห็นเฉพาะผู้ดูแล (สร้างเป็นสตริงก่อน เลี่ยง template ซ้อนกัน)
     const tokenField = AUTH.isHQ()
       ? ('<div class="field"><label>🤖 Bot Token — 👑 ผู้ดูแลเท่านั้น'
@@ -6767,16 +6777,48 @@ const SETTINGS = (()=>{
          + '<div style="display:flex;gap:8px"><input id="setTgToken" type="password" value="'+esc(s.tgToken||'')+'" placeholder="123456789:AAH..." autocomplete="off" style="flex:1">'
          + '<button class="add-fab" type="button" onclick="SETTINGS.eyeTg()">👁️</button></div></div>')
       : '';
+    // ===== แบรนด์: ส่วนกลาง (HQ เท่านั้น) + เฉพาะสาขานี้ (สาขาแก้เองได้) =====
+    const _hq = (typeof AUTH!=='undefined'&&AUTH.isHQ)?AUTH.isHQ():false;
+    const _dis = _hq ? '' : ' disabled';
+    const _lockNote = _hq ? '' : '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">🔒 แก้ได้เฉพาะสำนักงานใหญ่</div>';
+    const _prev=(src,id)=>'<div id="'+id+'" style="width:56px;height:56px;border:1px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg);flex:none">'
+      + (src?'<img src="'+src+'" style="max-width:100%;max-height:100%">':'<span style="font-size:10px;color:var(--muted)">ไม่มี</span>')+'</div>';
+    const _cap='<div style="font-size:11px;color:var(--muted);margin:-4px 0 12px">';
+
+    const hqOnly =
+      '<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:12px">'
+      + '<div style="font-weight:700;font-size:13px;margin-bottom:8px">🏢 แบรนด์ส่วนกลาง <span style="font-weight:400;color:var(--muted)">— สาขาที่ไม่ได้ตั้งเอง จะใช้ค่านี้</span></div>'
+      + _lockNote
+      + '<div class="field"><label>ชื่อร้าน</label><input id="setShop" value="'+esc(m0.shopName||'')+'"'+_dis+'></div>'
+      + '<div class="field"><label>คำโปรย/ชื่อรอง</label><input id="setBrandSub" value="'+esc(m0.brandSub||'')+'" placeholder="เช่น ขาว คาเฟ่"'+_dis+'></div>'
+      + '<div class="field"><label>โลโก้ส่วนกลาง</label><div style="display:flex;align-items:center;gap:10px">'+_prev(m0.logo,'logoPrev')
+      + (_hq?('<button type="button" class="btn-ghost" onclick="SETTINGS.pickLogo(\'meta\')">📷 เลือกรูป</button>'
+             +(m0.logo?'<button type="button" class="btn-ghost" onclick="SETTINGS.clearLogo(\'meta\')">🗑 ลบ</button>':'')):'')
+      + '</div></div></div>';
+
+    const _ovr = !!(cb.brandName||cb.brandSub||cb.logo);
+    const brOwn =
+      '<div style="border:1px solid '+(_ovr?'var(--gold)':'var(--line)')+';border-radius:10px;padding:12px;margin-bottom:12px">'
+      + '<div style="font-weight:700;font-size:13px;margin-bottom:4px">🏪 แบรนด์เฉพาะสาขานี้ '+(_ovr?'<span style="color:var(--gold)">● ใช้อยู่</span>':'')+'</div>'
+      + _cap+'เว้นว่าง = ใช้แบรนด์ส่วนกลาง · ใส่ค่า = สาขานี้ใช้ของตัวเอง ไม่กระทบสาขาอื่น</div>'
+      + '<div class="field"><label>ชื่อร้านของสาขานี้</label><input id="setBrandNameB" value="'+esc(cb.brandName||'')+'" placeholder="'+esc(m0.shopName||'')+'"></div>'
+      + '<div class="field"><label>คำโปรยของสาขานี้</label><input id="setBrandSubB" value="'+esc(cb.brandSub||'')+'" placeholder="'+esc(m0.brandSub||'')+'"></div>'
+      + '<div class="field"><label>โลโก้ของสาขานี้ <small style="color:var(--muted);font-weight:400">(ย่อให้เหลือ ~30 KB อัตโนมัติ)</small></label><div style="display:flex;align-items:center;gap:10px">'+_prev(cb.logo,'logoPrevB')
+      + '<button type="button" class="btn-ghost" onclick="SETTINGS.pickLogo(\'branch\')">📷 เลือกรูป</button>'
+      + (cb.logo?'<button type="button" class="btn-ghost" onclick="SETTINGS.clearLogo(\'branch\')">🗑 ลบ</button>':'')
+      + '</div></div>'
+      + (_ovr?'<button type="button" class="btn-ghost" style="width:100%;padding:8px;margin-top:4px" onclick="SETTINGS.useGlobalBrand()">↩️ กลับไปใช้แบรนด์ส่วนกลาง</button>':'')
+      + '</div>';
+
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.77</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.80</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
-          <div style="font-size:12px;color:var(--muted);background:var(--bg);padding:8px 10px;border-radius:8px;margin-bottom:10px">📍 กำลังตั้งค่าสาขา: <b>${esc(cb.name||'-')}</b> · ชื่อร้าน/โลโก้ = ใช้ร่วมทุกสาขา · ชื่อสาขา/PromptPay/ภาษี/ที่อยู่ = เฉพาะสาขานี้</div>
-          <div class="field"><label>ชื่อร้าน (แบรนด์ · ใช้ร่วมทุกสาขา)</label><input id="setShop" value="${esc(m.shopName)}"></div>
-          <div class="field"><label>คำโปรย/ชื่อรอง (ใต้โลโก้ · เว้นว่างได้)</label><input id="setBrandSub" value="${esc(m.brandSub||'')}" placeholder="เช่น ขาว คาเฟ่"></div>
+          <div style="font-size:12px;color:var(--muted);background:var(--bg);padding:8px 10px;border-radius:8px;margin-bottom:10px">📍 กำลังตั้งค่าสาขา: <b>${esc(cb.name||'-')}</b></div>
+          ${hqOnly}
+          ${brOwn}
           <div class="field"><label>ชื่อสาขานี้</label><input id="setBranch" value="${esc(cb.name||'')}"></div>
-          <div class="field"><label>โลโก้ร้าน (แสดงบนใบเสร็จ/ใบครัว)</label><div style="display:flex;align-items:center;gap:10px"><div id="logoPrev" style="width:64px;height:64px;border:1px dashed var(--border);border-radius:10px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--bg)">${m.logo?`<img src="${m.logo}" style="max-width:100%;max-height:100%">`:'<span style="font-size:11px;color:var(--muted)">ไม่มี</span>'}</div><button type="button" class="btn-ghost" onclick="SETTINGS.pickLogo()">📷 เลือกรูป</button>${m.logo?`<button type="button" class="btn-ghost" onclick="SETTINGS.clearLogo()">🗑 ลบ</button>`:''}</div></div>
           <div class="field"><label>PromptPay ID ของสาขานี้ (เบอร์/เลขบัตร)</label><input id="setPP" value="${esc(cb.promptpayId||'')}"></div>
           <div class="field"><label>เลขผู้เสียภาษีของสาขานี้ (สำหรับใบกำกับภาษี)</label><input id="setTaxId" value="${esc(cb.taxId||'')}" placeholder="0-0000-00000-00-0"></div>
           <div class="field"><label>ที่อยู่สาขานี้ (พิมพ์บนใบกำกับภาษี)</label><input id="setAddr" value="${esc(cb.address||'')}" placeholder="เลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"></div>
@@ -6965,8 +7007,12 @@ const SETTINGS = (()=>{
   }
   function save(){
     const m=STORE.get().meta, s=STORE.get().settings;
-    m.shopName=$('#setShop').value; { const bs=$('#setBrandSub'); if(bs) m.brandSub=bs.value.trim(); } m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim(); { const o=$('#setOpenai'); if(o)s.openaiKey=o.value.trim(); const c=$('#setClaude'); if(c)s.claudeKey=c.value.trim(); const pv=$('#setAiProvider'); if(pv)s.aiProvider=pv.value; const am=$('#setAiModel'); if(am)s.aiModel=am.value.trim(); } try{ APP.applyBrand(); }catch(e){}
-    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value; cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc&&AUTH.isHQ()) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt&&AUTH.isHQ()) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
+    if(AUTH.isHQ()){ const _sh=$('#setShop'); if(_sh) m.shopName=_sh.value; const bs=$('#setBrandSub'); if(bs) m.brandSub=bs.value.trim(); }   // ⭐ แบรนด์ส่วนกลาง = HQ เท่านั้น
+    m.orderBaseUrl=$('#setOrderUrl').value.trim(); s.geminiKey=$('#setGemini').value.trim(); { const o=$('#setOpenai'); if(o)s.openaiKey=o.value.trim(); const c=$('#setClaude'); if(c)s.claudeKey=c.value.trim(); const pv=$('#setAiProvider'); if(pv)s.aiProvider=pv.value; const am=$('#setAiModel'); if(am)s.aiModel=am.value.trim(); } try{ APP.applyBrand(); }catch(e){}
+    const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value;
+      { const _bn=$('#setBrandNameB'); if(_bn) cb.brandName=_bn.value.trim();
+        const _bs=$('#setBrandSubB');  if(_bs) cb.brandSub=_bs.value.trim(); }
+      cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc&&AUTH.isHQ()) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt&&AUTH.isHQ()) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
@@ -7213,31 +7259,63 @@ const SETTINGS = (()=>{
     inp.click();
   }
   function removeQr(){ const cb=STORE.curBranch(); if(cb) delete cb.promptpayQrImg; try{ if(STORE.get().settings) delete STORE.get().settings.promptpayQrImg; }catch(e){} STORE.save(); try{ if(cb) CLOUD.pushItem('branches',cb); }catch(e){} render(); UI.toast('ลบรูป QR แล้ว ใช้ QR อัตโนมัติ','ok'); }
-  function pickLogo(){
+  function pickLogo(where){
+    const toBranch = where==='branch';
+    if(!toBranch && !AUTH.isHQ()){ UI.toast('โลโก้ส่วนกลาง แก้ได้เฉพาะสำนักงานใหญ่','err'); return; }
     const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*';
     inp.onchange=()=>{ const file=inp.files[0]; if(!file) return; const reader=new FileReader();
       reader.onload=(e)=>{ const img=new Image(); img.onload=()=>{
-        const max=320; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc)||1; h=Math.round(h*sc)||1;
+        const max=toBranch?220:320;                       // โลโก้สาขาเล็กกว่า — 20 สาขาก็ไม่ทำเครื่องเต็ม
+        let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc)||1; h=Math.round(h*sc)||1;
         const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const cx=cv.getContext('2d');
         cx.drawImage(img,0,0,w,h);
+        const LIM = toBranch?30720:180000;                 // สาขา 30 KB (x20 = 1.2 MB ในเครื่อง) · ส่วนกลาง ~180 KB
         let out=cv.toDataURL('image/png');
-        if(out.length>180000){                                   // รูปถ่าย/ไฟล์ใหญ่ -> พื้นขาว + JPEG (เล็กกว่า ~10 เท่า)
+        if(out.length>LIM){                                // ใหญ่ไป -> พื้นขาว + JPEG (เล็กกว่า ~10 เท่า)
           cx.globalCompositeOperation='destination-over'; cx.fillStyle='#fff'; cx.fillRect(0,0,w,h);
-          out=cv.toDataURL('image/jpeg',0.86);
+          out=cv.toDataURL('image/jpeg',0.82);
+          if(out.length>LIM) out=cv.toDataURL('image/jpeg',0.62);
         }
-        if(out.length>400000){ UI.toast('รูปใหญ่เกินไป ลองใช้รูปที่เล็กกว่านี้','err'); return; }
-        const prev=STORE.get().meta.logo||'';
-        STORE.get().meta.logo=out; STORE.get().meta._rev=STORE.now();
-        if(!STORE.save()){ STORE.get().meta.logo=prev; render(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง','err'); return; }
-        try{ CLOUD.pushMeta(true); }catch(err){}
+        if(out.length>LIM*1.6){ UI.toast('รูปใหญ่เกินไป ('+Math.round(out.length/1024)+' KB) ลองใช้รูปที่เรียบง่ายกว่านี้','err'); return; }
+        if(toBranch){
+          const b=STORE.curBranch(); if(!b){ UI.toast('ไม่พบสาขา','err'); return; }
+          const prev=b.logo||''; b.logo=out;
+          if(!STORE.save()){ b.logo=prev; render(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง','err'); return; }
+          try{ CLOUD.pushItem('branches',b); }catch(err){}
+        } else {
+          const prev=STORE.get().meta.logo||'';
+          STORE.get().meta.logo=out; STORE.get().meta._rev=STORE.now();
+          if(!STORE.save()){ STORE.get().meta.logo=prev; render(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง','err'); return; }
+          try{ CLOUD.pushMeta(true); }catch(err){}
+        }
+        try{ APP.applyBrand(); }catch(err){}
         render(); UI.toast('อัปโหลดโลโก้แล้ว ('+Math.round(out.length/1024)+' KB)','ok');
       }; img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err'); img.src=e.target.result; };
       reader.readAsDataURL(file); };
     inp.click();
   }
-  function clearLogo(){ STORE.get().meta.logo=''; STORE.get().meta._rev=STORE.now();
+  function clearLogo(where){
+    if(where==='branch'){
+      const b=STORE.curBranch(); if(!b) return; b.logo='';
+      if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+      try{ CLOUD.pushItem('branches',b); }catch(e){}
+    } else {
+      if(!AUTH.isHQ()){ UI.toast('โลโก้ส่วนกลาง แก้ได้เฉพาะสำนักงานใหญ่','err'); return; }
+      STORE.get().meta.logo=''; STORE.get().meta._rev=STORE.now();
+      if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+      try{ CLOUD.pushMeta(true); }catch(e){}
+    }
+    try{ APP.applyBrand(); }catch(e){} render(); UI.toast('ลบโลโก้แล้ว','ok');
+  }
+  // กลับไปใช้แบรนด์ส่วนกลาง — ล้าง override ของสาขานี้
+  function useGlobalBrand(){
+    const b=STORE.curBranch(); if(!b) return;
+    if(!confirm('ล้างชื่อ+คำโปรย+โลโก้ของสาขานี้ แล้วกลับไปใช้แบรนด์ส่วนกลาง?')) return;
+    b.brandName=''; b.brandSub=''; b.logo='';
     if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
-    try{ CLOUD.pushMeta(true); }catch(e){} render(); UI.toast('ลบโลโก้แล้ว','ok'); }
+    try{ CLOUD.pushItem('branches',b); }catch(e){}
+    try{ APP.applyBrand(); }catch(e){} render(); UI.toast('กลับไปใช้แบรนด์ส่วนกลางแล้ว','ok');
+  }
 
   // ===== ตรวจระบบพิมพ์ — บอกตรง ๆ ว่าตั้งค่านี้ ขาย 1 บิลจะได้อะไรบ้าง =====
   function printDiag(){
@@ -7348,7 +7426,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,printDiag,fixPrint,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,printDiag,fixPrint,useGlobalBrand,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -8778,7 +8856,7 @@ const APP = (()=>{
     el.textContent=txt; el.className='sync-chip '+cls;
   }
   function applyBrand(){
-    const m=(STORE.get()||{}).meta||{};
+    const m=(function(){ try{ return STORE.binfo(); }catch(e){ return (STORE.get()||{}).meta||{}; } })();
     const big=esc(m.shopName||'SAO CAFE'), sub=esc(m.brandSub||'');
     const sm=sub?('<small>'+sub+'</small>'):'';
     const hl=document.getElementById('brandLogo'); if(hl) hl.innerHTML=big+sm;
