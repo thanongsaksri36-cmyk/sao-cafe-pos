@@ -4407,12 +4407,13 @@ const MEMBER = (()=>{
     $('#memBox').innerHTML=`<div style="text-align:center;padding:14px;background:var(--surface-2);border-radius:12px">
       <p style="margin-bottom:10px">ไม่พบเบอร์ <b>${esc(phone)}</b><br><span style="color:var(--muted);font-size:13px">สมัครเป็นสมาชิกเลยไหม? (ฟรี)</span></p>
       <div class="field"><input id="memName" placeholder="ชื่อลูกค้า (เช่น คุณเอ)"></div>
-      <div class="field"><input id="memBirth" placeholder="วันเกิด (เช่น 01/01) — ไว้รับโปรวันเกิด" inputmode="numeric"></div>
+      <div class="field"><input id="memBirth" placeholder="วันเกิด วัน/เดือน เช่น 08/07 — ไว้รับโปรวันเกิด" inputmode="numeric"></div>
       <button class="btn-gold" style="width:100%;padding:12px;border-radius:10px" onclick="MEMBER.create('${esc(phone)}')">+ สมัครสมาชิกใหม่</button></div>`;
   }
   function create(phone){
     const name=($('#memName').value||'').trim()||'สมาชิกใหม่';
-    const birthday=(($('#memBirth')||{}).value||'').trim();
+    const _bdRaw=(($('#memBirth')||{}).value||'').trim();
+    const birthday=askBday(_bdRaw); if(birthday===null) return;      // ⭐ กรอกผิด = เตือน แล้วหยุด ไม่บันทึกเงียบ ๆ
     const mem={id:STORE.uuid(),phone,name,points:0,tier:'bronze',totalSpent:0,birthday,visits:0,history:[]};
     STORE.get().members.push(mem); sync(mem); POS.setMember(mem); renderBox(mem); UI.toast('สมัครสมาชิกสำเร็จ ✅','ok');
   }
@@ -4445,9 +4446,83 @@ const MEMBER = (()=>{
   }
   const bdNum=(x)=>({value:Number((x||{}).value||0), type:((x||{}).type||'percent')});
   // คืน 'day' | 'month' | '' — ว่าลูกค้าคนนี้เข้าเงื่อนไขระดับไหนวันนี้
+  // ===== สแกนวันเกิดที่ระบบใช้ไม่ได้ + ซ่อมทีเดียว =====
+  function bdayScan(){
+    const all=(STORE.get().members||[]).filter(m=>!m.deletedAt);
+    const fix=[], bad=[]; let okN=0, emptyN=0;
+    all.forEach(m=>{
+      const cur=String(m.birthday||'').trim();
+      if(!cur){ emptyN++; return; }
+      const r=normBday(cur);
+      if(!r.ok) bad.push({m,cur});
+      else if(r.val!==cur) fix.push({m,cur,to:r.val});
+      else okN++;
+    });
+    _bdFix=fix;
+    const row=(l,r_)=>'<div style="display:flex;padding:6px 0;border-bottom:1px solid var(--line)"><span style="flex:1">'+l+'</span>'+r_+'</div>';
+    let body =
+      row('✅ ใช้งานได้อยู่แล้ว','<b>'+okN+' คน</b>')+
+      row('🔧 ซ่อมได้อัตโนมัติ','<b style="color:'+(fix.length?'#B4451F':'var(--muted)')+'">'+fix.length+' คน</b>')+
+      row('❌ ซ่อมไม่ได้ ต้องถามลูกค้า','<b style="color:'+(bad.length?'#C0392B':'var(--muted)')+'">'+bad.length+' คน</b>')+
+      row('— ยังไม่ได้กรอก','<span style="color:var(--muted)">'+emptyN+' คน</span>');
+
+    if(fix.length){
+      body+='<div style="margin-top:12px"><b style="font-size:13px">จะแก้เป็น:</b><div style="max-height:170px;overflow:auto;margin-top:6px;font-size:13px">'+
+        fix.slice(0,60).map(x=>'<div style="padding:4px 0;border-bottom:1px dashed var(--line)">'+esc(x.m.name||'-')+
+          ' <span style="color:var(--muted)">'+esc(x.cur)+'</span> → <b style="color:#2E7D32">'+esc(x.to)+'</b></div>').join('')+
+        (fix.length>60?'<div style="color:var(--muted);padding:4px 0">…และอีก '+(fix.length-60)+' คน</div>':'')+'</div></div>'+
+        '<button class="btn-gold" style="width:100%;padding:11px;margin-top:12px" onclick="MEMBER.bdayFixAll()">🔧 ซ่อมทั้งหมด '+fix.length+' คน</button>';
+    }
+    if(bad.length){
+      body+='<div style="margin-top:12px"><b style="font-size:13px;color:#C0392B">ต้องถามลูกค้าใหม่:</b><div style="max-height:150px;overflow:auto;margin-top:6px;font-size:13px">'+
+        bad.slice(0,60).map(x=>'<div style="padding:4px 0;border-bottom:1px dashed var(--line)">'+esc(x.m.name||'-')+
+          ' · '+esc(maskPhone(x.m.phone))+' <span style="color:#C0392B">'+esc(x.cur)+'</span></div>').join('')+'</div></div>';
+    }
+    if(!fix.length&&!bad.length) body+='<p style="color:#2E7D32;font-weight:600;margin-top:12px">🎉 วันเกิดถูกต้องทุกคน ไม่ต้องแก้อะไร</p>';
+
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>🎂 ตรวจวันเกิดสมาชิก</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b">'+body+
+      '<p style="font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7">รูปแบบที่ถูกคือ <b>วัน/เดือน</b> เช่น 8 ก.ค. = <b>08/07</b><br>วันเกิดที่ระบบอ่านไม่ออก จะไม่ได้รับโปรวันเกิดเลย โดยไม่มีการแจ้งเตือน</p></div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
+    UI.open('genOverlay');
+  }
+  let _bdFix=[];
+  function bdayFixAll(){
+    if(!_bdFix.length) return;
+    let n=0; _bdFix.forEach(x=>{ x.m.birthday=x.to; n++; });
+    if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    _bdFix.forEach(x=>{ try{ CLOUD.pushItem('members',x.m); }catch(e){} });
+    _bdFix=[]; UI.toast('ซ่อมวันเกิดแล้ว '+n+' คน','ok');
+    try{ BO.render(); }catch(e){}
+    bdayScan();
+  }
+  // ===== วันเกิด: รับ 08/07 · 08.07 · 08-07 · 8 7 · 2000-07-08 · 08/07/2540 -> คืน "08/07" =====
+  function normBday(v){
+    const raw=String(v==null?'':v).trim();
+    if(!raw) return {ok:true, val:'', msg:''};
+    const n=raw.match(/\d+/g);
+    if(!n || n.length<2) return {ok:false, val:'', msg:'ต้องมีทั้งวันและเดือน เช่น 08/07'};
+    let d,mo;
+    if(n[0].length===4 && n.length>=3){ mo=+n[1]; d=+n[2]; }      // 2000-07-08
+    else { d=+n[0]; mo=+n[1]; }                                    // 08/07 หรือ 08/07/2540
+    if(mo>12 && d<=12){ const t=d; d=mo; mo=t; }                   // กรอกสลับ เดือน/วัน -> สลับให้
+    if(!(d>=1&&d<=31) || !(mo>=1&&mo<=12)) return {ok:false, val:'', msg:'วัน 1-31 เดือน 1-12 เท่านั้น'};
+    const dim=[31,29,31,30,31,30,31,31,30,31,30,31][mo-1];
+    if(d>dim) return {ok:false, val:'', msg:'เดือน '+mo+' ไม่มีวันที่ '+d};
+    return {ok:true, val:String(d).padStart(2,'0')+'/'+String(mo).padStart(2,'0'), msg:''};
+  }
+  // เช็ค+เตือน — คืน null ถ้าใช้ไม่ได้ (ผู้เรียกต้องหยุด)
+  function askBday(v){
+    const r=normBday(v);
+    if(!r.ok){ UI.toast('🎂 วันเกิดไม่ถูกต้อง: '+r.msg,'err'); return null; }
+    return r.val;
+  }
   function bdTier(mem){
     if(!mem||!mem.birthday) return '';
-    const p=String(mem.birthday).split('/'); const d=parseInt(p[0]), mo=parseInt(p[1]);
+    const _nb=normBday(mem.birthday); if(!_nb.ok||!_nb.val) return '';
+    const p=_nb.val.split('/'); const d=parseInt(p[0]), mo=parseInt(p[1]);
     if(isNaN(mo)) return '';
     const t=new Date(); if(mo!==(t.getMonth()+1)) return '';
     const b=bp();
@@ -4483,8 +4558,8 @@ const MEMBER = (()=>{
   function birthdayThisMonth(){
     const mo=new Date().getMonth()+1;
     return (STORE.get().members||[]).filter(m=>{ if(!m||m.deletedAt||!m.birthday) return false;
-      const p=String(m.birthday).split('/'); return parseInt(p[1])===mo; })
-      .sort((a,b)=>(parseInt(String(a.birthday).split('/')[0])||0)-(parseInt(String(b.birthday).split('/')[0])||0));
+      const _n=normBday(m.birthday); return _n.ok && _n.val && parseInt(_n.val.split('/')[1])===mo; })
+      .sort((a,b)=>(parseInt((normBday(a.birthday).val||'99/99').split('/')[0])||0)-(parseInt((normBday(b.birthday).val||'99/99').split('/')[0])||0));
   }
   function use(id){ const m=STORE.find('members',id); if(m){ POS.setMember(m); UI.close('genOverlay'); UI.toast('ใช้สมาชิก '+m.name,'ok'); } }
   function redeemPts(id){
@@ -4511,7 +4586,7 @@ const MEMBER = (()=>{
     POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม'});
     POS.setMember(mem); DISC.showMember(mem); UI.toast('แลกแต้มสำเร็จ ลด ฿50','ok');
   }
-  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,bdTier,bdOffer,bdLabelOf,markBirthdayUsed,birthdayThisMonth,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
+  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,normBday,askBday,bdayScan,bdayFixAll,bdTier,bdOffer,bdLabelOf,markBirthdayUsed,birthdayThisMonth,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
 })();
 
 /* ============================================================
@@ -5046,9 +5121,11 @@ const JOIN = (()=>{
     const ok   = (document.querySelector('#jConsent')||{}).checked;
     if(phone.length<9){ msg.innerHTML='<span style="color:var(--danger)">ใส่เบอร์โทรให้ครบ</span>'; return; }
     if(!ok){ msg.innerHTML='<span style="color:var(--danger)">กรุณาติ๊กยินยอมก่อนค่ะ</span>'; return; }
+    const _nb=MEMBER.normBday(birth);                                 // ⭐ แปลงให้ถูกก่อนส่งขึ้น cloud
+    if(!_nb.ok){ msg.innerHTML='<span style="color:var(--danger)">วันเกิดไม่ถูกต้อง: '+esc(_nb.msg)+' (เช่น 08/07)</span>'; return; }
     msg.innerHTML='<span style="color:var(--muted)">กำลังบันทึก…</span>';
     let r=null;
-    try{ r=await CLOUD.invokeFn('member-join',{action:'join',orderId:oid,phone,name,birthday:birth,consent:true}); }
+    try{ r=await CLOUD.invokeFn('member-join',{action:'join',orderId:oid,phone,name,birthday:_nb.val,consent:true}); }
     catch(e){ r={ok:false,reason:String(e&&e.message||e)}; }
     if(!r||!r.ok){ msg.innerHTML='<span style="color:var(--danger)">'+esc((r&&r.reason)||'บันทึกไม่สำเร็จ')+'</span>'; return; }
     done(r);
@@ -6333,8 +6410,10 @@ const BO = (()=>{
 
   function renderMember(){
     const mem=STORE.get().members.filter(m=>!m.deletedAt);
+    const _nBad=mem.filter(m=>{ const c=String(m.birthday||'').trim(); if(!c) return false; const r=MEMBER.normBday(c); return !r.ok||r.val!==c; }).length;
+    const bdWarn=_nBad?`<button class="sub-tab" style="color:#C0392B;font-weight:700" onclick="MEMBER.bdayScan()">⚠️ วันเกิดใช้ไม่ได้ ${_nBad} คน</button>`:'';
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="add-fab" onclick="BO.editMember()">+ เพิ่มสมาชิก</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px">${bdWarn}<button class="sub-tab" onclick="MEMBER.bdayScan()">🎂 ตรวจวันเกิด</button><button class="add-fab" onclick="BO.editMember()">+ เพิ่มสมาชิก</button></div>
       <table><thead><tr><th>ชื่อ</th><th>เบอร์</th><th>ระดับ</th><th>🎂 วันเกิด</th><th>แต้ม</th><th>ยอดสะสม</th><th>เข้าใช้</th><th></th></tr></thead><tbody>
       ${mem.map(m=>`<tr>
         <td><b>${esc(m.name)}</b></td><td style="font-variant-numeric:tabular-nums">${esc(MEMBER.maskPhone(m.phone))}</td>
@@ -6355,11 +6434,13 @@ const BO = (()=>{
     const fields=[
       {key:'name',label:'ชื่อ',value:m?m.name:''},
       {key:'phone',label:'เบอร์โทร',value:m?m.phone:''},
-      {key:'birthday',label:'วันเกิด (เช่น 01/01)',value:m?m.birthday:''}
+      {key:'birthday',label:'วันเกิด — วัน/เดือน เช่น 08/07 (8 กรกฎาคม)',value:m?m.birthday:''}
     ];
     if(hq) fields.splice(2,0,{key:'points',label:'แต้มสะสม (👑 ผู้ดูแลเท่านั้น)',type:'number',value:m?m.points:0});
     UI.ask(m?'แก้ไขสมาชิก':'เพิ่มสมาชิก',fields,(o)=>{
       if(!String(o.phone||'').trim()){ UI.toast('ใส่เบอร์โทร','err'); return; }
+      const _bd=MEMBER.askBday(o.birthday); if(_bd===null) return;   // ⭐ เตือนทันที
+      o.birthday=_bd;
       let _st=null;
       if(m){
         m.name=o.name; m.phone=o.phone; m.birthday=o.birthday;
@@ -6811,7 +6892,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.80</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.81</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
