@@ -6751,9 +6751,25 @@ const SHIFT = (()=>{
       STORE.save(); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
+  // ⭐ ปิดกะ = เปิดหน้านับเงิน (โหมด close) · ลิ้นชักเด้ง · ไม่เฉลยจนกว่าจะกดยืนยัน
   function closeShift(){
+    const sh=active(); if(!sh){ UI.toast('ยังไม่ได้เปิดกะ','err'); return; }
+    _ccBy = AUTH.get();
+    const d=data(sh), n=(d.openTab.n||0)+(d.waitPay.n||0);
+    if(n){                                        // ⭐ มีบิลค้าง -> เตือนก่อน ไม่ให้ปิดแบบไม่รู้ตัว
+      const L=[];
+      if(d.openTab.n) L.push('• โต๊ะค้าง ยังไม่เก็บเงิน '+d.openTab.n+' บิล = '+STORE.baht(d.openTab.v));
+      if(d.waitPay.n) L.push('• รอลูกค้าชำระ '+d.waitPay.n+' บิล = '+STORE.baht(d.waitPay.v));
+      UI.confirm2('⚠️ ยังมีบิลค้างอยู่',
+        L.join('\n')+'\n\nเงินก้อนนี้ยังไม่เข้าลิ้นชัก\nถ้าปิดกะตอนนี้ จะถูกส่งต่อให้กะถัดไป\n\nยืนยันปิดกะ?',
+        ()=>cashCount('close'), true);
+      return;
+    }
+    cashCount('close');
+  }
+  function _closeShiftOld(){
     const sh=active(); if(!sh) return;
-    PRINT.kickDrawer();   // เด้งลิ้นชักให้นับเงินก่อนปิดกะ
+    PRINT.kickDrawer();
     const log=STORE.get().cashlog.filter(c=>c.shiftId===sh.id);
     const expected=sh.openCash+log.filter(c=>['sale','in','out'].includes(c.type)).reduce((s,c)=>s+(c.type==='out'?-c.amount:c.amount),0);
     UI.ask('ปิดกะ — นับเงินจริง',[{key:'count',label:`เงินที่นับได้จริง (ควรมี ${STORE.baht(expected)})`,type:'number',value:''}],(o)=>{
@@ -6766,6 +6782,45 @@ const SHIFT = (()=>{
       setTimeout(()=>{ try{ DAYEND.open(); }catch(e){} },900);   // ปิดกะเสร็จ -> เด้งสรุปสิ้นวันให้เลย
     });
   }
+  // ===== สรุปยอดเฉพาะกะนี้ (ช่วง openedAt..closedAt · สาขาเดียวกัน) =====
+  function data(sh){
+    if(!sh) return null;
+    const D=STORE.get(), bid=sh.branchId||'BR-001';
+    const from=sh.openedAt||0, to=sh.closedAt||STORE.now();
+    const all=(D.orders||[]).filter(o=>(o.branchId||'BR-001')===bid && o.createdAt>=from && o.createdAt<=to);
+    const ok=all.filter(isPaidOrder), voided=all.filter(o=>o.status==='void');
+    const openTab=all.filter(o=>o.payStatus==='open'&&o.status!=='void');     // เปิดโต๊ะไว้ ยังไม่เก็บเงิน
+    const waitPay=all.filter(o=>o.status==='wait_payment');                   // ลูกค้าสแกนสั่งแล้ว รอจ่าย
+    // เลขกะของวันนี้ (กะที่ 1, 2, 3...)
+    const _day=new Date(sh.openedAt).toDateString();
+    const _same=(D.shifts||[]).filter(x=>(x.branchId||'BR-001')===bid && new Date(x.openedAt).toDateString()===_day)
+      .sort((a,b)=>a.openedAt-b.openedAt);
+    const seq=_same.findIndex(x=>x.id===sh.id)+1;
+    const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
+    const by=m=>ok.filter(o=>o.method===m);
+    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer');
+    const log=(D.cashlog||[]).filter(c=>c.shiftId===sh.id);
+    const g=t=>log.filter(c=>c.type===t).reduce((a,b)=>a+b.amount,0);
+    const cnt={}; ok.forEach(o=>(o.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
+    const total=sum(ok,o=>o.total);
+    return { sh, from, to, bills:ok.length, total,
+      avg: ok.length?Math.round(total/ok.length):0,
+      units:Object.values(cnt).reduce((a,b)=>a+b,0),
+      discount:sum(ok,o=>o.discount),
+      cash:{n:cash.length,v:sum(cash,o=>o.total)},
+      pp:{n:pp.length,v:sum(pp,o=>o.total)},
+      tr:{n:tr.length,v:sum(tr,o=>o.total)},
+      voided:{n:voided.length,v:sum(voided,o=>o.total)},
+      openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
+      waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
+      vat:sum(ok,o=>o.vat), service:sum(ok,o=>o.service), seq, bid,
+      openCash:sh.openCash||0, cin:g('in'), cout:g('out'), saleCash:g('sale'),
+      expect: expectedCash(sh),
+      top: Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,5) };
+  }
+  // เกณฑ์เงินขาด/เกินที่ยอมรับได้ (สตางค์) · นับแบบปิดตา
+  function tol(){ const v=(STORE.get().settings||{}).cashTolerance; return Math.max(0, Math.round((v==null?20:v)*100)); }
+  function blind(){ const b=(STORE.get().settings||{}).blindCount; return b!==false; }   // ค่าเริ่มต้น = เปิด
   function expectedCash(sh){
     const log=STORE.get().cashlog.filter(c=>c.shiftId===sh.id&&['sale','in','out'].includes(c.type));
     return sh.openCash+log.reduce((s,c)=>s+(c.type==='out'?-c.amount:c.amount),0);
@@ -6786,13 +6841,15 @@ const SHIFT = (()=>{
   const DENOMS=[100000,50000,10000,5000,2000,1000,500,200,100,50,25]; // หน่วยสตางค์
   const DLABEL={100000:'฿1,000',50000:'฿500',10000:'฿100',5000:'฿50',2000:'฿20',1000:'฿10',500:'฿5',200:'฿2',100:'฿1',50:'฿0.50',25:'฿0.25'};
   // ขั้นที่ 2: หน้าตรวจนับ ใส่จำนวนธนบัตร/เหรียญ คำนวณอัตโนมัติ เทียบ ตรง/ขาด/เกิน
-  function cashCount(){
+  let _ccMode='check', _ccRevealed=false, _ccDenoms={}, _ccCounted=0;
+  function cashCount(mode){
+    _ccMode = mode==='close' ? 'close' : 'check'; _ccRevealed=false;
     const sh=active(); _ccExpected = sh?expectedCash(sh):0; PRINT.kickDrawer();
     const notes=DENOMS.filter(v=>v>=2000), coins=DENOMS.filter(v=>v<2000);
     const rowsOf=(arr)=>arr.map(v=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);min-width:0"><span style="font-weight:600;flex:1;min-width:0">${DLABEL[v]}</span><span style="color:var(--muted)">×</span><input id="cc_${v}" type="number" min="0" inputmode="numeric" value="" oninput="SHIFT.cashCalc()" style="width:54px;flex:none;padding:6px 4px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:15px"></div>`).join('');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`
-      <div class="modal-h"><h3>🔍 ตรวจนับเงินในลิ้นชัก</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-h"><h3>${_ccMode==='close'?'🔒 ปิดกะ — นับเงินในลิ้นชัก':'🔍 ตรวจนับเงินในลิ้นชัก'}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <div style="font-size:13px;color:var(--muted);margin-bottom:10px">ผู้ตรวจ: <b>${esc(_ccBy?_ccBy.name:'-')}</b> (${AUTH.roleTh(_ccBy?_ccBy.role:'')}) · ${new Date().toLocaleString('th-TH')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-width:0">
@@ -6801,17 +6858,24 @@ const SHIFT = (()=>{
         </div>
         <div style="border-top:1px dashed var(--line);margin:16px 0 12px"></div>
         <div style="display:flex;justify-content:space-between;font-size:16px;padding:4px 0"><span>นับได้ทั้งหมด</span><b id="ccTotal" style="font-size:22px">฿0.00</b></div>
-        ${sh?`<div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted);padding:4px 0"><span>ควรมีในลิ้นชัก</span><span>${STORE.baht(_ccExpected)}</span></div>
+        ${(sh&&!blind())?`<div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted);padding:4px 0"><span>ควรมีในลิ้นชัก</span><span>${STORE.baht(_ccExpected)}</span></div>
+        ${blind()?'<p style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">🙈 นับให้ครบก่อน ระบบจะเฉลยว่าขาด/เกินเท่าไหร่หลังกดยืนยัน</p>':''}
         <div id="ccDiff" style="text-align:center;font-size:20px;font-weight:800;padding:12px;border-radius:12px;background:var(--bg,#faf6f0);margin-top:8px">— ใส่จำนวนเพื่อคำนวณ —</div>`:'<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px">ยังไม่ได้เปิดกะ — แสดงยอดนับรวมอย่างเดียว</div>'}
       </div>
-      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button>${sh?'<button class="btn-gold" onclick="SHIFT.saveCashCount()">💾 บันทึกผลตรวจ</button>':''}</div>`;
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button>${sh?('<button class="btn-gold" onclick="SHIFT.reveal()">'+(_ccMode==='close'?'🔒 ยืนยันยอดที่นับได้':'✅ ยืนยันยอดที่นับได้')+'</button>'):''}</div>`;
     UI.open('genOverlay');
   }
   function cashCalc(){
     let tot=0;
     DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); tot+=v*q; const lt=$('#cc_lt_'+v); if(lt) lt.textContent=q?STORE.baht(v*q):''; });
     const t=$('#ccTotal'); if(t) t.textContent=STORE.baht(tot);
-    const d=$('#ccDiff'); if(d&&_ccExpected>=0){ const diff=tot-_ccExpected;
+    const d=$('#ccDiff');
+    if(d && blind() && !_ccRevealed){                        // 🙈 ปิดตา — โชว์แค่ยอดที่นับได้
+      d.style.background='var(--bg,#faf6f0)'; d.style.color='var(--muted)';
+      d.textContent = tot===0 ? '— ใส่จำนวนเพื่อคำนวณ —' : 'นับได้ '+STORE.baht(tot)+' · กดยืนยันเพื่อดูผล';
+      return tot;
+    }
+    if(d&&_ccExpected>=0){ const diff=tot-_ccExpected;
       if(tot===0){ d.style.background='var(--bg,#faf6f0)'; d.style.color='var(--muted)'; d.textContent='— ใส่จำนวนเพื่อคำนวณ —'; }
       else if(diff===0){ d.style.background='#e6f6ee'; d.style.color='#1e7d52'; d.textContent='✓ ตรงพอดี'; }
       else if(diff>0){ d.style.background='#fff4e0'; d.style.color='#b8791b'; d.textContent='เกิน '+STORE.baht(diff); }
@@ -6832,17 +6896,162 @@ const SHIFT = (()=>{
       `<div class="rc rtot" style="font-size:15px">ผลต่าง: ${res}</div><div class="rdiv"></div>`+
       `<div class="rc">ลงชื่อผู้ตรวจ ____________</div></div>`;
   }
-  function saveCashCount(){
+  // ===== กดยืนยัน -> เฉลยขาด/เกิน =====
+  function reveal(){
     const sh=active(); if(!sh){ UI.close('genOverlay'); return; }
-    const counted=cashCalc(); const diff=counted-_ccExpected; const denoms=readDenoms(); const _ccName=_ccBy?_ccBy.name:'-';
-    const _cc={id:STORE.uuid(),type:'count',amount:counted,expected:_ccExpected,diff,denoms,byName:_ccName,note:'ตรวจนับโดย '+(_ccBy?_ccBy.name:'-'),staffId:_ccBy?_ccBy.id:(AUTH.get()||{}).id,at:STORE.now(),shiftId:sh.id,branchId:STORE.bid()}; STORE.get().cashlog.push(_cc); CLOUD.pushItem('cashlog',_cc);
+    const counted=cashCalc();
+    if(counted===0 && !confirm('ยังไม่ได้ใส่จำนวนเงินเลย ยืนยันว่าลิ้นชักว่างจริง?')) return;
+    _ccDenoms=readDenoms(); _ccCounted=counted;          // ⭐ เก็บไว้ก่อน confirm2 ล้างหน้าจอ
+    _ccRevealed=true; cashCalc();
+    const diff=counted-_ccExpected, over=Math.abs(diff)>tol();
+    const res = diff===0 ? 'ตรงพอดี ✓' : (diff>0?'เกิน '+STORE.baht(diff):'ขาด '+STORE.baht(Math.abs(diff)));
+    const body = 'ควรมี   '+STORE.baht(_ccExpected)+'\n'
+               + 'นับได้  '+STORE.baht(counted)+'\n'
+               + '─────────────\n'
+               + 'ผล: '+res + (over?'\n\n⚠️ เกินเกณฑ์ที่ตั้งไว้ ('+STORE.baht(tol())+') ต้องระบุเหตุผล':'');
+    UI.confirm2(_ccMode==='close'?'🔒 สรุปก่อนปิดกะ':'🔍 ผลการตรวจนับ', body,
+      ()=>{ if(over) askReason(counted,diff); else done(counted,diff,''); }, over);
+  }
+  // ===== เหตุผลเงินขาด/เกิน — กดเลือก ไม่ต้องพิมพ์ (ปุ่มใหญ่ เหมาะกับ iPad) =====
+  const BD_SHORT=['ทอนเงินเกินให้ลูกค้า','ลืมบันทึกเบิกเงินออก','ลูกค้าจ่ายไม่ครบ','นับเงินผิด / นับตกหล่น','เงินหาย — ต้องตรวจสอบ'];
+  const BD_OVER =['ทอนเงินให้ลูกค้าไม่ครบ','ลืมบันทึกเงินเข้า','รับเงินเกินจากลูกค้า','นับเงินผิด / นับซ้ำ','เงินตั้งต้นใส่ไม่ตรง'];
+  let _rsCounted=0, _rsDiff=0;
+  function askReason(counted,diff){
+    _rsCounted=counted; _rsDiff=diff;
+    const isShort = diff<0;
+    const list = isShort?BD_SHORT:BD_OVER;
+    const head = (isShort?'เงินขาด ':'เงินเกิน ')+STORE.baht(Math.abs(diff));
+    const btns = list.map((t,i)=>
+      '<button type="button" class="btn-ghost" style="width:100%;padding:15px 14px;text-align:left;font-size:15px;margin-bottom:8px;border-radius:12px"'
+      + ' onclick="SHIFT.pickReason('+i+','+(isShort?1:0)+')">'+esc(t)+'</button>').join('');
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>⚠️ ระบุสาเหตุ</h3></div>'
+      + '<div class="modal-b">'
+      + '<div style="text-align:center;font-size:22px;font-weight:800;color:'+(isShort?'#C0392B':'#B4451F')+';margin-bottom:4px">'+head+'</div>'
+      + '<p style="text-align:center;font-size:13px;color:var(--muted);margin-bottom:14px">แตะเลือกสาเหตุที่ใกล้เคียงที่สุด</p>'
+      + btns
+      + '<button type="button" class="btn-ghost" style="width:100%;padding:15px 14px;text-align:left;font-size:15px;border-radius:12px;border-style:dashed" onclick="SHIFT.otherReason()">✏️ อื่น ๆ — พิมพ์เอง</button>'
+      + '</div>';
+    UI.open('genOverlay');
+  }
+  function pickReason(i,short){
+    const t=(short?BD_SHORT:BD_OVER)[i]||'อื่น ๆ';
+    UI.close('genOverlay');
+    done(_rsCounted,_rsDiff,t);
+  }
+  function otherReason(){
+    UI.ask('✏️ ระบุสาเหตุ',[{key:'why',label:'พิมพ์สาเหตุ',value:''}],(o)=>{
+      const why=(o.why||'').trim();
+      if(!why){ UI.toast('ยังไม่ได้ใส่สาเหตุ','err'); setTimeout(()=>askReason(_rsCounted,_rsDiff),300); return; }
+      done(_rsCounted,_rsDiff,why);
+    });
+  }
+  function done(counted,diff,why){
+    if(_ccMode==='close') finishClose(counted,diff,why);
+    else saveCashCount(counted,diff,why);
+  }
+  // ===== ปิดกะจริง — บันทึก + ใบสรุปกะ + แจ้งเตือน =====
+  function finishClose(counted,diff,why){
+    const sh=active(); if(!sh){ UI.close('genOverlay'); return; }
+    const d=data(sh);
+    sh.closeCash=counted; sh.closedAt=STORE.now(); sh.expected=_ccExpected; sh.diff=diff;
+    sh.diffReason=why||''; sh.denoms=_ccDenoms||{}; sh.closedBy=(_ccBy||AUTH.get()||{}).name||'';
+    if(!STORE.save()){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    try{ CLOUD.pushItem('shifts',sh); }catch(e){}
+    UI.close('genOverlay');
+    try{ PAY.printDocs([shiftSlipHtml(sh,d)],true); }catch(e){ console.error('shiftSlip',e); }
+    const res = diff===0?'ตรงพอดี ✓':(diff>0?'เกิน '+STORE.baht(diff):'ขาด '+STORE.baht(Math.abs(diff)));
+    try{
+      LINEN.send('🔒 ปิดกะ — '+(sh.closedBy||'-')+'\n'+LINEN.SEP
+        +'\n🕐 '+hhmm2(sh.openedAt)+' - '+hhmm2(sh.closedAt)
+        +'\n🧾 บิล: '+d.bills+' · ยอดขายกะนี้: '+STORE.baht(d.total)
+        +'\n💵 เงินสด: '+STORE.baht(d.cash.v)+' · QR: '+STORE.baht(d.pp.v)+' · โอน: '+STORE.baht(d.tr.v)
+        +'\n'+LINEN.SEP
+        +'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)
+        +'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ ':'⚠️ ')+res)
+        +(why?('\n📝 เหตุผล: '+why):''), 'shift');
+    }catch(e){}
+    UI.confirm2('ปิดกะสำเร็จ',
+      'ยอดขายกะนี้ '+STORE.baht(d.total)+' ('+d.bills+' บิล)\n'
+      +'ควรมี '+STORE.baht(_ccExpected)+'\nนับได้ '+STORE.baht(counted)+'\nผล: '+res,
+      ()=>{}, Math.abs(diff)>tol());
+    render();
+  }
+  const hhmm2=t=>{ const x=new Date(t); return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };
+  // ===== ใบสรุปกะ (พิมพ์ 80mm) =====
+  function shiftSlipHtml(sh,d){
+    const m=STORE.binfo();
+    const B=v=>STORE.baht(v||0);
+    const row=(a,b,bold)=>'<tr><td>'+a+'</td><td style="text-align:right"'+(bold?' class="rtot"':'')+'>'+b+'</td></tr>';
+    const diff=sh.diff||0;
+    const res = diff===0?'ตรงพอดี ✓':(diff>0?'เกิน '+B(diff):'ขาด '+B(Math.abs(diff)));
+    const dn=DENOMS.filter(v=>sh.denoms&&sh.denoms[v])
+      .map(v=>'<tr><td>'+DLABEL[v]+'</td><td style="text-align:center">x'+sh.denoms[v]+'</td><td style="text-align:right">'+B(v*sh.denoms[v])+'</td></tr>').join('');
+    const top=(d.top||[]).map((t,i)=>'<div>'+(i+1)+'. '+esc(t[0])+' × '+t[1]+'</div>').join('');
+    return '<div class="receipt">'
+      + '<div class="rc"><div style="font-size:1.6em;font-weight:900">ใบสรุปกะ</div>'
+      + '<div>'+esc(m.shopName||'')+'</div><div style="font-size:.9em">'+esc(m.branchName||'')+'</div></div>'
+      + '<div class="rdiv"></div>'
+      + '<div>กะที่ '+(d.seq||1)+' · สาขา '+esc(d.bid||'')+'</div>'
+      + '<div>พนักงาน: '+esc(sh.closedBy||'-')+'</div>'
+      + '<div>เปิดกะ: '+new Date(sh.openedAt).toLocaleString('th-TH')+'</div>'
+      + '<div>ปิดกะ: '+new Date(sh.closedAt).toLocaleString('th-TH')+'</div>'
+      + '<div class="rdiv"></div>'
+      + '<table style="width:100%"><tbody>'
+      + row('บิลในกะนี้', d.bills+' บิล')
+      + row('จำนวนแก้ว/ชิ้น', d.units)
+      + row('ยอดขายกะนี้', B(d.total), true)
+      + row('เฉลี่ย/บิล', B(d.avg))
+      + (d.discount>0?row('ส่วนลด', '-'+B(d.discount)):'')
+      + (d.service>0?row('Service charge', B(d.service)):'')
+      + (d.vat>0?row('VAT', B(d.vat)):'')
+      + (d.voided.n>0?row('บิลยกเลิก', d.voided.n+' บิล ('+B(d.voided.v)+')'):'')
+      + '</tbody></table>'
+      + ((d.openTab.n||d.waitPay.n)
+          ? ('<div class="rdiv"></div><div class="rc" style="font-weight:800">*** ส่งต่อกะถัดไป ***</div>'
+             + '<table style="width:100%"><tbody>'
+             + (d.openTab.n?row('โต๊ะค้าง ยังไม่เก็บเงิน', d.openTab.n+' บิล ('+B(d.openTab.v)+')', true):'')
+             + (d.waitPay.n?row('รอลูกค้าชำระ', d.waitPay.n+' บิล ('+B(d.waitPay.v)+')', true):'')
+             + '</tbody></table>')
+          : '')
+      + '<div class="rdiv"></div>'
+      + '<table style="width:100%"><tbody>'
+      + row('💵 เงินสด ('+d.cash.n+')', B(d.cash.v))
+      + row('📱 QR ('+d.pp.n+')', B(d.pp.v))
+      + row('🏦 โอน ('+d.tr.n+')', B(d.tr.v))
+      + '</tbody></table><div class="rdiv"></div>'
+      + '<div class="rc" style="font-weight:700">ลิ้นชักเงินสด</div>'
+      + '<table style="width:100%"><tbody>'
+      + row('เงินตั้งต้น', B(d.openCash))
+      + row('+ ขายเงินสด', B(d.saleCash))
+      + (d.cin>0?row('+ เงินเข้า', B(d.cin)):'')
+      + (d.cout>0?row('- เบิกออก', '-'+B(d.cout)):'')
+      + row('= ควรมี', B(sh.expected), true)
+      + row('นับได้จริง', B(sh.closeCash), true)
+      + '</tbody></table>'
+      + (dn?('<div class="rdiv"></div><table style="width:100%">'+dn+'</table>'):'')
+      + '<div class="rdiv"></div>'
+      + '<div class="rc" style="font-size:1.4em;font-weight:900">'+res+'</div>'
+      + (sh.diffReason?('<div class="rc" style="font-size:.9em">เหตุผล: '+esc(sh.diffReason)+'</div>'):'')
+      + (top?('<div class="rdiv"></div><div class="rc" style="font-weight:700">ขายดีในกะนี้</div>'+top):'')
+      + '<div class="rdiv"></div>'
+      + '<div style="margin-top:18px">ผู้ปิดกะ ..............................</div>'
+      + '<div style="margin-top:14px">ผู้ตรวจ ..............................</div>'
+      + '</div>';
+  }
+  function saveCashCount(counted,diff,why){
+    const sh=active(); if(!sh){ UI.close('genOverlay'); return; }
+    if(counted==null){ counted=_ccCounted; diff=counted-_ccExpected; why=''; }
+    const denoms=_ccDenoms||{}; const _ccName=_ccBy?_ccBy.name:'-';
+    const _cc={id:STORE.uuid(),type:'count',amount:counted,expected:_ccExpected,diff,denoms,byName:_ccName,reason:why||'',note:'ตรวจนับโดย '+(_ccBy?_ccBy.name:'-')+(why?(' · '+why):''),staffId:_ccBy?_ccBy.id:(AUTH.get()||{}).id,at:STORE.now(),shiftId:sh.id,branchId:STORE.bid()}; STORE.get().cashlog.push(_cc); CLOUD.pushItem('cashlog',_cc);
     STORE.save();
     UI.close('genOverlay');
     PAY.printDocs([countSlipHtml(STORE.get().cashlog[STORE.get().cashlog.length-1])]);   // พิมพ์ใบสรุปทุกครั้ง
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
     LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
-  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms};
+  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,finishClose,pickReason,otherReason};
 })();
 
 /* ============================================================
@@ -6892,7 +7101,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.81</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.83</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -6938,6 +7147,8 @@ const SETTINGS = (()=>{
               <button type="button" class="sub-tab" style="color:var(--danger)" onclick="SETTINGS.resetColor()">คืนค่าเริ่มต้น</button>
             </div>
           </div>`:''}
+          <div class="field"><label>🙈 นับเงินแบบปิดตา <small style="color:var(--muted);font-weight:400">(ไม่บอก "ควรมี" จนกว่าจะนับเสร็จ — กันพนักงานกรอกให้ตรงเป้า)</small>${_hq?'':' 🔒'}</label><select id="setBlind"${_dis}><option value="1" ${s.blindCount!==false?'selected':''}>เปิด (แนะนำ)</option><option value="0" ${s.blindCount===false?'selected':''}>ปิด — เห็นยอดที่ควรมีตลอด</option></select></div>
+          <div class="field"><label>⚖️ เงินขาด/เกิน ยอมรับได้ไม่เกิน (บาท) <small style="color:var(--muted);font-weight:400">เกินกว่านี้ต้องระบุเหตุผล + แจ้งเข้ามือถือ</small>${_hq?'':' 🔒'}</label><input id="setTol" type="number" min="0" step="1" value="${s.cashTolerance==null?20:s.cashTolerance}"${_dis}></div>
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
           <div class="field"><label>การชำระเงิน (ลูกค้าสแกนสั่ง)</label><select id="setQrPolicy"><option value="pay_first" ${(s.qrPayPolicy||'pay_first')==='pay_first'?'selected':''}>ชำระก่อนรับ (จ่ายแล้วเข้าครัว)</option><option value="pay_later" ${s.qrPayPolicy==='pay_later'?'selected':''}>เปิดบิลค้าง จ่ายตอนกลับ (เข้าครัวเลย)</option></select></div>
           ${(()=>{
@@ -7106,7 +7317,9 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1'; }
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+      if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
+                       const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
     const _ok=STORE.save(); applyTheme();
     if(!_ok){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — กดล้างพื้นที่ก่อน แล้วตั้งค่าใหม่','err'); try{ cleanup(); }catch(e){} return; }
@@ -7875,6 +8088,12 @@ const DAYEND = (()=>{
   const dmy=t=>{ const d=new Date(t); return pad(d.getDate())+'/'+pad(d.getMonth()+1)+'/'+(d.getFullYear()+543); };
   const B=v=>STORE.baht(v||0);
 
+  // ---- กะทั้งหมดของวันนี้ (สาขานี้) ----
+  function shiftsOf(ts){
+    const ref=new Date(ts||STORE.now()).toDateString(), bid=STORE.bid();
+    return (STORE.get().shifts||[]).filter(x=>(x.branchId||'BR-001')===bid && new Date(x.openedAt).toDateString()===ref)
+      .sort((a,b)=>a.openedAt-b.openedAt);
+  }
   // ---- รวมตัวเลขของวันที่กำหนด (ค่าเริ่มต้น = วันนี้) เฉพาะสาขาปัจจุบัน ----
   function data(ts){
     const ref=new Date(ts||STORE.now()).toDateString();
@@ -8058,6 +8277,29 @@ const DAYEND = (()=>{
   // ---- หน้าจอปิดสิ้นวัน ----
   function open(){
     const d=data(), m=STORE.binfo();
+    // ===== ตารางรายกะของวันนี้ + เตือนถ้ายังมีกะเปิดค้าง =====
+    const _shs=shiftsOf(), _openN=_shs.filter(x=>!x.closedAt).length;
+    const _hm=t=>{ const x=new Date(t); return String(x.getHours()).padStart(2,'0')+':'+String(x.getMinutes()).padStart(2,'0'); };
+    let shiftRows='';
+    if(_shs.length){
+      const tr=_shs.map(x=>{
+        const sd=(typeof SHIFT!=='undefined'&&SHIFT.data)?SHIFT.data(x):null;
+        const who=esc(x.closedBy||'-');
+        const time=_hm(x.openedAt)+(x.closedAt?('-'+_hm(x.closedAt)):' → ยังไม่ปิด');
+        const sale=sd?STORE.baht(sd.total):'-';
+        let st, col;
+        if(!x.closedAt){ st='เปิดอยู่'; col='#B4451F'; }
+        else if((x.diff||0)===0){ st='ตรง ✓'; col='#2E7D32'; }
+        else if(x.diff>0){ st='เกิน '+STORE.baht(x.diff); col='#B4451F'; }
+        else { st='ขาด '+STORE.baht(Math.abs(x.diff)); col='#C0392B'; }
+        return '<tr><td style="padding:6px 0">'+who+'<br><small style="color:var(--muted)">'+time+'</small></td>'
+             + '<td style="text-align:right;padding:6px 0">'+sale+'</td>'
+             + '<td style="text-align:right;padding:6px 0;color:'+col+';font-weight:700">'+st+'</td></tr>';
+      }).join('');
+      shiftRows='<div style="margin-top:14px;font-weight:700">👥 กะวันนี้ ('+_shs.length+')</div>'
+        + (_openN?'<div style="background:#fdeaea;color:#C0392B;border-radius:8px;padding:8px 10px;font-size:13px;margin:6px 0;font-weight:600">⚠️ ยังมีกะเปิดค้าง '+_openN+' กะ — ปิดกะให้ครบก่อน ตัวเลขเงินสดถึงจะครบ</div>':'')
+        + '<table style="width:100%;border-collapse:collapse;font-size:14px"><tbody>'+tr+'</tbody></table>';
+    }
     const card=(l,v,c)=>`<div class="stat-card"><div class="lbl">${esc(l)}</div><div class="val"${c?` style="color:${c}"`:''}>${esc(v)}</div></div>`;
     const row=(l,v,b)=>`<tr${b?' style="font-weight:800"':''}><td style="padding:6px 0">${esc(l)}</td><td style="text-align:right;padding:6px 0">${esc(v)}</td></tr>`;
     $('#genModal').className='modal wide';
@@ -8092,6 +8334,7 @@ const DAYEND = (()=>{
           ${d.shift.cout>0?row('➖ เบิกออก','-'+B(d.shift.cout)):''}
           ${row('🔢 ควรมีในลิ้นชัก',B(d.shift.expect),true)}
         </tbody></table>`:'<p style="color:var(--muted);font-size:13px;margin-top:12px">— ยังไม่ได้เปิดกะ จึงไม่มีข้อมูลลิ้นชัก —</p>'}
+        ${shiftRows}
         <div style="margin-top:14px;font-weight:700">🏆 เมนูขายดี</div>
         <table style="width:100%;border-collapse:collapse;font-size:14px"><tbody>
           ${d.top.length?d.top.map((t,i)=>row((i+1)+'. '+t[0],'×'+t[1])).join(''):row('- ไม่มีข้อมูล','')}
