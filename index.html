@@ -6732,12 +6732,25 @@ const SHIFT = (()=>{
         ${log.slice().reverse().map(c=>`<tr><td>${new Date(c.at).toLocaleTimeString('th-TH')}</td><td>${({sale:'ขาย',in:'เงินเข้า',out:'เงินออก'})[c.type]}</td><td>${esc(c.note||'-')}</td><td style="text-align:right;color:${c.type==='out'?'var(--danger)':'var(--success)'}">${c.type==='out'?'-':'+'}${STORE.baht(c.amount)}</td></tr>`).join('')||'<tr><td colspan="4"><div class="empty">ยังไม่มีรายการ</div></td></tr>'}
       </tbody></table>`;
   }
+  // ⭐ เปิดกะ = เด้งลิ้นชัก + นับธนบัตร/เหรียญจริง (ไม่ใช่พิมพ์ตัวเลขเดียว)
+  //    ส่วนต่างจะได้ไม่ไปโผล่ตอนปิดกะแล้วโทษคนผิด
   function openShift(){
-    UI.ask('เปิดกะ',[{key:'cash',label:'เงินตั้งต้นในลิ้นชัก (บาท)',type:'number',value:''}],(o)=>{
-      const _sh={id:STORE.uuid(),staffId:AUTH.get().id,openCash:STORE.toSatang(o.cash),closeCash:null,openedAt:STORE.now(),closedAt:null,expected:0,diff:0,branchId:STORE.bid()}; STORE.get().shifts.push(_sh); CLOUD.pushItem('shifts',_sh);
-      STORE.save(); render(); UI.toast('เปิดกะแล้ว','ok');
-      LINEN.send('🔓 เปิดกะ\n'+LINEN.SEP+'\n💼 เงินตั้งต้น: '+STORE.baht(STORE.toSatang(o.cash))+'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'open');
-    });
+    _ccBy = AUTH.get();
+    cashCount('open');
+  }
+  function finishOpen(counted){
+    const _sh={id:STORE.uuid(),staffId:(AUTH.get()||{}).id,openCash:counted,openDenoms:_ccDenoms||{},
+      openBy:((_ccBy||AUTH.get()||{}).name)||'',closeCash:null,openedAt:STORE.now(),closedAt:null,
+      expected:0,diff:0,branchId:STORE.bid()};
+    STORE.get().shifts.push(_sh);
+    if(!STORE.save()){ STORE.get().shifts.pop(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    try{ CLOUD.pushItem('shifts',_sh); }catch(e){}
+    UI.close('genOverlay'); render();
+    UI.toast('เปิดกะแล้ว · เงินตั้งต้น '+STORE.baht(counted),'ok');
+    try{
+      LINEN.send('🔓 เปิดกะ\n'+LINEN.SEP+'\n💼 เงินตั้งต้น: '+STORE.baht(counted)
+        +'\n👤 พนักงาน: '+((_ccBy||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'open');
+    }catch(e){}
   }
   function cashMove(type){
     UI.ask(type==='in'?'💵 บันทึกเงินเข้า (เติมเงินทอน)':'💸 เบิกเงิน / เงินออก (ซื้อของระหว่างวัน)',[
@@ -6766,21 +6779,6 @@ const SHIFT = (()=>{
       return;
     }
     cashCount('close');
-  }
-  function _closeShiftOld(){
-    const sh=active(); if(!sh) return;
-    PRINT.kickDrawer();
-    const log=STORE.get().cashlog.filter(c=>c.shiftId===sh.id);
-    const expected=sh.openCash+log.filter(c=>['sale','in','out'].includes(c.type)).reduce((s,c)=>s+(c.type==='out'?-c.amount:c.amount),0);
-    UI.ask('ปิดกะ — นับเงินจริง',[{key:'count',label:`เงินที่นับได้จริง (ควรมี ${STORE.baht(expected)})`,type:'number',value:''}],(o)=>{
-      const counted=STORE.toSatang(o.count); const diff=counted-expected;
-      sh.closeCash=counted; sh.closedAt=STORE.now(); sh.expected=expected; sh.diff=diff; STORE.save(); CLOUD.pushItem('shifts',sh);
-      UI.confirm2('ปิดกะสำเร็จ',`ควรมี ${STORE.baht(expected)}\nนับได้ ${STORE.baht(counted)}\nส่วนต่าง ${diff===0?'พอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
-      LINEN.send('🔒 ปิดกะ\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(expected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+((AUTH.get()||{}).name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'shift');
-      LINEN.send(DAYEND.text(),'shift');
-      render();
-      setTimeout(()=>{ try{ DAYEND.open(); }catch(e){} },900);   // ปิดกะเสร็จ -> เด้งสรุปสิ้นวันให้เลย
-    });
   }
   // ===== สรุปยอดเฉพาะกะนี้ (ช่วง openedAt..closedAt · สาขาเดียวกัน) =====
   function data(sh){
@@ -6843,13 +6841,14 @@ const SHIFT = (()=>{
   // ขั้นที่ 2: หน้าตรวจนับ ใส่จำนวนธนบัตร/เหรียญ คำนวณอัตโนมัติ เทียบ ตรง/ขาด/เกิน
   let _ccMode='check', _ccRevealed=false, _ccDenoms={}, _ccCounted=0;
   function cashCount(mode){
-    _ccMode = mode==='close' ? 'close' : 'check'; _ccRevealed=false;
-    const sh=active(); _ccExpected = sh?expectedCash(sh):0; PRINT.kickDrawer();
+    _ccMode = (mode==='close'||mode==='open') ? mode : 'check'; _ccRevealed=false;
+    const sh=active(); _ccExpected = (_ccMode==='open') ? -1 : (sh?expectedCash(sh):0);
+    PRINT.kickDrawer();                                     // ⭐ เด้งลิ้นชักทุกโหมด รวมถึงตอนเปิดกะ
     const notes=DENOMS.filter(v=>v>=2000), coins=DENOMS.filter(v=>v<2000);
     const rowsOf=(arr)=>arr.map(v=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);min-width:0"><span style="font-weight:600;flex:1;min-width:0">${DLABEL[v]}</span><span style="color:var(--muted)">×</span><input id="cc_${v}" type="number" min="0" inputmode="numeric" value="" oninput="SHIFT.cashCalc()" style="width:54px;flex:none;padding:6px 4px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:15px"></div>`).join('');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`
-      <div class="modal-h"><h3>${_ccMode==='close'?'🔒 ปิดกะ — นับเงินในลิ้นชัก':'🔍 ตรวจนับเงินในลิ้นชัก'}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-h"><h3>${_ccMode==='open'?'🔓 เปิดกะ — นับเงินตั้งต้น':(_ccMode==='close'?'🔒 ปิดกะ — นับเงินในลิ้นชัก':'🔍 ตรวจนับเงินในลิ้นชัก')}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <div style="font-size:13px;color:var(--muted);margin-bottom:10px">ผู้ตรวจ: <b>${esc(_ccBy?_ccBy.name:'-')}</b> (${AUTH.roleTh(_ccBy?_ccBy.role:'')}) · ${new Date().toLocaleString('th-TH')}</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-width:0">
@@ -6859,10 +6858,10 @@ const SHIFT = (()=>{
         <div style="border-top:1px dashed var(--line);margin:16px 0 12px"></div>
         <div style="display:flex;justify-content:space-between;font-size:16px;padding:4px 0"><span>นับได้ทั้งหมด</span><b id="ccTotal" style="font-size:22px">฿0.00</b></div>
         ${(sh&&!blind())?`<div style="display:flex;justify-content:space-between;font-size:14px;color:var(--muted);padding:4px 0"><span>ควรมีในลิ้นชัก</span><span>${STORE.baht(_ccExpected)}</span></div>
-        ${blind()?'<p style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">🙈 นับให้ครบก่อน ระบบจะเฉลยว่าขาด/เกินเท่าไหร่หลังกดยืนยัน</p>':''}
+        ${_ccMode==='open'?'<p style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">นับเงินในลิ้นชักให้ครบ แล้วกดเปิดกะ — ยอดนี้จะเป็นเงินตั้งต้น</p>':(blind()?'<p style="font-size:12px;color:var(--muted);text-align:center;margin-top:8px">🙈 นับให้ครบก่อน ระบบจะเฉลยว่าขาด/เกินเท่าไหร่หลังกดยืนยัน</p>':'')}
         <div id="ccDiff" style="text-align:center;font-size:20px;font-weight:800;padding:12px;border-radius:12px;background:var(--bg,#faf6f0);margin-top:8px">— ใส่จำนวนเพื่อคำนวณ —</div>`:'<div style="font-size:13px;color:var(--muted);text-align:center;padding:8px">ยังไม่ได้เปิดกะ — แสดงยอดนับรวมอย่างเดียว</div>'}
       </div>
-      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button>${sh?('<button class="btn-gold" onclick="SHIFT.reveal()">'+(_ccMode==='close'?'🔒 ยืนยันยอดที่นับได้':'✅ ยืนยันยอดที่นับได้')+'</button>'):''}</div>`;
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button>${(sh||_ccMode==='open')?('<button class="btn-gold" onclick="SHIFT.reveal()">'+(_ccMode==='open'?'🔓 เปิดกะด้วยยอดนี้':(_ccMode==='close'?'🔒 ยืนยันยอดที่นับได้':'✅ ยืนยันยอดที่นับได้'))+'</button>'):''}</div>`;
     UI.open('genOverlay');
   }
   function cashCalc(){
@@ -6870,6 +6869,11 @@ const SHIFT = (()=>{
     DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); tot+=v*q; const lt=$('#cc_lt_'+v); if(lt) lt.textContent=q?STORE.baht(v*q):''; });
     const t=$('#ccTotal'); if(t) t.textContent=STORE.baht(tot);
     const d=$('#ccDiff');
+    if(d && _ccMode==='open'){                              // เปิดกะ — ไม่มีของเทียบ โชว์แค่ยอดรวม
+      d.style.background='var(--bg,#faf6f0)'; d.style.color='var(--muted)';
+      d.textContent = tot===0 ? '— ใส่จำนวนเพื่อคำนวณ —' : 'เงินตั้งต้น '+STORE.baht(tot);
+      return tot;
+    }
     if(d && blind() && !_ccRevealed){                        // 🙈 ปิดตา — โชว์แค่ยอดที่นับได้
       d.style.background='var(--bg,#faf6f0)'; d.style.color='var(--muted)';
       d.textContent = tot===0 ? '— ใส่จำนวนเพื่อคำนวณ —' : 'นับได้ '+STORE.baht(tot)+' · กดยืนยันเพื่อดูผล';
@@ -6898,7 +6902,14 @@ const SHIFT = (()=>{
   }
   // ===== กดยืนยัน -> เฉลยขาด/เกิน =====
   function reveal(){
-    const sh=active(); if(!sh){ UI.close('genOverlay'); return; }
+    const sh=active();
+    if(_ccMode==='open'){                                   // ⭐ เปิดกะ — ไม่ต้องเฉลยอะไร
+      if(sh){ UI.toast('มีกะเปิดอยู่แล้ว','err'); UI.close('genOverlay'); return; }
+      const c=cashCalc(); _ccDenoms=readDenoms();
+      if(c===0 && !confirm('เงินตั้งต้น ฿0 ยืนยันว่าลิ้นชักว่างจริง?')) return;
+      finishOpen(c); return;
+    }
+    if(!sh){ UI.close('genOverlay'); return; }
     const counted=cashCalc();
     if(counted===0 && !confirm('ยังไม่ได้ใส่จำนวนเงินเลย ยืนยันว่าลิ้นชักว่างจริง?')) return;
     _ccDenoms=readDenoms(); _ccCounted=counted;          // ⭐ เก็บไว้ก่อน confirm2 ล้างหน้าจอ
@@ -6994,9 +7005,8 @@ const SHIFT = (()=>{
       + '<div>'+esc(m.shopName||'')+'</div><div style="font-size:.9em">'+esc(m.branchName||'')+'</div></div>'
       + '<div class="rdiv"></div>'
       + '<div>กะที่ '+(d.seq||1)+' · สาขา '+esc(d.bid||'')+'</div>'
-      + '<div>พนักงาน: '+esc(sh.closedBy||'-')+'</div>'
-      + '<div>เปิดกะ: '+new Date(sh.openedAt).toLocaleString('th-TH')+'</div>'
-      + '<div>ปิดกะ: '+new Date(sh.closedAt).toLocaleString('th-TH')+'</div>'
+      + '<div>เปิดกะ: '+esc(sh.openBy||'-')+' · '+new Date(sh.openedAt).toLocaleString('th-TH')+'</div>'
+      + '<div>ปิดกะ: '+esc(sh.closedBy||'-')+' · '+new Date(sh.closedAt).toLocaleString('th-TH')+'</div>'
       + '<div class="rdiv"></div>'
       + '<table style="width:100%"><tbody>'
       + row('บิลในกะนี้', d.bills+' บิล')
@@ -7023,7 +7033,7 @@ const SHIFT = (()=>{
       + '</tbody></table><div class="rdiv"></div>'
       + '<div class="rc" style="font-weight:700">ลิ้นชักเงินสด</div>'
       + '<table style="width:100%"><tbody>'
-      + row('เงินตั้งต้น', B(d.openCash))
+      + row('เงินตั้งต้น (นับตอนเปิดกะ)', B(d.openCash))
       + row('+ ขายเงินสด', B(d.saleCash))
       + (d.cin>0?row('+ เงินเข้า', B(d.cin)):'')
       + (d.cout>0?row('- เบิกออก', '-'+B(d.cout)):'')
@@ -7051,7 +7061,7 @@ const SHIFT = (()=>{
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
     LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
-  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,finishClose,pickReason,otherReason};
+  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,finishClose,finishOpen,pickReason,otherReason};
 })();
 
 /* ============================================================
@@ -7101,7 +7111,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.83</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.84</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
