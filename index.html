@@ -6746,6 +6746,7 @@ const SHIFT = (()=>{
     if(!STORE.save()){ STORE.get().shifts.pop(); UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
     try{ CLOUD.pushItem('shifts',_sh); }catch(e){}
     UI.close('genOverlay'); render();
+    try{ PAY.printDocs([openSlipHtml(_sh)],true); }catch(e){ console.error('openSlip',e); }
     UI.toast('เปิดกะแล้ว · เงินตั้งต้น '+STORE.baht(counted),'ok');
     try{
       LINEN.send('🔓 เปิดกะ\n'+LINEN.SEP+'\n💼 เงินตั้งต้น: '+STORE.baht(counted)
@@ -6843,7 +6844,7 @@ const SHIFT = (()=>{
   function cashCount(mode){
     _ccMode = (mode==='close'||mode==='open') ? mode : 'check'; _ccRevealed=false;
     const sh=active(); _ccExpected = (_ccMode==='open') ? -1 : (sh?expectedCash(sh):0);
-    PRINT.kickDrawer();                                     // ⭐ เด้งลิ้นชักทุกโหมด รวมถึงตอนเปิดกะ
+    kick(_ccMode);                                          // ⭐ เด้งลิ้นชักทุกโหมด (ESC/POS + พิมพ์สลิปถ้าตั้งไว้)
     const notes=DENOMS.filter(v=>v>=2000), coins=DENOMS.filter(v=>v<2000);
     const rowsOf=(arr)=>arr.map(v=>`<div style="display:flex;align-items:center;gap:6px;padding:7px 0;border-bottom:1px solid var(--line);min-width:0"><span style="font-weight:600;flex:1;min-width:0">${DLABEL[v]}</span><span style="color:var(--muted)">×</span><input id="cc_${v}" type="number" min="0" inputmode="numeric" value="" oninput="SHIFT.cashCalc()" style="width:54px;flex:none;padding:6px 4px;border:1px solid var(--line);border-radius:8px;text-align:center;font-size:15px"></div>`).join('');
     $('#genModal').className='modal wide';
@@ -6922,6 +6923,43 @@ const SHIFT = (()=>{
                + 'ผล: '+res + (over?'\n\n⚠️ เกินเกณฑ์ที่ตั้งไว้ ('+STORE.baht(tol())+') ต้องระบุเหตุผล':'');
     UI.confirm2(_ccMode==='close'?'🔒 สรุปก่อนปิดกะ':'🔍 ผลการตรวจนับ', body,
       ()=>{ if(over) askReason(counted,diff); else done(counted,diff,''); }, over);
+  }
+  // ===== สลิปสั้น ๆ ไว้ "เด้งลิ้นชัก" สำหรับเครื่องพิมพ์ USB/ไดรเวอร์ =====
+  //  (ไดรเวอร์ตั้งไว้ว่า Open drawer before printing -> พอสั่งพิมพ์ ลิ้นชักก็เด้ง)
+  function kickSlipHtml(mode){
+    // สั้นที่สุด — คำเดียวกลางใบ แล้วตัดกระดาษ (หน้าที่เดียวคือทำให้ลิ้นชักเด้ง)
+    const t = mode==='open'?'เปิดกะ' : mode==='close'?'ปิดกะ' : 'ตรวจนับเงิน';
+    return '<div class="receipt"><div class="rc" style="font-size:1.7em;font-weight:900;padding:6px 0">'+t+'</div></div>';
+  }
+  function drawerByPrint(){ return (STORE.get().settings||{}).drawerByPrint===true; }
+  // เด้งลิ้นชัก — ลอง ESC/POS ก่อน ถ้าตั้งค่าไว้ให้ใช้การพิมพ์ ก็พิมพ์สลิปสั้นด้วย
+  function kick(mode){
+    try{ PRINT.kickDrawer(); }catch(e){}
+    if(drawerByPrint()){ try{ PAY.printDocs([kickSlipHtml(mode)],true); }catch(e){} }
+  }
+  // ===== ใบเปิดกะ =====
+  function openSlipHtml(sh){
+    const m=STORE.binfo(), B=v=>STORE.baht(v||0);
+    const dn=DENOMS.filter(v=>sh.openDenoms&&sh.openDenoms[v])
+      .map(v=>'<tr><td>'+DLABEL[v]+'</td><td style="text-align:center">x'+sh.openDenoms[v]+'</td><td style="text-align:right">'+B(v*sh.openDenoms[v])+'</td></tr>').join('');
+    const _day=new Date(sh.openedAt).toDateString();
+    const seq=(STORE.get().shifts||[]).filter(x=>(x.branchId||'BR-001')===(sh.branchId||'BR-001')
+              && new Date(x.openedAt).toDateString()===_day).sort((a,b)=>a.openedAt-b.openedAt)
+              .findIndex(x=>x.id===sh.id)+1;
+    return '<div class="receipt">'
+      + '<div class="rc"><div style="font-size:1.6em;font-weight:900">ใบเปิดกะ</div>'
+      + '<div>'+esc(m.shopName||'')+'</div><div style="font-size:.9em">'+esc(m.branchName||'')+'</div></div>'
+      + '<div class="rdiv"></div>'
+      + '<div>กะที่ '+(seq||1)+' · สาขา '+esc(sh.branchId||'')+'</div>'
+      + '<div>พนักงาน: '+esc(sh.openBy||'-')+'</div>'
+      + '<div>เวลา: '+new Date(sh.openedAt).toLocaleString('th-TH')+'</div>'
+      + '<div class="rdiv"></div>'
+      + (dn?('<table style="width:100%">'+dn+'</table><div class="rdiv"></div>'):'')
+      + '<div class="rc" style="font-size:1.4em;font-weight:900">เงินตั้งต้น '+B(sh.openCash)+'</div>'
+      + '<div class="rdiv"></div>'
+      + '<div style="margin-top:18px">ผู้เปิดกะ ..............................</div>'
+      + '<div style="margin-top:14px">ผู้ตรวจ ..............................</div>'
+      + '</div>';
   }
   // ===== เหตุผลเงินขาด/เกิน — กดเลือก ไม่ต้องพิมพ์ (ปุ่มใหญ่ เหมาะกับ iPad) =====
   const BD_SHORT=['ทอนเงินเกินให้ลูกค้า','ลืมบันทึกเบิกเงินออก','ลูกค้าจ่ายไม่ครบ','นับเงินผิด / นับตกหล่น','เงินหาย — ต้องตรวจสอบ'];
@@ -7061,7 +7099,7 @@ const SHIFT = (()=>{
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
     LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
-  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,finishClose,finishOpen,pickReason,otherReason};
+  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,openSlipHtml,kickSlipHtml,finishClose,finishOpen,pickReason,otherReason};
 })();
 
 /* ============================================================
@@ -7111,7 +7149,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.84</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.86</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7157,6 +7195,7 @@ const SETTINGS = (()=>{
               <button type="button" class="sub-tab" style="color:var(--danger)" onclick="SETTINGS.resetColor()">คืนค่าเริ่มต้น</button>
             </div>
           </div>`:''}
+          <div class="field"><label>🖨️ เปิดลิ้นชักด้วยการสั่งพิมพ์ <small style="color:var(--muted);font-weight:400">(สำหรับเครื่องพิมพ์ USB/ไดรเวอร์ — พิมพ์สลิปสั้น 1 ใบตอนเปิดกะ/ปิดกะ/ตรวจนับ เพื่อให้ไดรเวอร์เด้งลิ้นชัก)</small></label><select id="setDrwPrint"><option value="0" ${!s.drawerByPrint?'selected':''}>ปิด (ใช้ Bluetooth ESC/POS)</option><option value="1" ${s.drawerByPrint?'selected':''}>เปิด — พิมพ์เพื่อเด้งลิ้นชัก</option></select></div>
           <div class="field"><label>🙈 นับเงินแบบปิดตา <small style="color:var(--muted);font-weight:400">(ไม่บอก "ควรมี" จนกว่าจะนับเสร็จ — กันพนักงานกรอกให้ตรงเป้า)</small>${_hq?'':' 🔒'}</label><select id="setBlind"${_dis}><option value="1" ${s.blindCount!==false?'selected':''}>เปิด (แนะนำ)</option><option value="0" ${s.blindCount===false?'selected':''}>ปิด — เห็นยอดที่ควรมีตลอด</option></select></div>
           <div class="field"><label>⚖️ เงินขาด/เกิน ยอมรับได้ไม่เกิน (บาท) <small style="color:var(--muted);font-weight:400">เกินกว่านี้ต้องระบุเหตุผล + แจ้งเข้ามือถือ</small>${_hq?'':' 🔒'}</label><input id="setTol" type="number" min="0" step="1" value="${s.cashTolerance==null?20:s.cashTolerance}"${_dis}></div>
           <div class="field"><label>🔒 บังคับเปิดกะก่อนขาย (ต้องเปิดกะ+ใส่เงินตั้งต้นจึงกดชำระได้)</label><select id="setReqShift"><option value="0" ${!s.requireShift?'selected':''}>ปิด (ขายได้เลย)</option><option value="1" ${s.requireShift?'selected':''}>เปิด (ต้องเปิดกะก่อน)</option></select></div>
@@ -7327,7 +7366,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
