@@ -6893,13 +6893,17 @@ const SHIFT = (()=>{
     const m=STORE.binfo();
     const rows=DENOMS.filter(v=>c.denoms&&c.denoms[v]).map(v=>`<tr><td>${DLABEL[v]}</td><td style="text-align:center">x${c.denoms[v]}</td><td style="text-align:right">${STORE.baht(v*c.denoms[v])}</td></tr>`).join('')||'<tr><td colspan="3" style="text-align:center">-</td></tr>';
     const res=c.diff===0?'ตรงพอดี ✓':(c.diff>0?'เกิน '+STORE.baht(c.diff):'ขาด '+STORE.baht(Math.abs(c.diff)));
-    return `<div class="receipt"><div class="rc"><h3>🔍 ใบสรุปตรวจนับเงิน</h3>${esc(m.shopName)}</div><div class="rdiv"></div>`+
+    return `<div class="receipt"><div class="rc"><div style="font-size:1.6em;font-weight:900">ใบสรุปตรวจนับเงิน</div>`+
+      `<div>${esc(m.shopName||'')}</div><div style="font-size:.9em">${esc(m.branchName||'')}</div></div><div class="rdiv"></div>`+
+      `<div>สาขา ${esc(c.branchId||STORE.bid())}</div>`+
       `<div>ผู้ตรวจ: ${esc(c.byName||'-')}</div><div>${new Date(c.at).toLocaleString('th-TH')}</div><div class="rdiv"></div>`+
       `<table style="width:100%">${rows}</table><div class="rdiv"></div>`+
       `<table style="width:100%"><tr><td>นับได้จริง</td><td style="text-align:right" class="rtot">${STORE.baht(c.amount)}</td></tr>`+
       `<tr><td>ควรมีในลิ้นชัก</td><td style="text-align:right">${STORE.baht(c.expected)}</td></tr></table><div class="rdiv"></div>`+
-      `<div class="rc rtot" style="font-size:15px">ผลต่าง: ${res}</div><div class="rdiv"></div>`+
-      `<div class="rc">ลงชื่อผู้ตรวจ ____________</div></div>`;
+      `<div class="rc" style="font-size:1.4em;font-weight:900">${res}</div>`+
+      `${c.reason?`<div class="rc" style="font-size:.9em">เหตุผล: ${esc(c.reason)}</div>`:''}<div class="rdiv"></div>`+
+      `<div style="margin-top:18px">ผู้ตรวจนับ ..............................</div>`+
+      `<div style="margin-top:14px">ผู้รับทราบ ..............................</div></div>`;
   }
   // ===== กดยืนยัน -> เฉลยขาด/เกิน =====
   function reveal(){
@@ -7149,7 +7153,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.86</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.87</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
