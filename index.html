@@ -7153,7 +7153,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.87</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.88</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7335,6 +7335,7 @@ const SETTINGS = (()=>{
         <button class="add-fab" onclick="CLOUD.test()">🔌 ทดสอบเชื่อมต่อ</button>
         <button class="add-fab" onclick="CLOUD.pushAll()">⬆️ อัปขึ้น cloud</button>
         <button class="add-fab" style="background:var(--gold)" onclick="CLOUD.pullAll()">⬇️ ดึงจาก cloud</button>
+        <button class="add-fab" style="background:#2E7D32" onclick="CLOUD.repairSync()">🔄 ซ่อมบิลที่ขาดหาย</button>
         <p style="color:var(--muted);font-size:12px;margin-top:10px">เชื่อมต่อแล้วจะ sync ข้อมูล/ออเดอร์ข้ามเครื่อง + รองรับลูกค้าสแกนสั่งจากโต๊ะจริง (ขั้นต่อไปหลังรัน SQL)</p>
       </div>
       <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-top:16px">
@@ -8849,12 +8850,35 @@ const CLOUD = (()=>{
         D.branchCounters[b]={orderNo:Math.max(cur.orderNo||1,inc.orderNo||1), receiptNo:Math.max(cur.receiptNo||1,inc.receiptNo||1)}; });
     }
   }
+  // ===== ซ่อมข้อมูลที่ขาด — ดึงใหม่ตามช่วงเก็บ แล้วบอกว่าได้เพิ่มกี่ใบ =====
+  async function repairSync(){
+    if(status!=='online'||!client){ UI.toast('ยังไม่ออนไลน์ — กดทดสอบเชื่อมต่อก่อน','err'); return; }
+    if(!authUser){ UI.toast('ต้องล็อกอินบัญชีสาขาก่อน ไม่งั้นฐานข้อมูลไม่ให้อ่าน','err'); return; }
+    const before=(STORE.get().orders||[]).length;
+    UI.toast('กำลังดึงข้อมูลใหม่…','ok');
+    try{ await pullSync(); }catch(e){ UI.toast('ดึงไม่สำเร็จ: '+(e.message||e),'err'); return; }
+    const after=(STORE.get().orders||[]).length, add=after-before;
+    // เทียบกับ cloud ว่าครบจริงไหม
+    let cloudN=null;
+    try{
+      const from=Math.max(0,STORE.keepFrom()-86400000);
+      const r=await selShop('orders','id',q=>q.gte('updated_at',from));
+      if(r&&!r.error&&r.data) cloudN=r.data.length;
+    }catch(e){}
+    let msg='ดึงเพิ่มมา '+add+' รายการ (มีทั้งหมด '+after+')';
+    if(cloudN!=null) msg+='\n\nบน cloud ช่วงเดียวกัน: '+cloudN+' รายการ'
+      + (after>=cloudN ? '\n✅ ครบแล้ว' : '\n⚠️ ยังขาด '+(cloudN-after)+' — ลองกดซ้ำอีกครั้ง');
+    UI.confirm2('🔄 ซ่อมข้อมูลเสร็จ', msg, ()=>{}, false);
+    try{ rerender(); }catch(e){}
+  }
   async function pullSync(){
     if(status!=='online'||!client) return;
     try{
       const D=STORE.get();
       const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
-      const _pOrd=STORE.purgedOrdersAt();   // ล้างบิลเก่าไปแล้ว -> ห้ามดึงกลับ ไม่งั้นเครื่องเต็มอีก
+      // 🐞 เดิมใช้ STORE.purgedOrdersAt() (เวลาที่ล้างบิล) เป็นเส้นเริ่มดึง
+      //    -> autoPurge ทำงานทุกชั่วโมง เลื่อนเส้นมาเรื่อย ๆ บิลของวันนี้เลยไม่ถูกดึง
+      //    ตอนนี้ใช้ keepFrom() (ช่วงเก็บย้อนหลัง) อย่างเดียว ซึ่งคุมพื้นที่อยู่แล้ว
       // เครื่องสาขา (ไม่ใช่ HQ) เก็บเฉพาะข้อมูลสาขาตัวเอง — ลดพื้นที่ + ไม่เห็นของสาขาอื่น
       // members ไม่กรอง (แต้มใช้ร่วมทุกสาขา) · branches ไม่กรอง (ต้องมีรายชื่อ)
       const _me=(typeof AUTH!=='undefined'&&AUTH.get)?AUTH.get():null;
@@ -8867,7 +8891,7 @@ const CLOUD = (()=>{
         return _BRSCOPE.has(key) && (o.branchId||'BR-001')!==_myB;
       };
       for(const [t,key] of ent){
-        const _oFrom = (t==='orders') ? Math.max(_pOrd||0, STORE.keepFrom()-86400000) : 0;
+        const _oFrom = (t==='orders') ? Math.max(0, STORE.keepFrom()-86400000) : 0;   // ⭐ ย้อนหลังตามช่วงเก็บ ไม่ผูกกับเวลาที่ล้าง
         const {data,error}= _oFrom
           ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_oFrom))   // ⭐ บิลเก่าอยู่บน cloud ไม่ต้องลากลงเครื่อง
           : await selShop(t,'data,updated_at');
@@ -8891,7 +8915,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
