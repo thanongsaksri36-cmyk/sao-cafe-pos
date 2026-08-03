@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.89</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.90</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7277,9 +7277,10 @@ const SETTINGS = (()=>{
         <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
+        <div class="field"><label>🇹🇭 รหัสภาษาไทยของเครื่องพิมพ์ · ใช้กับ RawBT <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.thaiTest()">🖨 พิมพ์ใบทดสอบ</button><br><small style="color:var(--muted);font-weight:400">กดพิมพ์ใบทดสอบ ดูว่าบรรทัดไหนอ่านออก แล้วเอาเลขในวงเล็บ [ ] มาใส่ช่องนี้</small></label><input id="setThCP" type="number" min="0" max="255" value="${s.thaiCodePage==null?255:s.thaiCodePage}"></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="rawbt" ${s.printMethod==='rawbt'?'selected':''}>RawBT — Android พิมพ์เงียบ (ต้องลงแอป RawBT)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
-          <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้เฉพาะโหมด Bluetooth ESC/POS<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
+          <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้กับ Bluetooth ESC/POS และ RawBT<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select>
             <div style="margin-top:6px;font-size:12px;color:var(--muted)">${esc(PENDING.voiceInfo?PENDING.voiceInfo():'')} <button class="sub-tab" style="margin-left:8px" onclick="PENDING.testVoice()">🔊 ทดสอบเสียงเตือน</button></div></div>
         <p style="font-size:13px;margin-bottom:8px">สถานะ Bluetooth: <b>${PRINT.statusText()}</b></p>
@@ -7380,7 +7381,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -8488,6 +8489,7 @@ const PRINT = (()=>{
     function cls(el){ try{ return String(el.getAttribute('class')||''); }catch(e){ return ''; } }
     function walk(el,center,big){
       const c=cls(el), tag=(el.tagName||'').toLowerCase();
+      if(c.indexOf('pgbrk')>=0) out.push({cut:1});                       // ⭐ ขึ้นใบใหม่ = ตัดกระดาษ
       if(c.indexOf('rdiv')>=0){ out.push({d:1}); return; }
       if(tag==='img'||tag==='svg'||tag==='canvas') return;                 // ข้ามรูป/QR
       const stl=el.style||{};
@@ -8522,15 +8524,18 @@ const PRINT = (()=>{
     return out;
   }
 
+  function thCP(){ const v=parseInt((STORE.get().settings||{}).thaiCodePage); return (v>=0&&v<=255)?v:255; }
   function _escFromItems(items){
     const W=((STORE.get().settings||{}).paperWidth==='58')?32:42;
     const ESC=0x1B, GS=0x1D, b=[ESC,0x40];
+    b.push(ESC,0x74,thCP());                      // ⭐ สลับหน้ารหัสภาษาไทย (ไม่ส่ง = ไทยเพี้ยน)
     const T=s=>{ tis620(String(s||'')).forEach(x=>b.push(x)); };
     const NL=()=>b.push(0x0A);
     const A=n=>b.push(ESC,0x61,n);
     const BOLD=n=>b.push(ESC,0x45,n?1:0);
     const SZ=n=>b.push(GS,0x21,n);
     items.forEach(it=>{
+      if(it.cut){ NL(); NL(); NL(); b.push(GS,0x56,0x00); b.push(ESC,0x40); b.push(ESC,0x74,thCP()); return; }  // ⭐ ตัดกระดาษคั่นระหว่างใบ
       if(it.d){ A(0); SZ(0); BOLD(0); T('-'.repeat(W)); NL(); return; }
       if(it.r){ A(0); SZ(0); BOLD(it.b?1:0); T(_pad(it.r[0]||'', it.r[1]||'', W)); NL(); BOLD(0); return; }
       if(!it.l) return;
@@ -8544,8 +8549,9 @@ const PRINT = (()=>{
   }
 
   // ส่งเข้า RawBT — ใช้ <a> click แทน location.href กันหน้าแอปเด้งออก
-  function rawbt(html){
+  function rawbt(html,opt){
     const bytes=_escFromItems(_htmlToItems(html));
+    if(opt&&opt.drawer) bytes.unshift(0x1B,0x70,0x00,0x19,0xFA);          // ⭐ เปิดลิ้นชักก่อนพิมพ์
     let bin=''; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]&0xFF);
     let b64=''; try{ b64=btoa(bin); }catch(e){ UI.toast('แปลงข้อมูลพิมพ์ไม่สำเร็จ','err'); return false; }
     const a=document.createElement('a');
@@ -8554,12 +8560,40 @@ const PRINT = (()=>{
     setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1500);
     return true;
   }
+  // ส่งไบต์ดิบเข้า RawBT (ใช้เปิดลิ้นชัก / ทดสอบหน้ารหัส)
+  function rawSend(bytes){
+    let bin=''; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]&0xFF);
+    let b64=''; try{ b64=btoa(bin); }catch(e){ return false; }
+    const a=document.createElement('a'); a.href='rawbt:base64,'+b64; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); return true;
+  }
+  // ทดสอบหน้ารหัสภาษาไทย — พิมพ์ตัวอย่างทุกเลขให้เลือก
+  function thaiTest(){
+    const ESC=0x1B,GS=0x1D,b=[ESC,0x40];
+    const T=s=>tis620(String(s)).forEach(x=>b.push(x));
+    const A=s=>{ for(const ch of String(s)) b.push(ch.charCodeAt(0)); };
+    b.push(ESC,0x61,1); A('== THAI CODE PAGE TEST =='); b.push(0x0A,0x0A); b.push(ESC,0x61,0);
+    [255,21,20,26,30,28,52,53].forEach(cp=>{
+      b.push(ESC,0x74,cp);
+      A('['+cp+'] '); T('ทดสอบภาษาไทย กาแฟ ๑๒๓'); b.push(0x0A);
+    });
+    b.push(0x0A); b.push(ESC,0x74,255);
+    b.push(ESC,0x61,1); A('<< PICK THE READABLE ONE >>'); b.push(0x0A,0x0A,0x0A,0x0A);
+    b.push(GS,0x56,0x00);
+    if(!rawSend(b)) UI.toast('ส่งไม่สำเร็จ','err'); else UI.toast('ส่งใบทดสอบแล้ว','ok');
+  }
   async function kickDrawer(){
+    // RawBT: เปิดลิ้นชักด้วยคำสั่ง ESC p
+    if((STORE.get().settings||{}).printMethod==='rawbt'){
+      if(!STORE.get().settings.autoDrawer) return false;
+      return rawSend([0x1B,0x70,0x00,0x19,0xFA]);
+    }
     if(!STORE.get().settings.autoDrawer) return false;
     if(!ch) return false;
     try{ await ch.writeValue(new Uint8Array([0x1B,0x70,0x00,0x19,0xFA])); return true; }catch(e){ return false; }
   }
-  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt};
+  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawSend,thaiTest};
 })();
 
 /* ============================================================
