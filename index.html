@@ -4258,7 +4258,7 @@ const PAY = (()=>{
       return '<div class="rdiv"></div>'
         +'<div class="rc" style="padding:2px 0 6px">'
         +'<b style="font-size:14px">'+(bonus>0?('สมัครครั้งแรก รับ '+(pts+bonus)+' แต้ม'):('สแกนรับ '+pts+' แต้ม จากบิลนี้'))+'</b>'
-        +'<div style="margin:5px auto;width:150px">'+q+'</div>'
+        +'<div class="qrbox" data-qr="'+esc(url)+'" style="margin:5px auto;width:150px">'+q+'</div>'
         +'<small>'+(bonus>0?('รวมโบนัสสมัครใหม่ '+bonus+' แต้ม · '):'')+'กรอกเบอร์ + วันเกิด รับส่วนลดวันเกิด<br>ใช้ได้ภายใน 24 ชั่วโมง</small></div>';
     }catch(e){ return ''; }
   }
@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.94</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.95</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8492,6 +8492,8 @@ const PRINT = (()=>{
     function walk(el,center,big){
       const c=cls(el), tag=(el.tagName||'').toLowerCase();
       if(c.indexOf('pgbrk')>=0) out.push({cut:1});                       // ⭐ ขึ้นใบใหม่ = ตัดกระดาษ
+      { let _q=''; try{ _q=el.getAttribute('data-qr')||''; }catch(e){}
+        if(_q){ out.push({qr:_q}); return; } }                            // ⭐ QR — วาดเองบน canvas
       if(c.indexOf('rdiv')>=0){ out.push({d:1}); return; }
       if(tag==='img'||tag==='svg'||tag==='canvas') return;                 // ข้ามรูป/QR
       const stl=el.style||{};
@@ -8592,7 +8594,9 @@ const PRINT = (()=>{
     pages.forEach(list=>{
       // ---- รอบที่ 1: คำนวณบรรทัดจริง + ความสูง ----
       const prep=[];
+      const QRS=Math.min(300, W-PAD*2-40);                               // ขนาด QR บนกระดาษ
       list.forEach(it=>{
+        if(it.qr){ prep.push({q:it.qr, h:QRS+16}); return; }
         if(it.d){ prep.push({d:1,h:DIVH}); return; }
         if(it.r){
           mc.font=f(false,it.b);
@@ -8615,6 +8619,18 @@ const PRINT = (()=>{
       // ---- รอบที่ 2: วาดจริง ----
       let y=PAD;
       prep.forEach(x=>{
+        if(x.q){                                                          // ⭐ วาด QR ทีละช่อง
+          try{
+            const m=qrcode(0,'M'); m.addData(x.q); m.make();
+            const n=m.getModuleCount(), cs=Math.max(2,Math.floor(QRS/n)), sz=cs*n;
+            const ox=Math.round((W-sz)/2), oy=y+8;
+            g.fillStyle='#fff'; g.fillRect(ox-cs*2, oy-cs*2, sz+cs*4, sz+cs*4);
+            g.fillStyle='#000';
+            for(let r=0;r<n;r++) for(let c2=0;c2<n;c2++)
+              if(m.isDark(r,c2)) g.fillRect(ox+c2*cs, oy+r*cs, cs, cs);
+          }catch(e){ console.error('qr',e); }
+          y+=x.h; return;
+        }
         if(x.d){ for(let i=PAD;i<W-PAD;i+=10) g.fillRect(i, y+DIVH/2, 6, 2); y+=DIVH; return; }
         if(x.r){
           g.font=f(false,x.b);
