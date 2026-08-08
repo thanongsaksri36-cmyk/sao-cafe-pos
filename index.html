@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.92</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.93</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8616,19 +8616,38 @@ const PRINT = (()=>{
     }
   }
   let _pendingDrawer=false;
+  // รวมทุกใบเป็นรูปเดียว แล้วส่งเป็น JPEG (เล็ก+เร็ว+ไม่โดน Chrome ตัดทิ้ง)
   function rawbtImage(html){
     const cvs=_drawItems(_htmlToItems(html));
     if(!cvs.length) return false;
-    const b=[0x1B,0x40];                                   // init
-    if(_pendingDrawer){ b.push(0x1B,0x70,0x00,0x19,0xFA); _pendingDrawer=false; }   // เปิดลิ้นชัก
-    try{
-      cvs.forEach(cv=>{
-        _rasterInto(b, cv);
-        b.push(0x0A,0x0A,0x0A);
-        b.push(0x1D,0x56,0x00);                            // ตัดกระดาษท้ายทุกใบ
-      });
-    }catch(e){ console.error('raster',e); return false; }
-    return rawSend(b);                                     // ⭐ ส่งครั้งเดียวจบ
+    const W=cvs[0].width, GAP=46;
+    let H=0; cvs.forEach((c,i)=>{ H+=c.height+(i?GAP:0); });
+    H+=30;
+    const big=document.createElement('canvas'); big.width=W; big.height=H;
+    const g=big.getContext('2d');
+    g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+    let y=0;
+    cvs.forEach((c,i)=>{
+      if(i){                                               // เส้นปะคั่นระหว่างใบ (ไว้ฉีก)
+        g.fillStyle='#000';
+        for(let x=10;x<W-10;x+=14) g.fillRect(x, y+GAP/2, 8, 3);
+        y+=GAP;
+      }
+      g.drawImage(c,0,y); y+=c.height;
+    });
+    let url='';
+    try{ url=big.toDataURL('image/jpeg',0.8); }catch(e){ console.error('toDataURL',e); return false; }
+    const b64=(url.split(',')[1]||'');
+    if(!b64) return false;
+    const kb=Math.round(b64.length/1024);
+    if(kb>420){ try{ UI.toast('ใบเสร็จใหญ่เกินไป ('+kb+' KB) — พิมพ์ผ่านเบราว์เซอร์แทน','err'); }catch(e){} return false; }
+    if(_pendingDrawer){ _pendingDrawer=false; rawSend([0x1B,0x70,0x00,0x19,0xFA]); }
+    const a=document.createElement('a');
+    a.href='rawbt:data:image/jpeg;base64,'+b64; a.style.display='none';
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500);
+    try{ if((STORE.get().settings||{}).rawbtDebug) UI.toast('ส่ง RawBT '+kb+' KB','ok'); }catch(e){}
+    return true;
   }
   // ส่งเข้า RawBT — ใช้ <a> click แทน location.href กันหน้าแอปเด้งออก
   function rawbt(html,opt){
