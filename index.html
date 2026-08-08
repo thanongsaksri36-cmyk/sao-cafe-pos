@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.0</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.1</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7279,6 +7279,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🇹🇭 RawBT — วิธีส่งข้อมูล <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะเมื่อเลือกวิธีพิมพ์ = RawBT)</small></label>
           <select id="setRbImg"><option value="1" ${s.rawbtImage!==false?'selected':''}>ส่งเป็นรูปภาพ — ไทยสวยชัวร์ทุกเครื่อง (แนะนำ)</option><option value="0" ${s.rawbtImage===false?'selected':''}>ส่งเป็นตัวอักษร — เร็วกว่า แต่ต้องมีฟอนต์ไทยในเครื่องพิมพ์</option></select></div>
+        <div class="field"><label>🔍 ตรวจภาพก่อนพิมพ์ <small style="color:var(--muted);font-weight:400">(พิมพ์ 1 ครั้งก่อน แล้วกดดู)</small> <button type="button" class="btn-gold" style="padding:4px 12px;font-size:12px;margin-left:6px" onclick="PRINT.preview()">ดูตัวอย่าง</button></label></div>
         <div class="field"><label>🔠 RawBT — ขนาดตัวอักษร</label>
           <select id="setRbFont">
             <option value="small"  ${s.rbFontSize==='small'?'selected':''}>เล็ก — ตัวอักษรเยอะต่อบรรทัด</option>
@@ -8743,6 +8744,26 @@ const PRINT = (()=>{
     try{ if((STORE.get().settings||{}).rawbtDebug) UI.toast('ส่ง RawBT '+kb+' KB','ok'); }catch(e){}
     return true;
   }
+  // ===== ดูตัวอย่างภาพที่จะส่งเข้าเครื่องพิมพ์ (ไว้หาสาเหตุ) =====
+  let _lastHtml='';
+  function preview(){
+    const html=_lastHtml;
+    if(!html){ UI.toast('ยังไม่มีข้อมูล — ขายหรือกดทดสอบพิมพ์ 1 ครั้งก่อน','err'); return; }
+    let cvs=[]; try{ cvs=_drawItems(_htmlToItems(html)); }catch(e){ UI.toast('วาดภาพไม่สำเร็จ: '+e.message,'err'); return; }
+    let info='', imgs='';
+    cvs.forEach((cv,i)=>{
+      info+='ใบที่ '+(i+1)+': '+cv.width+' x '+cv.height+' จุด<br>';
+      imgs+='<div style="margin:10px 0;text-align:center"><div style="font-size:12px;color:var(--muted)">ใบที่ '+(i+1)+'</div>'
+          + '<img src="'+cv.toDataURL('image/png')+'" style="max-width:100%;border:1px solid var(--line);background:#fff"></div>';
+    });
+    $('#genModal').className='modal wide';
+    $('#genModal').innerHTML=
+      '<div class="modal-h"><h3>🔍 ตัวอย่างภาพที่จะพิมพ์</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'+
+      '<div class="modal-b"><p style="font-size:13px;color:var(--muted)">พบ '+cvs.length+' ใบ<br>'+info+'</p>'+imgs+
+      '<p style="font-size:12px;color:var(--muted);margin-top:10px">ถ้าภาพนี้ครบถ้วน แต่กระดาษออกไม่ครบ = ข้อมูลหายตอนส่ง<br>ถ้าภาพนี้ก็ขาด = ต้องแก้ที่ตัวแปลง</p></div>'+
+      '<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button></div>';
+    UI.open('genOverlay');
+  }
   // ===== ส่งเป็น ESC/POS ดิบ (มีรูป + ตัดกระดาษ + ลิ้นชัก ในงานเดียว) =====
   function rawbtRaster(html){
     const cvs=_drawItems(_htmlToItems(html));
@@ -8783,6 +8804,7 @@ const PRINT = (()=>{
   }
   // ส่งเข้า RawBT — ใช้ <a> click แทน location.href กันหน้าแอปเด้งออก
   function rawbt(html,opt){
+    _lastHtml=html;
     if(_imgMode()){                                       // ⭐ โหมดรูปภาพ — ไทยชัวร์
       if(opt&&opt.drawer) _pendingDrawer=true;
       if((STORE.get().settings||{}).rawbtCut!==false && rawbtRaster(html)) return true;   // ⭐ ลองแบบมีตัดกระดาษก่อน
@@ -8834,7 +8856,7 @@ const PRINT = (()=>{
     if(!ch) return false;
     try{ await ch.writeValue(new Uint8Array([0x1B,0x70,0x00,0x19,0xFA])); return true; }catch(e){ return false; }
   }
-  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest};
+  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest,preview};
 })();
 
 /* ============================================================
