@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.99</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.0</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9201,7 +9201,9 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin'];
+  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
+    // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
+    'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbFontSize','thaiCodePage','drawerByPrint'];
   function mergeMeta(D,o){
     if(!o) return;
     if(o.meta){
