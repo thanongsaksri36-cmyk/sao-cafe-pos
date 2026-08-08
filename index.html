@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.4</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7679,6 +7679,7 @@ const SETTINGS = (()=>{
           try{ CLOUD.pushMeta(true); }catch(err){}
         }
         try{ APP.applyBrand(); }catch(err){}
+        try{ PRINT.warmLogo(); }catch(err){}
         render(); UI.toast('อัปโหลดโลโก้แล้ว ('+Math.round(out.length/1024)+' KB)','ok');
       }; img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err'); img.src=e.target.result; };
       reader.readAsDataURL(file); };
@@ -8533,7 +8534,12 @@ const PRINT = (()=>{
       { let _q=''; try{ _q=el.getAttribute('data-qr')||''; }catch(e){}
         if(_q){ out.push({qr:_q}); return; } }                            // ⭐ QR — วาดเองบน canvas
       if(c.indexOf('rdiv')>=0){ out.push({d:1}); return; }
-      if(tag==='img'||tag==='svg'||tag==='canvas') return;                 // ข้ามรูป/QR
+      if(tag==='img'){                                                     // ⭐ โลโก้ — เก็บไว้วาด
+        let src=''; try{ src=el.getAttribute('src')||''; }catch(e){}
+        if(src){ warmImg(src); out.push({img:src}); }
+        return;
+      }
+      if(tag==='svg'||tag==='canvas') return;                              // QR วาดเองจาก data-qr
       const stl=el.style||{};
       const isC = center || c.indexOf('rc')>=0 || stl.textAlign==='center' || tag==='h3';
       let isB = big || tag==='h3';
@@ -8640,7 +8646,17 @@ const PRINT = (()=>{
       // ---- รอบที่ 1: คำนวณบรรทัดจริง + ความสูง ----
       const prep=[];
       const QRS=Math.min(300, W-PAD*2-40);                               // ขนาด QR บนกระดาษ
+      const LOGOW=Math.round(W*0.55), LOGOH=Math.round(150*_fs);
       list.forEach(it=>{
+        if(it.img){
+          const im=_imgCache[it.img];
+          if(im && im.complete && im.naturalWidth>0){
+            const sc=Math.min(LOGOW/im.naturalWidth, LOGOH/im.naturalHeight, 1);
+            prep.push({im, iw:Math.round(im.naturalWidth*sc), ih:Math.round(im.naturalHeight*sc),
+                       h:Math.round(im.naturalHeight*sc)+14});
+          }
+          return;
+        }
         if(it.qr){ prep.push({q:it.qr, h:QRS+16}); return; }
         if(it.d){ prep.push({d:1,h:DIVH}); return; }
         if(it.r){
@@ -8664,6 +8680,10 @@ const PRINT = (()=>{
       // ---- รอบที่ 2: วาดจริง ----
       let y=PAD;
       prep.forEach(x=>{
+        if(x.im){                                                         // ⭐ วาดโลโก้
+          try{ g.drawImage(x.im, Math.round((W-x.iw)/2), y+7, x.iw, x.ih); }catch(e){}
+          y+=x.h; return;
+        }
         if(x.q){                                                          // ⭐ วาด QR ทีละช่อง
           try{
             const m=qrcode(0,'M'); m.addData(x.q); m.make();
@@ -8725,6 +8745,15 @@ const PRINT = (()=>{
   }
 
   let _pendingDrawer=false;
+  // ===== แคชรูป (โลโก้) ไว้วาดลงใบเสร็จ =====
+  const _imgCache={};
+  function warmImg(src){
+    if(!src) return null;
+    let im=_imgCache[src];
+    if(!im){ im=new Image(); im.decoding='sync'; _imgCache[src]=im; im.src=src; }
+    return im;
+  }
+  function warmLogo(){ try{ warmImg((STORE.binfo()||{}).logo||''); }catch(e){} }
   // รวมทุกใบเป็นรูปเดียว แล้วส่งเป็น JPEG (เล็ก+เร็ว+ไม่โดน Chrome ตัดทิ้ง)
   function rawbtImage(html){
     const cvs=_drawItems(_htmlToItems(html));
@@ -8872,7 +8901,7 @@ const PRINT = (()=>{
     if(!ch) return false;
     try{ await ch.writeValue(new Uint8Array([0x1B,0x70,0x00,0x19,0xFA])); return true; }catch(e){ return false; }
   }
-  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest,preview};
+  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest,preview,warmLogo};
 })();
 
 /* ============================================================
@@ -9644,6 +9673,7 @@ const APP = (()=>{
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
     setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); },5000);
+    try{ PRINT.warmLogo(); }catch(e){}                    // ⭐ โหลดโลโก้ไว้ล่วงหน้า จะได้พิมพ์ติดตั้งแต่ใบแรก
     updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
     bindKeys();
     // ล็อกหน้าจ ออัตโนมัติเมื่อไม่มีการใช้งานตามเวลาที่ตั้งไว้
