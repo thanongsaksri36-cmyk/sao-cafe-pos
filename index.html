@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.93</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.94</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8555,46 +8555,88 @@ const PRINT = (()=>{
   function _imgMode(){ return (STORE.get().settings||{}).rawbtImage!==false; }   // ค่าเริ่มต้น = เปิด
   function _drawItems(items){
     const W=((STORE.get().settings||{}).paperWidth==='58')?384:576;
-    const PAD=8, LH=38, LHB=58, DIVH=26, CUTH=0;
+    const PAD=8, LH=38, LHB=58, DIVH=26;
     const FN="'Sarabun','Prompt','Noto Sans Thai',sans-serif";
     const f=(big,bold)=>(bold?'bold ':'')+(big?46:30)+"px "+FN;
-    // ---- วัดความสูงก่อน ----
-    let H=PAD*2, pages=[];
-    let cur=[]; 
+    // ตัดขึ้นบรรทัดใหม่ให้พอดีความกว้าง (ไทยไม่มีเว้นวรรค -> ตัดทีละตัวอักษรด้วย)
+    function wrap(x,text,maxW){
+      const src=String(text||'').trim(); if(!src) return [''];
+      if(x.measureText(src).width<=maxW) return [src];
+      const words=src.split(' '); const rows=[]; let cur='';
+      words.forEach(w=>{
+        const t=cur?cur+' '+w:w;
+        if(x.measureText(t).width<=maxW){ cur=t; return; }
+        if(cur) rows.push(cur);
+        cur=w;
+      });
+      if(cur) rows.push(cur);
+      const out=[];
+      rows.forEach(r=>{
+        if(x.measureText(r).width<=maxW){ out.push(r); return; }
+        let c='';
+        for(const ch of r){
+          if(c && x.measureText(c+ch).width>maxW){ out.push(c); c=ch; }
+          else c+=ch;
+        }
+        if(c) out.push(c);
+      });
+      return out.length?out:[''];
+    }
+    // แบ่งหน้าตามคำสั่งตัดกระดาษ
+    const pages=[]; let cur=[];
     items.forEach(it=>{ if(it.cut){ if(cur.length) pages.push(cur); cur=[]; } else cur.push(it); });
     if(cur.length) pages.push(cur);
+
+    const mc=document.createElement('canvas').getContext('2d');
     const out=[];
     pages.forEach(list=>{
-      let h=PAD*2;
-      list.forEach(it=>{ h += it.d?DIVH : (it.big?LHB:LH); });
-      const cv=document.createElement('canvas');
-      cv.width=W; cv.height=Math.max(60,Math.round(h));
-      const x=cv.getContext('2d');
-      x.fillStyle='#fff'; x.fillRect(0,0,cv.width,cv.height);
-      x.fillStyle='#000'; x.textBaseline='middle';
-      let y=PAD;
-      const line=(txt,align,big,bold)=>{
-        const lh=big?LHB:LH; x.font=f(big,bold);
-        let tx=PAD, al='left';
-        if(align==='c'){ tx=W/2; al='center'; }
-        x.textAlign=al; x.fillText(String(txt||''), tx, y+lh/2, W-PAD*2);
-        y+=lh;
-      };
+      // ---- รอบที่ 1: คำนวณบรรทัดจริง + ความสูง ----
+      const prep=[];
       list.forEach(it=>{
-        if(it.d){ x.fillStyle='#000';
-          for(let i=PAD;i<W-PAD;i+=10) x.fillRect(i, y+DIVH/2, 6, 2);
-          y+=DIVH; return; }
-        if(it.r){ const lh=LH; x.font=f(false,it.b);
-          x.textAlign='left';  x.fillText(String(it.r[0]||''), PAD, y+lh/2, W*0.62);
-          x.textAlign='right'; x.fillText(String(it.r[1]||''), W-PAD, y+lh/2, W*0.36);
-          y+=lh; return; }
+        if(it.d){ prep.push({d:1,h:DIVH}); return; }
+        if(it.r){
+          mc.font=f(false,it.b);
+          const rw=mc.measureText(String(it.r[1]||'')).width;
+          const L=wrap(mc, it.r[0], Math.max(60, W-PAD*2-rw-14));
+          prep.push({r:1, L, R:String(it.r[1]||''), b:it.b, h:L.length*LH});
+          return;
+        }
         if(!it.l) return;
-        line(it.l, it.c?'c':'l', it.big, it.b);
+        mc.font=f(it.big,it.b);
+        const L=wrap(mc, it.l, W-PAD*2);
+        prep.push({t:1, L, c:it.c, big:it.big, b:it.b, h:L.length*(it.big?LHB:LH)});
+      });
+      let H=PAD*2; prep.forEach(x=>H+=x.h);
+      const cv=document.createElement('canvas');
+      cv.width=W; cv.height=Math.max(60,Math.round(H));
+      const g=cv.getContext('2d');
+      g.fillStyle='#fff'; g.fillRect(0,0,cv.width,cv.height);
+      g.fillStyle='#000'; g.textBaseline='middle';
+      // ---- รอบที่ 2: วาดจริง ----
+      let y=PAD;
+      prep.forEach(x=>{
+        if(x.d){ for(let i=PAD;i<W-PAD;i+=10) g.fillRect(i, y+DIVH/2, 6, 2); y+=DIVH; return; }
+        if(x.r){
+          g.font=f(false,x.b);
+          x.L.forEach((ln,i)=>{
+            g.textAlign='left'; g.fillText(ln, PAD, y+LH/2);
+            if(i===0){ g.textAlign='right'; g.fillText(x.R, W-PAD, y+LH/2); }
+            y+=LH;
+          });
+          return;
+        }
+        const lh=x.big?LHB:LH; g.font=f(x.big,x.b);
+        x.L.forEach(ln=>{
+          if(x.c){ g.textAlign='center'; g.fillText(ln, W/2, y+lh/2); }
+          else    { g.textAlign='left';   g.fillText(ln, PAD,  y+lh/2); }
+          y+=lh;
+        });
       });
       out.push(cv);
     });
     return out;
   }
+
   // ===== แปลงรูปเป็น ESC/POS raster (GS v 0) — ส่งรวมในงานเดียว =====
   function _rasterInto(b, cv){
     const W=cv.width, H=cv.height, bw=Math.ceil(W/8);
