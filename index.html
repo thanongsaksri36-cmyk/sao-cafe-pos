@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.95</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.97</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7279,6 +7279,18 @@ const SETTINGS = (()=>{
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🇹🇭 RawBT — วิธีส่งข้อมูล <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะเมื่อเลือกวิธีพิมพ์ = RawBT)</small></label>
           <select id="setRbImg"><option value="1" ${s.rawbtImage!==false?'selected':''}>ส่งเป็นรูปภาพ — ไทยสวยชัวร์ทุกเครื่อง (แนะนำ)</option><option value="0" ${s.rawbtImage===false?'selected':''}>ส่งเป็นตัวอักษร — เร็วกว่า แต่ต้องมีฟอนต์ไทยในเครื่องพิมพ์</option></select></div>
+        <div class="field"><label>✂️ RawBT — ตัดกระดาษ <small style="color:var(--muted);font-weight:400">(ส่งแบบ ESC/POS จะตัดกระดาษได้ แต่ข้อมูลใหญ่กว่า)</small></label>
+          <select id="setRbCut"><option value="1" ${s.rawbtCut!==false?'selected':''}>เปิด — พยายามตัดกระดาษ (แนะนำ)</option><option value="0" ${s.rawbtCut===false?'selected':''}>ปิด — ส่งรูปอย่างเดียว ไม่ตัด</option></select></div>
+        <div class="field"><label>📏 เพดานขนาดข้อมูล (KB) <small style="color:var(--muted);font-weight:400">เกินนี้จะสลับไปโหมดรูป · ทดสอบหาค่าจริงได้ด้านล่าง</small></label>
+          <input id="setRbMax" type="number" min="10" max="900" value="${s.rawbtMaxKb==null?120:s.rawbtMaxKb}"></div>
+        <div class="field"><label>🧪 ทดสอบเพดานเครื่องนี้ <small style="color:var(--muted);font-weight:400">กดทีละปุ่ม ดูว่าขนาดไหนยังพิมพ์+ตัดได้</small></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="btn-ghost" onclick="PRINT.sizeProbe(20)">20 KB</button>
+            <button type="button" class="btn-ghost" onclick="PRINT.sizeProbe(50)">50 KB</button>
+            <button type="button" class="btn-ghost" onclick="PRINT.sizeProbe(80)">80 KB</button>
+            <button type="button" class="btn-ghost" onclick="PRINT.sizeProbe(120)">120 KB</button>
+            <button type="button" class="btn-ghost" onclick="PRINT.sizeProbe(200)">200 KB</button>
+          </div></div>
         <div class="field" id="thcpBox"><label>🔢 รหัสหน้าภาษาไทย <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะโหมดตัวอักษร)</small> <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.thaiTest()">🖨 พิมพ์ใบทดสอบ</button></label><input id="setThCP" type="number" min="0" max="255" value="${s.thaiCodePage==null?255:s.thaiCodePage}"></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="rawbt" ${s.printMethod==='rawbt'?'selected':''}>RawBT — Android พิมพ์เงียบ (ต้องลงแอป RawBT)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
@@ -7383,7 +7395,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -8657,22 +8669,28 @@ const PRINT = (()=>{
   function _rasterInto(b, cv){
     const W=cv.width, H=cv.height, bw=Math.ceil(W/8);
     const px=cv.getContext('2d').getImageData(0,0,W,H).data;
-    const CH=128;                                        // ท่อนละ 128 แถว
-    for(let y0=0; y0<H; y0+=CH){
-      const h=Math.min(CH, H-y0);
-      const buf=new Uint8Array(bw*h);
-      for(let y=0;y<h;y++){
-        const row=(y0+y)*W;
-        for(let x=0;x<W;x++){
-          const i=(row+x)*4;
-          const lum=px[i]*0.299+px[i+1]*0.587+px[i+2]*0.114;
-          if(lum<170) buf[y*bw+(x>>3)] |= (0x80>>(x&7));
-        }
+    const rows=new Array(H);
+    for(let y=0;y<H;y++){
+      const r=new Uint8Array(bw); let any=false; const base=y*W;
+      for(let x=0;x<W;x++){
+        const i=(base+x)*4;
+        if(px[i]*0.299+px[i+1]*0.587+px[i+2]*0.114 < 170){ r[x>>3]|=(0x80>>(x&7)); any=true; }
       }
-      b.push(0x1D,0x76,0x30,0x00, bw&0xFF,(bw>>8)&0xFF, h&0xFF,(h>>8)&0xFF);
-      for(let i=0;i<buf.length;i++) b.push(buf[i]);
+      rows[y]={r,any};
+    }
+    let y=0;
+    while(y<H){
+      if(!rows[y].any){                                   // ⭐ แถวขาวติดกัน -> เลื่อนกระดาษแทน (ประหยัดมาก)
+        let n=0; while(y+n<H && !rows[y+n].any) n++;
+        if(n>=6){ let f=n; while(f>0){ const k=Math.min(255,f); b.push(0x1B,0x4A,k); f-=k; } y+=n; continue; }
+      }
+      let n=1; while(y+n<H && n<120 && rows[y+n].any) n++;
+      b.push(0x1D,0x76,0x30,0x00, bw&0xFF,(bw>>8)&0xFF, n&0xFF,(n>>8)&0xFF);
+      for(let i=0;i<n;i++){ const r=rows[y+i].r; for(let j=0;j<bw;j++) b.push(r[j]); }
+      y+=n;
     }
   }
+
   let _pendingDrawer=false;
   // รวมทุกใบเป็นรูปเดียว แล้วส่งเป็น JPEG (เล็ก+เร็ว+ไม่โดน Chrome ตัดทิ้ง)
   function rawbtImage(html){
@@ -8707,10 +8725,49 @@ const PRINT = (()=>{
     try{ if((STORE.get().settings||{}).rawbtDebug) UI.toast('ส่ง RawBT '+kb+' KB','ok'); }catch(e){}
     return true;
   }
+  // ===== ส่งเป็น ESC/POS ดิบ (มีรูป + ตัดกระดาษ + ลิ้นชัก ในงานเดียว) =====
+  function rawbtRaster(html){
+    const cvs=_drawItems(_htmlToItems(html));
+    if(!cvs.length) return false;
+    const b=[0x1B,0x40];
+    if(_pendingDrawer){ b.push(0x1B,0x70,0x00,0x19,0xFA); _pendingDrawer=false; }
+    try{
+      cvs.forEach(cv=>{
+        _rasterInto(b, cv);
+        b.push(0x1B,0x4A,80);                              // เลื่อนกระดาษพ้นใบมีด
+        b.push(0x1D,0x56,0x00);                            // ตัดกระดาษ
+      });
+    }catch(e){ console.error('raster',e); return false; }
+    const kb=Math.round(b.length*1.34/1024);
+    try{ if((STORE.get().settings||{}).rawbtDebug) UI.toast('ESC/POS '+Math.round(b.length/1024)+' KB → URL '+kb+' KB','ok'); }catch(e){}
+    if(kb>_rbLimit()){ try{ UI.toast('ข้อมูลใหญ่เกิน ('+kb+' KB) — สลับไปโหมดรูปภาพ','err'); }catch(e){} return false; }
+    return rawSend(b);
+  }
+  function _rbLimit(){ const v=parseInt((STORE.get().settings||{}).rawbtMaxKb); return (v>=10&&v<=900)?v:120; }
+  // ทดสอบหาเพดานขนาดข้อมูลของเครื่องนี้ — พิมพ์ทีละขนาด ดูว่าถึงเท่าไหร่ยังออก
+  function sizeProbe(kb){
+    const ESC=0x1B,GS=0x1D,b=[ESC,0x40];
+    for(const ch of ('=== TEST '+kb+' KB ===')) b.push(ch.charCodeAt(0));
+    b.push(0x0A);
+    const need=Math.max(0, Math.round(kb*1024/1.34) - 40);
+    const bw=72, rowsN=Math.max(1, Math.floor(need/bw));
+    let left=rowsN;
+    while(left>0){
+      const n=Math.min(120,left);
+      b.push(GS,0x76,0x30,0x00, bw,0, n&0xFF,(n>>8)&0xFF);
+      for(let i=0;i<n*bw;i++) b.push(0x00);                // ขาวล้วน ไม่เปลืองหมึก
+      left-=n;
+    }
+    b.push(ESC,0x4A,80); b.push(GS,0x56,0x00);
+    const real=Math.round(b.length*1.34/1024);
+    if(!rawSend(b)) UI.toast('ส่งไม่สำเร็จ','err');
+    else UI.toast('ส่ง '+real+' KB แล้ว — ดูว่ากระดาษออก+ตัดไหม','ok');
+  }
   // ส่งเข้า RawBT — ใช้ <a> click แทน location.href กันหน้าแอปเด้งออก
   function rawbt(html,opt){
     if(_imgMode()){                                       // ⭐ โหมดรูปภาพ — ไทยชัวร์
       if(opt&&opt.drawer) _pendingDrawer=true;
+      if((STORE.get().settings||{}).rawbtCut!==false && rawbtRaster(html)) return true;   // ⭐ ลองแบบมีตัดกระดาษก่อน
       if(rawbtImage(html)) return true;
       // วาดรูปไม่สำเร็จ -> ตกไปใช้โหมดข้อความ
     }
@@ -8759,7 +8816,7 @@ const PRINT = (()=>{
     if(!ch) return false;
     try{ await ch.writeValue(new Uint8Array([0x1B,0x70,0x00,0x19,0xFA])); return true; }catch(e){ return false; }
   }
-  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawSend,thaiTest};
+  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest};
 })();
 
 /* ============================================================
