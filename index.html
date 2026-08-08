@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.3</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.4</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7287,14 +7287,14 @@ const SETTINGS = (()=>{
             <option value="large"  ${(s.rbFontSize||'large')==='large'?'selected':''}>ใหญ่ — ใกล้เคียงพิมพ์จาก Windows (แนะนำ)</option>
             <option value="huge"   ${s.rbFontSize==='huge'?'selected':''}>ใหญ่มาก</option>
           </select></div>
-        <div class="field"><label>📐 RawBT — ระยะห่างบรรทัด <small style="color:var(--muted);font-weight:400">(ปรับแล้วกดพิมพ์ทดสอบดูได้เลย)</small></label>
-          <select id="setRbGap">
-            <option value="tight"  ${s.rbLineGap==='tight'?'selected':''}>แน่น — ประหยัดกระดาษ</option>
-            <option value="normal" ${s.rbLineGap==='normal'?'selected':''}>ปกติ</option>
-            <option value="airy"   ${(s.rbLineGap||'airy')==='airy'?'selected':''}>โปร่ง (แนะนำ)</option>
-            <option value="wide"   ${s.rbLineGap==='wide'?'selected':''}>โปร่งมาก</option>
-            <option value="xwide"  ${s.rbLineGap==='xwide'?'selected':''}>โปร่งที่สุด — อ่านง่ายสุด</option>
-          </select></div>
+        <div class="field"><label>📐 RawBT — ระยะห่างบรรทัด (%) <small style="color:var(--muted);font-weight:400">100 = ชิดสุด · ยิ่งเลขเยอะยิ่งห่าง · ปรับได้ถึง 400</small></label>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <input id="setGapPct" type="number" min="60" max="400" step="10" value="${s.rbGapPct==null?138:s.rbGapPct}" style="flex:1;min-width:110px">
+            <button type="button" class="btn-ghost" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.gapSet(120)">120</button>
+            <button type="button" class="btn-ghost" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.gapSet(160)">160</button>
+            <button type="button" class="btn-ghost" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.gapSet(200)">200</button>
+            <button type="button" class="btn-ghost" style="padding:6px 10px;font-size:12px" onclick="SETTINGS.gapSet(250)">250</button>
+          </div></div>
         <div class="field"><label>📏 ระยะเลื่อนกระดาษก่อนตัด (จุด) <small style="color:var(--muted);font-weight:400">ตัดโดนตัวหนังสือ = เพิ่มเลข · เหลือหางยาว = ลดเลข</small></label>
           <input id="setCutFeed" type="number" min="0" max="255" value="${s.rbCutFeed==null?180:s.rbCutFeed}"></div>
         <div class="field"><label>✂️ RawBT — ตัดกระดาษ <small style="color:var(--muted);font-weight:400">(ส่งแบบ ESC/POS จะตัดกระดาษได้ แต่ข้อมูลใหญ่กว่า)</small></label>
@@ -7413,7 +7413,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const rg=$('#setRbGap'); if(rg) s.rbLineGap=rg.value; const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const gp=$('#setGapPct'); if(gp) s.rbGapPct=Math.max(60,Math.min(400,parseInt(gp.value)||138)); const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -7750,6 +7750,14 @@ const SETTINGS = (()=>{
     setTimeout(printDiag,400);
   }
   // ทดสอบใบครัวทันที ไม่ต้องรอขายจริง
+  // ปุ่มลัดตั้งระยะห่าง -> บันทึก -> พิมพ์ทดสอบให้ดูทันที
+  function gapSet(v){
+    const e=$('#setGapPct'); if(e) e.value=v;
+    const st=STORE.get().settings; st.rbGapPct=v;
+    if(!STORE.save()){ UI.toast('บันทึกไม่ลง! พื้นที่เครื่องเต็ม','err'); return; }
+    UI.toast('ตั้งระยะห่าง '+v+'% แล้ว — กำลังพิมพ์ทดสอบ','ok');
+    setTimeout(()=>{ try{ testKitchen(); }catch(e){} }, 300);
+  }
   function testKitchen(){
     const D=STORE.get(), p=(D.products||[])[0];
     const demo={ id:'TEST', no:'ทดสอบ', type:'dine-in', table:'1',
@@ -7816,7 +7824,7 @@ const SETTINGS = (()=>{
       else UI.toast('ยกเลิก — คำยืนยันไม่ถูกต้อง','err');
     });
   }
-  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,printDiag,fixPrint,useGlobalBrand,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
+  return {render,save,downloadBat,changeShop,copyShop,copyShopLink,branchLink,featPick,featSave,eyeTg,copyText,cleanup,doPurge,shrinkImgs,queueInfo,queueRetry,queueClear,backup,restore,applyTheme,applyBrandColor,colorPresets,pickColor,applyCustomColor,resetColor,uploadQr,removeQr,confirmReset,testPrint,testKitchen,gapSet,printDiag,fixPrint,useGlobalBrand,toggleKey,pickLogo,clearLogo,cloudSignIn,cloudSignOut};
 })();
 
 /* ============================================================
@@ -8588,7 +8596,9 @@ const PRINT = (()=>{
   function _drawItems(items){
     const W=((STORE.get().settings||{}).paperWidth==='58')?384:576;
     const _gapMap={tight:1.0, normal:1.18, airy:1.38, wide:1.60, xwide:1.85};
-    const _g=_gapMap[(STORE.get().settings||{}).rbLineGap]||1.38;      // ค่าเริ่มต้น = โปร่ง
+    const _st0=STORE.get().settings||{};
+    const _gPct=parseInt(_st0.rbGapPct);
+    const _g=(_gPct>=60&&_gPct<=400) ? _gPct/100 : (_gapMap[_st0.rbLineGap]||1.38);
     const _szMap0={small:0.85, normal:1.0, large:1.15, huge:1.32};
     const _fs=_szMap0[(STORE.get().settings||{}).rbFontSize]||1.15;   // ค่าเริ่มต้น = ใหญ่
     const PAD=Math.round(10*_g), LH=Math.round(34*_g*_fs), LHB=Math.round(52*_g*_fs), DIVH=Math.round(24*_g);
@@ -9231,7 +9241,7 @@ const CLOUD = (()=>{
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
   const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
     // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
-    'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
+    'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbGapPct','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
   function mergeMeta(D,o){
     if(!o) return;
     if(o.meta){
