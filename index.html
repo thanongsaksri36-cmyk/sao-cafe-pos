@@ -7162,7 +7162,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.97</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v9.99</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7279,6 +7279,19 @@ const SETTINGS = (()=>{
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🇹🇭 RawBT — วิธีส่งข้อมูล <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะเมื่อเลือกวิธีพิมพ์ = RawBT)</small></label>
           <select id="setRbImg"><option value="1" ${s.rawbtImage!==false?'selected':''}>ส่งเป็นรูปภาพ — ไทยสวยชัวร์ทุกเครื่อง (แนะนำ)</option><option value="0" ${s.rawbtImage===false?'selected':''}>ส่งเป็นตัวอักษร — เร็วกว่า แต่ต้องมีฟอนต์ไทยในเครื่องพิมพ์</option></select></div>
+        <div class="field"><label>🔠 RawBT — ขนาดตัวอักษร</label>
+          <select id="setRbFont">
+            <option value="small"  ${s.rbFontSize==='small'?'selected':''}>เล็ก — ตัวอักษรเยอะต่อบรรทัด</option>
+            <option value="normal" ${(s.rbFontSize||'normal')==='normal'?'selected':''}>ปกติ (แนะนำ)</option>
+            <option value="large"  ${s.rbFontSize==='large'?'selected':''}>ใหญ่ — สายตาไม่ดีอ่านง่าย</option>
+          </select></div>
+        <div class="field"><label>📐 RawBT — ระยะห่างบรรทัด <small style="color:var(--muted);font-weight:400">(ปรับแล้วกดพิมพ์ทดสอบดูได้เลย)</small></label>
+          <select id="setRbGap">
+            <option value="tight"  ${s.rbLineGap==='tight'?'selected':''}>แน่น — ประหยัดกระดาษ</option>
+            <option value="normal" ${s.rbLineGap==='normal'?'selected':''}>ปกติ</option>
+            <option value="airy"   ${(s.rbLineGap||'airy')==='airy'?'selected':''}>โปร่ง (แนะนำ)</option>
+            <option value="wide"   ${s.rbLineGap==='wide'?'selected':''}>โปร่งมาก — อ่านง่ายสุด</option>
+          </select></div>
         <div class="field"><label>✂️ RawBT — ตัดกระดาษ <small style="color:var(--muted);font-weight:400">(ส่งแบบ ESC/POS จะตัดกระดาษได้ แต่ข้อมูลใหญ่กว่า)</small></label>
           <select id="setRbCut"><option value="1" ${s.rawbtCut!==false?'selected':''}>เปิด — พยายามตัดกระดาษ (แนะนำ)</option><option value="0" ${s.rawbtCut===false?'selected':''}>ปิด — ส่งรูปอย่างเดียว ไม่ตัด</option></select></div>
         <div class="field"><label>📏 เพดานขนาดข้อมูล (KB) <small style="color:var(--muted);font-weight:400">เกินนี้จะสลับไปโหมดรูป · ทดสอบหาค่าจริงได้ด้านล่าง</small></label>
@@ -7395,7 +7408,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const rg=$('#setRbGap'); if(rg) s.rbLineGap=rg.value; const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -8529,7 +8542,7 @@ const PRINT = (()=>{
       if(hasBlock){
         kids.forEach(n=>{
           if(n.nodeType===3){ const t=n.textContent.replace(/\s+/g,' ').trim(); if(t) out.push({l:t,c:isC,big:isB,b:bold}); }
-          else if(n.nodeType===1) walk(n,isC,isB);
+          else if(n.nodeType===1) walk(n,isC,false);        // ⭐ ไม่ส่ง "ใหญ่/หนา" ลงลูก ป้องกันหนาทั้งใบ
         });
         return;
       }
@@ -8569,9 +8582,14 @@ const PRINT = (()=>{
   function _imgMode(){ return (STORE.get().settings||{}).rawbtImage!==false; }   // ค่าเริ่มต้น = เปิด
   function _drawItems(items){
     const W=((STORE.get().settings||{}).paperWidth==='58')?384:576;
-    const PAD=8, LH=38, LHB=58, DIVH=26;
+    const _gapMap={tight:0.9, normal:1.0, airy:1.18, wide:1.35};
+    const _g=_gapMap[(STORE.get().settings||{}).rbLineGap]||1.18;      // ค่าเริ่มต้น = โปร่ง
+    const _szMap0={small:0.85, normal:1.0, large:1.15};
+    const _fs=_szMap0[(STORE.get().settings||{}).rbFontSize]||1.0;
+    const PAD=Math.round(10*_g), LH=Math.round(34*_g*_fs), LHB=Math.round(52*_g*_fs), DIVH=Math.round(24*_g);
     const FN="'Sarabun','Prompt','Noto Sans Thai',sans-serif";
-    const f=(big,bold)=>(bold?'bold ':'')+(big?46:30)+"px "+FN;
+    const F1=Math.round(26*_fs), F2=Math.round(40*_fs);                // ปกติ / หัวข้อ
+    const f=(big,bold)=>(bold?'bold ':'')+(big?F2:F1)+"px "+FN;
     // ตัดขึ้นบรรทัดใหม่ให้พอดีความกว้าง (ไทยไม่มีเว้นวรรค -> ตัดทีละตัวอักษรด้วย)
     function wrap(x,text,maxW){
       const src=String(text||'').trim(); if(!src) return [''];
