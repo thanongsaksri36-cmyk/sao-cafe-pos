@@ -2945,7 +2945,8 @@ const returnStockOf=(o)=>{
   if(o.stockUsed && typeof o.stockUsed==='object' && Object.keys(o.stockUsed).length){
     Object.keys(o.stockUsed).forEach(id=>{ const ig=STORE.find('ingredients',id); if(ig){ ig.stock+=o.stockUsed[id]; touched.set(ig.id,ig); } });
   } else {
-    (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId); if(p&&p.recipe) p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig){ ig.stock+=r.qty*it.qty; touched.set(ig.id,ig); } }); });
+    (o.items||[]).forEach(it=>{ const p=STORE.find('products',it.productId);
+      (INV.recipeOf(p,it.variantId)||[]).forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig){ ig.stock+=r.qty*it.qty; touched.set(ig.id,ig); } }); });
   }
   o.stockReturned=true;
   touched.forEach(ig=>{ try{ CLOUD.pushItem('ingredients',ig); }catch(e){} });
@@ -3219,7 +3220,11 @@ const STORE = (()=>{
     (D.suppliers||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); supMap[o.id]=n.id; made.suppliers.push(n); D.suppliers.push(n); });
     (D.categories||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); catMap[o.id]=n.id; made.categories.push(n); D.categories.push(n); });
     (D.ingredients||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB,stock:0,cost:0,purchasePrice:null,purchaseQty:0,supplierId:o.supplierId?(supMap[o.supplierId]||null):null}); ingMap[o.id]=n.id; made.ingredients.push(n); D.ingredients.push(n); });
-    (D.products||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=JSON.parse(JSON.stringify(o)); n.id=uuid(); n.branchId=toB; n.cost=0; if(catMap[o.cat])n.cat=catMap[o.cat]; if(Array.isArray(n.recipe))n.recipe=n.recipe.map(r=>({ingredientId:ingMap[r.ingredientId]||r.ingredientId,qty:r.qty})); made.products.push(n); D.products.push(n); });
+    (D.products||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=JSON.parse(JSON.stringify(o)); n.id=uuid(); n.branchId=toB; n.cost=0; if(catMap[o.cat])n.cat=catMap[o.cat];
+      const _map=(rec)=>rec.map(r=>({ingredientId:ingMap[r.ingredientId]||r.ingredientId,qty:r.qty}));
+      if(Array.isArray(n.recipe))n.recipe=_map(n.recipe);
+      if(Array.isArray(n.variants))n.variants=n.variants.map(v=>Object.assign({},v,{id:uuid(),recipe:Array.isArray(v.recipe)?_map(v.recipe):[]}));  // ⭐ สูตรของแต่ละแบบก็ต้องชี้วัตถุดิบของสาขาใหม่
+      made.products.push(n); D.products.push(n); });
     (D.tables||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.tables.push(n); D.tables.push(n); });
     (D.promos||[]).filter(x=>(x.branchId||'BR-001')===fromB&&!x.deletedAt).forEach(o=>{ const n=Object.assign({},o,{id:uuid(),branchId:toB}); made.promos.push(n); D.promos.push(n); });
     if(!save()){
@@ -3733,16 +3738,23 @@ const POS = (()=>{
   function tap(id){
     const p=STORE.find('products',id);
     if(!p) return;
-    if(p.options&&p.options.length) MOD.open(p);
-    else addToCart(p,1,[],0);
+    // ⭐ มี "แบบ" (ร้อน/เย็น/ปั่น) หรือมีตัวเลือก -> เปิดกล่องให้เลือกก่อน
+    if(INV.variantsOf(p).length || (p.options&&p.options.length)) MOD.open(p);
+    else addToCart(p,1,[],0,null);
   }
-  function addToCart(p,qty,mods,modPrice){
-    // รวมรายการเหมือนกัน (ชื่อ+mods เดียวกัน) เป็นชิ้นเดียว
-    const sig=p.id+'|'+mods.map(m=>m.group+':'+m.name).join(',');
+  function addToCart(p,qty,mods,modPrice,variant){
+    // ⭐ ชื่อที่แสดง = ชื่อเมนู + (แบบ) -> ใบเสร็จ/จอครัว/ใบครัว/รายงาน เห็นตรงกันหมดโดยไม่ต้องแก้ที่อื่น
+    const vName=(variant&&variant.name)||'';
+    const dispName=p.name+(vName?(' ('+vName+')'):'');
+    const vDelta=(variant&&variant.priceDelta)||0;
+    // รวมรายการเหมือนกัน (เมนู+แบบ+ตัวเลือก เดียวกัน) เป็นชิ้นเดียว
+    const sig=p.id+'|'+((variant&&variant.id)||'')+'|'+mods.map(m=>m.group+':'+m.name).join(',');
     const ex=cart.find(c=>c.sig===sig);
     if(ex) ex.qty+=qty;
-    else cart.push({line:STORE.uuid(),sig,productId:p.id,name:p.name,base:priceOf(p),modPrice,mods,qty,note:''});
-    renderCart(); UI.toast(p.name+' x'+qty,'ok');
+    else cart.push({line:STORE.uuid(),sig,productId:p.id,name:dispName,
+      variantId:(variant&&variant.id)||null, variantName:vName,
+      base:priceOf(p),modPrice:(modPrice||0)+vDelta,mods,qty,note:''});
+    renderCart(); UI.toast(dispName+' x'+qty,'ok');
   }
   function chQty(line,d){
     const c=cart.find(x=>x.line===line); if(!c) return;
@@ -3880,11 +3892,14 @@ const POS = (()=>{
    MOD — modifier selector overlay
    ============================================================ */
 const MOD = (()=>{
-  let prod=null, sel={}, qty=1;
+  let prod=null, sel={}, qty=1, vSel=null;
+  // เมนูที่ไม่มี options ต้องไม่พัง (เดิม p.options.map จะ error ถ้า options ว่าง)
+  function optsOf(p){ return (p&&Array.isArray(p.options)?p.options:[]).map(id=>STORE.find('modifiers',id)).filter(Boolean); }
   function open(p){
     prod=p; qty=1; sel={};
-    const mods=p.options.map(id=>STORE.find('modifiers',id)).filter(Boolean);
-    mods.forEach(m=>{ if(m.type==='single'&&m.required) sel[m.id]=[m.options[0].name]; else sel[m.id]=[]; });
+    const vs=INV.variantsOf(p);
+    vSel = vs.length ? vs[0].id : null;                  // ⭐ ตั้งแบบแรกไว้ให้เลย กดเพิ่มได้ทันที
+    optsOf(p).forEach(m=>{ if(m.type==='single'&&m.required) sel[m.id]=[m.options[0].name]; else sel[m.id]=[]; });
     $('#modModal').innerHTML=`
       <div class="modal-h"><h3>${esc(p.name)}</h3><button class="x" onclick="UI.close('modOverlay')">×</button></div>
       <div class="modal-b" id="modBody"></div>
@@ -3892,8 +3907,16 @@ const MOD = (()=>{
     renderBody(); UI.open('modOverlay');
   }
   function renderBody(){
-    const mods=prod.options.map(id=>STORE.find('modifiers',id)).filter(Boolean);
-    $('#modBody').innerHTML=mods.map(m=>`
+    // ⭐ แถวแรก = เลือกแบบ (ร้อน/เย็น/ปั่น) · แบบที่วัตถุดิบหมดจะกดไม่ได้
+    const vs=INV.variantsOf(prod);
+    const vHtml = vs.length ? `
+      <div class="opt-group"><h4>แบบ *</h4>
+      <div class="opt-chips">${vs.map(v=>{
+        const out=(v.recipe||[]).some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return false;
+          const tracked=(ig.parLevel>0)||(ig.purchaseQty>0)||(ig.stock>0); return tracked&&ig.stock<r.qty; });
+        return `<button class="opt-chip ${vSel===v.id?'sel':''}" ${out?'disabled style="opacity:.45"':''} onclick="MOD.pickVariant('${v.id}')">${esc(v.name)}${v.priceDelta>0?` +${STORE.baht(v.priceDelta)}`:''}${out?' · หมด':''}</button>`;
+      }).join('')}</div></div>` : '';
+    $('#modBody').innerHTML=vHtml+optsOf(prod).map(m=>`
       <div class="opt-group"><h4>${esc(m.name)}${m.required?' *':''}</h4>
       <div class="opt-chips">${m.options.map(o=>{
         const on=(sel[m.id]||[]).includes(o.name);
@@ -3902,6 +3925,8 @@ const MOD = (()=>{
       `<div class="qty-ctl"><button onclick="MOD.q(-1)">−</button><span class="qn">${qty}</span><button onclick="MOD.q(1)">+</button></div>`;
     updateBtn();
   }
+  function pickVariant(id){ vSel=id; renderBody(); }
+  function curVariant(){ return INV.variantOf(prod,vSel); }
   function pick(mid,name,type){
     sel[mid]=sel[mid]||[];
     if(type==='single') sel[mid]=[name];
@@ -3910,18 +3935,20 @@ const MOD = (()=>{
   }
   function q(d){ qty=Math.max(1,qty+d); renderBody(); }
   function calcMods(){
-    const mods=prod.options.map(id=>STORE.find('modifiers',id)).filter(Boolean);
     let price=0; const chosen=[];
-    mods.forEach(m=>{ (sel[m.id]||[]).forEach(n=>{ const o=m.options.find(x=>x.name===n); if(o){ price+=o.price; chosen.push({group:m.name,name:n,price:o.price}); } }); });
+    optsOf(prod).forEach(m=>{ (sel[m.id]||[]).forEach(n=>{ const o=m.options.find(x=>x.name===n); if(o){ price+=o.price; chosen.push({group:m.name,name:n,price:o.price}); } }); });
     return {price,chosen};
   }
-  function updateBtn(){ const c=calcMods(); $('#modAdd').textContent=`เพิ่ม ${qty} รายการ • ${STORE.baht((POS.priceOf(prod)+c.price)*qty)}`; }
+  function updateBtn(){
+    const c=calcMods(), v=curVariant(), vd=(v&&v.priceDelta)||0;
+    $('#modAdd').textContent=`เพิ่ม ${qty} รายการ • ${STORE.baht((POS.priceOf(prod)+c.price+vd)*qty)}`;
+  }
   function confirm(){
     const c=calcMods();
-    POS.addToCart(prod,qty,c.chosen,c.price);
+    POS.addToCart(prod,qty,c.chosen,c.price,curVariant());
     UI.close('modOverlay');
   }
-  return {open,pick,q,confirm};
+  return {open,pick,q,confirm,pickVariant};
 })();
 
 /* ============================================================
@@ -4602,17 +4629,35 @@ const MEMBER = (()=>{
    7. INV — recipe (BOM) deduction, restock, low-stock alert
    ============================================================ */
 const INV = (()=>{
+  // ===== แบบเมนู (variant) — 1 เมนูมีหลายแบบ (ร้อน/เย็น/ปั่น) แต่ละแบบมีสูตรของตัวเอง =====
+  // เมนูที่ไม่มี variants ทำงานเหมือนเดิมทุกอย่าง (ใช้ p.recipe)
+  function variantsOf(p){ return (p&&Array.isArray(p.variants)) ? p.variants.filter(v=>v&&!v.deletedAt) : []; }
+  function variantOf(p,vid){ const vs=variantsOf(p); if(!vs.length) return null; return (vid&&vs.find(x=>x.id===vid))||vs[0]; }
+  // สูตรที่ต้องใช้ตัดสต็อกของรายการนี้ — ไม่ระบุแบบ (เช่น ออเดอร์ QR รุ่นเก่า) -> ใช้แบบแรก
+  function recipeOf(p,vid){
+    if(!p) return [];
+    const vs=variantsOf(p);
+    if(vs.length){ const v=variantOf(p,vid); return (v&&Array.isArray(v.recipe))?v.recipe:[]; }
+    return Array.isArray(p.recipe)?p.recipe:[];
+  }
+  // ทุกสูตรของเมนูนี้ (ทุกแบบ) — ใช้เช็คของใกล้หมด/หมด
+  function allRecipes(p){
+    const vs=variantsOf(p);
+    const recs = vs.length ? vs.map(v=>(v.recipe||[])) : [(p&&p.recipe)||[]];
+    return recs.filter(r=>r.length);
+  }
+  const _low=(r)=>{ const ig=STORE.find('ingredients',r.ingredientId); return !!ig&&ig.stock<ig.parLevel; };
+  const _out=(r)=>{ const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return false;
+    // นับว่า "หมด" เฉพาะวัตถุดิบที่ตั้งสต็อกไว้จริง (มี par/ซื้อ/คงเหลือ > 0) — ของที่ยังไม่ตั้งสต็อก = ขายได้ปกติ
+    const tracked=(ig.parLevel>0)||(ig.purchaseQty>0)||(ig.stock>0);
+    return tracked && ig.stock<r.qty; };
   function isLow(product){
-    if(!product.recipe||!product.recipe.length) return false;
-    return product.recipe.some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); return ig&&ig.stock<ig.parLevel; });
+    const recs=allRecipes(product); if(!recs.length) return false;
+    return recs.some(rec=>rec.some(_low));            // แบบใดแบบหนึ่งใกล้หมด = ขึ้นเตือน
   }
   function outOfStock(product){
-    if(!product.recipe||!product.recipe.length) return false;
-    return product.recipe.some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return false;
-      // นับว่า "หมด" เฉพาะวัตถุดิบที่ตั้งสต็อกไว้จริง (มี par/ซื้อ/คงเหลือ > 0) — ของที่ยังไม่ตั้งสต็อก = ขายได้ปกติ
-      const tracked=(ig.parLevel>0)||(ig.purchaseQty>0)||(ig.stock>0);
-      return tracked && ig.stock<r.qty;
-    });
+    const recs=allRecipes(product); if(!recs.length) return false;
+    return recs.every(rec=>rec.some(_out));           // ⭐ หมดทุกแบบเท่านั้นถึงปิดเมนู
   }
   function deduct(order){
     if(order.stockDeducted) return;          // กันตัดสต็อกซ้ำ (กดยืนยันซ้ำ/หลายเครื่อง)
@@ -4620,7 +4665,7 @@ const INV = (()=>{
     const used={}, touched=new Map();        // จดจำนวนที่ "หักได้จริง" -> ตอนยกเลิกคืนเท่าที่หักจริง (กันสต็อกงอก)
     order.items.forEach(it=>{
       const p=STORE.find('products',it.productId);
-      if(p&&p.recipe) p.recipe.forEach(r=>{
+      recipeOf(p,it.variantId).forEach(r=>{   // ⭐ ตัดตามสูตรของ "แบบ" ที่ลูกค้าเลือก
         const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return;
         const want=r.qty*it.qty, real=Math.min(want, Math.max(0, ig.stock));
         ig.stock=Math.max(0, ig.stock-want);
@@ -4641,11 +4686,20 @@ const INV = (()=>{
   }
   function restock(id,amount){ const ig=STORE.find('ingredients',id); if(ig){ ig.stock+=amount; STORE.save(); } }
   function lowList(){ return STORE.scoped('ingredients').filter(i=>i.stock<i.parLevel&&!i.deletedAt); }
-  // คำนวณต้นทุนต่อแก้วใหม่ทุกเมนู จากราคาวัตถุดิบล่าสุด (เรียกเมื่อราคาวัตถุดิบเปลี่ยน)
-  function recalcCosts(){
-    STORE.get().products.forEach(p=>{ if(p.recipe&&p.recipe.length){ let c=0; p.recipe.forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) c+=(ig.cost||0)*r.qty; }); if(c>0) p.cost=Math.round(c); } });
+  // ต้นทุนของสูตรหนึ่งชุด (สตางค์)
+  function costOfRecipe(rec){
+    let c=0; (rec||[]).forEach(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(ig) c+=(ig.cost||0)*r.qty; });
+    return Math.round(c);
   }
-  return {isLow,outOfStock,deduct,restock,lowList,recalcCosts};
+  // คำนวณต้นทุนต่อแก้วใหม่ทุกเมนู จากราคาวัตถุดิบล่าสุด (เรียกเมื่อราคาวัตถุดิบเปลี่ยน)
+  // เมนูที่มีหลายแบบ -> ใช้ต้นทุนของ "แบบแรก" เป็นตัวแทน (ต้นทุนจริงต่อแบบดูได้ในหน้าแก้ไขแบบ)
+  function recalcCosts(){
+    STORE.get().products.forEach(p=>{
+      const rec=recipeOf(p,null); if(!rec.length) return;
+      const c=costOfRecipe(rec); if(c>0) p.cost=c;
+    });
+  }
+  return {isLow,outOfStock,deduct,restock,lowList,recalcCosts,recipeOf,variantsOf,variantOf,costOfRecipe};
 })();
 
 /* ============================================================
@@ -5709,7 +5763,8 @@ const BO = (()=>{
         <td style="text-align:right;white-space:nowrap">
           <button class="sub-tab" onclick="BO.toggleAvail('${p.id}')">${p.available?'ปิดขาย':'เปิดขาย'}</button>
           <button class="sub-tab" onclick="BO.toggleFeatured('${p.id}')">${p.featured?'★ เลิกปักหมุด':'☆ ปักหมุดขายดี'}</button><button class="sub-tab" onclick="BO.toggleHideFeatured('${p.id}')">${p.hideFeatured?'👁️ แสดงในขายดี':'🚫 ซ่อนจากขายดี'}</button>
-          <button class="sub-tab" onclick="BO.recipe('${p.id}')">🧪 สูตร${p.recipe&&p.recipe.length?' ('+p.recipe.length+')':''}</button>
+          <button class="sub-tab" onclick="BO.variants('${p.id}')">🍹 แบบ${INV.variantsOf(p).length?' ('+INV.variantsOf(p).length+')':''}</button>
+          ${INV.variantsOf(p).length?'':`<button class="sub-tab" onclick="BO.recipe('${p.id}')">🧪 สูตร${p.recipe&&p.recipe.length?' ('+p.recipe.length+')':''}</button>`}
           <button class="sub-tab" onclick="BO.prodMods('${p.id}')">🎚️ ตัวเลือก${p.options&&p.options.length?' ('+p.options.length+')':''}</button><button class="sub-tab" onclick="BO.uploadImg('${p.id}')">🖼️ รูป</button>
           <button class="sub-tab" onclick="BO.editProduct('${p.id}')">แก้ไข</button>
           <button class="sub-tab" style="color:var(--danger)" onclick="BO.delProduct('${p.id}')">ลบ</button>
@@ -5836,7 +5891,11 @@ const BO = (()=>{
     (d.products||[]).forEach(p=>{ if(!p.name) return;
       if(STORE.scoped('products').some(x=>!x.deletedAt&&x.name===p.name)){ skip++; return; }
       const prices={'dine-in':p.price||0}; if(p.priceTake!=null) prices['takeaway']=p.priceTake;
-      const prod={id:STORE.uuid(),sku:'',name:p.name,cat:catId(p.category),price:p.price||0,prices,cost:p.cost||0,emoji:p.emoji||'🍽️',img:p.img||'',options:(p.options||[]).map(n=>modByName[n]).filter(Boolean),recipe:(p.recipe||[]).map(r=>({ingredientId:ingByName[r.ingredient],qty:Number(r.qty)||0})).filter(r=>r.ingredientId&&r.qty),available:true,sort:0,createdAt:STORE.now(),branchId:bid};
+      const _rec=(arr)=>(arr||[]).map(r=>({ingredientId:ingByName[r.ingredient],qty:Number(r.qty)||0})).filter(r=>r.ingredientId&&r.qty);
+      const prod={id:STORE.uuid(),sku:'',name:p.name,cat:catId(p.category),price:p.price||0,prices,cost:p.cost||0,emoji:p.emoji||'🍽️',img:p.img||'',options:(p.options||[]).map(n=>modByName[n]).filter(Boolean),recipe:_rec(p.recipe),
+        // ⭐ แบบเมนู (ร้อน/เย็น/ปั่น) — แต่ละแบบมีสูตรของตัวเอง
+        variants:(p.variants||[]).filter(v=>v&&String(v.name||'').trim()).map(v=>({id:STORE.uuid(),name:String(v.name).trim(),priceDelta:Number(v.priceDelta)||0,recipe:_rec(v.recipe)})),
+        available:true,sort:0,createdAt:STORE.now(),branchId:bid};
       DB.products.push(prod); try{CLOUD.pushItem('products',prod);}catch(e){} nP++; });
     STORE.save(); render();
     UI.toast('นำเข้าแล้ว: +'+nP+' เมนู · +'+nC+' หมวด · +'+nM+' ตัวเลือก · +'+nI+' วัตถุดิบ'+(skip?(' · ข้ามซ้ำ '+skip):''),'ok');
@@ -5852,7 +5911,9 @@ const BO = (()=>{
       categories:cats.map(c=>c.name),
       modifiers:mods.map(m=>({name:m.name,type:m.type||'single',required:!!m.required,options:(m.options||[]).map(o=>({name:o.name,price:o.price||0}))})),
       ingredients:igs.map(i=>({name:i.name,unit:i.unit||'',cost:i.cost||0,stock:i.stock||0,parLevel:i.parLevel||0,purchaseQty:i.purchaseQty||0,purchasePrice:(i.purchasePrice!=null?i.purchasePrice:null)})),
-      products:prods.map(p=>({name:p.name,category:(cats.find(c=>c.id===p.cat)||{}).name||'',price:p.price||0,priceTake:(p.prices&&p.prices.takeaway!=null)?p.prices.takeaway:null,cost:p.cost||0,emoji:p.emoji||'',img:p.img||'',options:(p.options||[]).map(id=>modName[id]).filter(Boolean),recipe:(p.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient)}))};
+      products:prods.map(p=>({name:p.name,category:(cats.find(c=>c.id===p.cat)||{}).name||'',price:p.price||0,priceTake:(p.prices&&p.prices.takeaway!=null)?p.prices.takeaway:null,cost:p.cost||0,emoji:p.emoji||'',img:p.img||'',options:(p.options||[]).map(id=>modName[id]).filter(Boolean),recipe:(p.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient),
+        // ⭐ แบบเมนู (ร้อน/เย็น/ปั่น) พร้อมสูตรของแต่ละแบบ
+        variants:(p.variants||[]).filter(v=>v&&!v.deletedAt).map(v=>({name:v.name,priceDelta:v.priceDelta||0,recipe:(v.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient)}))}))};
     try{ const blob=new Blob([JSON.stringify(out)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='เมนู_'+(out.shopName||'ร้าน')+'.json'; document.body.appendChild(a); a.click(); a.remove(); UI.toast('ส่งออกเมนูแล้ว ('+prods.length+' เมนู)','ok'); }catch(e){ UI.toast('ส่งออกไม่สำเร็จ','err'); }
   }
   function manageCats(){
@@ -6072,9 +6133,13 @@ const BO = (()=>{
 
   // ---- ตัวจัดการสูตร (Recipe / BOM editor) ----
   let recProd=null, recDraft=[];
-  function recipe(id){
+  let recVarId=null;                                        // ⭐ ถ้าตั้งไว้ = กำลังแก้สูตรของ "แบบ" นั้น
+  function recVar(){ return recVarId?(recProd.variants||[]).find(x=>x.id===recVarId):null; }
+  function recipe(id,vid){
     recProd=STORE.find('products',id); if(!recProd) return;
-    recDraft=JSON.parse(JSON.stringify(recProd.recipe||[])); // ทำงานบนสำเนา กดบันทึกค่อยเขียนจริง
+    recVarId=vid||null;
+    const v=recVar();
+    recDraft=JSON.parse(JSON.stringify(((v?v.recipe:recProd.recipe))||[])); // ทำงานบนสำเนา กดบันทึกค่อยเขียนจริง
     renderRecipe();
   }
   function renderRecipe(){
@@ -6085,9 +6150,9 @@ const BO = (()=>{
     const notUsed=ings.filter(i=>!recDraft.some(r=>r.ingredientId===i.id));
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`
-      <div class="modal-h"><h3>🧪 สูตร: ${esc(recProd.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-h"><h3>🧪 สูตร: ${esc(recProd.name)}${recVar()?' — แบบ '+esc(recVar().name):''}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
-        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">ใส่วัตถุดิบ + ปริมาณที่ใช้ต่อ <b>1 ${esc(recProd.name)}</b> · ระบบจะตัดสต็อกตามนี้ทุกครั้งที่ขาย</p>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">ใส่วัตถุดิบ + ปริมาณที่ใช้ต่อ <b>1 ${esc(recProd.name)}${recVar()?' ('+esc(recVar().name)+')':''}</b> · ระบบจะตัดสต็อกตามนี้ทุกครั้งที่ขาย</p>
         ${recDraft.length?`<table style="margin-bottom:14px"><thead><tr><th>วัตถุดิบ</th><th>ปริมาณ/แก้ว</th><th>หน่วย</th><th></th></tr></thead><tbody>
           ${recDraft.map((r,idx)=>{ const ig=ings.find(i=>i.id===r.ingredientId)||{name:'(ลบแล้ว)',unit:''};
             return `<tr>
@@ -6109,10 +6174,10 @@ const BO = (()=>{
         <div class="sr tot" style="margin-top:14px;border-top:1px dashed var(--line);padding-top:10px">
           <span>ต้นทุนวัตถุดิบรวม</span><span style="color:var(--gold)">${STORE.baht(rawCost)}</span>
         </div>
-        <p style="font-size:12px;color:var(--muted)">ราคาขาย ${STORE.baht(recProd.price)} · กำไร/แก้ว ${STORE.baht(recProd.price-rawCost)}</p>
+        <p style="font-size:12px;color:var(--muted)">ราคาขาย ${STORE.baht(recProd.price+((recVar()||{}).priceDelta||0))} · กำไร/แก้ว ${STORE.baht(recProd.price+((recVar()||{}).priceDelta||0)-rawCost)}</p>
       </div>
       <div class="modal-f">
-        <button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button>
+        <button class="btn-ghost" onclick="${recVar()?`BO.variants('${recProd.id}')`:"UI.close('genOverlay')"}">${recVar()?'← กลับ':'ยกเลิก'}</button>
         <button class="btn-gold" onclick="BO.recSave()">💾 บันทึกสูตร</button>
       </div>`;
     UI.open('genOverlay');
@@ -6127,12 +6192,70 @@ const BO = (()=>{
   }
   function recSave(){
     recDraft=recDraft.filter(r=>r.qty>0);
-    recProd.recipe=recDraft; recProd.updatedAt=STORE.now();
-    // อัปเดตต้นทุน (cost) ของเมนูให้ตรงกับสูตรอัตโนมัติ
-    const ings=STORE.get().ingredients;
-    let rawCost=0; recDraft.forEach(r=>{ const ig=ings.find(i=>i.id===r.ingredientId); if(ig) rawCost+=(ig.cost||0)*r.qty; });
-    if(rawCost>0) recProd.cost=Math.round(rawCost);
-    STORE.save(); CLOUD.pushItem('products',recProd); UI.close('genOverlay'); render(); UI.toast('บันทึกสูตรแล้ว ('+recDraft.length+' วัตถุดิบ)','ok');
+    const _v=recVar();
+    if(_v) _v.recipe=recDraft; else recProd.recipe=recDraft;   // ⭐ เก็บเข้าแบบ หรือสูตรหลัก
+    recProd.updatedAt=STORE.now();
+    // อัปเดตต้นทุน (cost) ของเมนู — เมนูที่มีหลายแบบใช้ "แบบแรก" เป็นตัวแทน
+    const rawCost=INV.costOfRecipe(INV.recipeOf(recProd,null));
+    if(rawCost>0) recProd.cost=rawCost;
+    STORE.save(); CLOUD.pushItem('products',recProd);
+    if(_v) variants(recProd.id); else UI.close('genOverlay');   // แก้สูตรของแบบ -> กลับหน้ารายการแบบ
+    render(); UI.toast('บันทึกสูตรแล้ว ('+recDraft.length+' วัตถุดิบ)','ok');
+  }
+
+  // ===== แบบเมนู (variant) — ร้อน/เย็น/ปั่น แต่ละแบบมีสูตร + ราคาส่วนเพิ่มของตัวเอง =====
+  let varProd=null;
+  function variants(id){ varProd=STORE.find('products',id); if(varProd) renderVariants(); }
+  function renderVariants(){
+    const vs=INV.variantsOf(varProd);
+    $('#genModal').className='modal wide';
+    $('#genModal').innerHTML=`
+      <div class="modal-h"><h3>🍹 แบบของ: ${esc(varProd.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">1 เมนูมีได้หลายแบบ (ร้อน · เย็น · ปั่น) — <b>แต่ละแบบมีสูตรตัดวัตถุดิบและราคาส่วนเพิ่มของตัวเอง</b><br>ถ้าไม่ใส่แบบเลย เมนูนี้จะใช้สูตรหลักเหมือนเดิมทุกอย่าง</p>
+        ${vs.length?`<table style="margin-bottom:14px"><thead><tr><th>แบบ</th><th>ราคาขาย</th><th>สูตร</th><th>ต้นทุน</th><th>กำไร</th><th></th></tr></thead><tbody>
+          ${vs.map(v=>{ const cost=INV.costOfRecipe(v.recipe), sell=varProd.price+(v.priceDelta||0);
+            return `<tr>
+            <td><b>${esc(v.name)}</b>${v.priceDelta?` <span style="color:var(--muted);font-size:11px">(+${STORE.baht(v.priceDelta)})</span>`:''}</td>
+            <td>${STORE.baht(sell)}</td>
+            <td>${(v.recipe||[]).length?((v.recipe||[]).length+' รายการ'):'<span style="color:var(--danger)">ยังไม่มีสูตร</span>'}</td>
+            <td>${STORE.baht(cost)}</td>
+            <td style="color:${sell-cost>0?'var(--success)':'var(--danger)'}">${STORE.baht(sell-cost)}</td>
+            <td style="text-align:right;white-space:nowrap">
+              <button class="sub-tab" onclick="BO.recipe('${varProd.id}','${v.id}')">🧪 แก้สูตร</button>
+              <button class="sub-tab" onclick="BO.varEdit('${v.id}')">แก้ไข</button>
+              <button class="sub-tab" style="color:var(--danger)" onclick="BO.varDel('${v.id}')">ลบ</button>
+            </td></tr>`; }).join('')}
+        </tbody></table>`:'<div class="empty" style="padding:20px">ยังไม่มีแบบ — เมนูนี้ใช้สูตรหลัก</div>'}
+        <button class="btn-gold" style="width:100%;padding:11px;border-radius:10px" onclick="BO.varEdit()">+ เพิ่มแบบ</button>
+        <p style="font-size:12px;color:var(--muted);margin-top:12px">ราคาขายพื้นฐานของเมนูนี้ ${STORE.baht(varProd.price)} · ราคาส่วนเพิ่มจะบวกจากราคานี้ตอนลูกค้าเลือกแบบ</p>
+      </div>
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button></div>`;
+    UI.open('genOverlay');
+  }
+  function varEdit(vid){
+    const v=vid?(varProd.variants||[]).find(x=>x.id===vid):null;
+    UI.ask(v?'แก้ไขแบบ':'เพิ่มแบบ',[
+      {key:'name',label:'ชื่อแบบ (เช่น ร้อน / เย็น / ปั่น)',value:v?v.name:''},
+      {key:'delta',label:'ราคาบวกเพิ่ม (บาท · 0 = เท่าราคาหลัก)',type:'number',value:v?((v.priceDelta||0)/100):0}
+    ],(o)=>{
+      const nm=String(o.name||'').trim();
+      if(!nm){ UI.toast('ใส่ชื่อแบบ','err'); renderVariants(); return; }
+      const delta=Math.max(0,STORE.toSatang(o.delta));
+      if(!Array.isArray(varProd.variants)) varProd.variants=[];
+      if((varProd.variants||[]).some(x=>x.id!==(vid||'')&&x.name===nm)){ UI.toast('ชื่อแบบซ้ำ','err'); renderVariants(); return; }
+      if(v){ v.name=nm; v.priceDelta=delta; }
+      else varProd.variants.push({id:STORE.uuid(),name:nm,priceDelta:delta,recipe:[]});
+      varProd.updatedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',varProd);
+      renderVariants(); render(); UI.toast('บันทึกแบบแล้ว','ok');
+    });
+  }
+  function varDel(vid){
+    UI.confirm2('ลบแบบนี้?','สูตรของแบบนี้จะหายไปด้วย · บิลที่ขายไปแล้วไม่กระทบ',()=>{
+      varProd.variants=(varProd.variants||[]).filter(x=>x.id!==vid);
+      varProd.updatedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',varProd);
+      renderVariants(); render(); UI.toast('ลบแบบแล้ว','ok');
+    },true);
   }
   function delProduct(id){ UI.confirm2('ลบเมนู','ลบเมนูนี้ออกจากระบบ?',()=>{ const p=STORE.find('products',id); if(p){ p.deletedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',p); render(); UI.toast('ลบแล้ว','ok'); } },true); }
   function delIng(id){
@@ -6687,7 +6810,7 @@ const BO = (()=>{
     });
   }
   return {render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
-          recipe,recQty,recRemove,recAdd,recSave,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
+          recipe,recQty,recRemove,recAdd,recSave,variants,varEdit,varDel,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
 
@@ -9728,7 +9851,7 @@ const APP = (()=>{
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
-/* SAO CAFE POS v2.1 — recipe editor enabled */
+/* SAO CAFE POS v2.2 — variant (แบบเมนู ร้อน/เย็น/ปั่น) + สูตรตัดสต็อกแยกตามแบบ */
 </script>
 <div id="printHost"></div>
 </body>
