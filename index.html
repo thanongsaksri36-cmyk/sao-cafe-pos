@@ -3719,7 +3719,13 @@ const POS = (()=>{
   function setType(k){ orderType=k; renderTypes(); repriceCart(); renderGrid(); }
   // ราคาตามประเภทออเดอร์: ใช้ราคาที่ตั้งเฉพาะ ถ้าไม่ตั้งให้ใช้ราคาหลัก (ทานที่ร้าน)
   function priceOf(p,type){ type=type||orderType; const pr=p.prices&&p.prices[type]; return (pr!=null&&pr!=='')?pr:p.price; }
-  function repriceCart(){ cart.forEach(c=>{ const p=STORE.find('products',c.productId); if(p) c.base=priceOf(p); }); renderCart(); }
+  // ⭐ ส่วนต่างของแบบเมนู (ปั่น/เย็น) แยกตามช่องทางขายได้ — ไม่ตั้งไว้ = ใช้ค่าปกติ
+  function vDeltaOf(v,type){ type=type||orderType; if(!v) return 0;
+    const d=v.priceDeltas&&v.priceDeltas[type]; return (d!=null&&d!=='')?d:(v.priceDelta||0); }
+  function repriceCart(){ cart.forEach(c=>{ const p=STORE.find('products',c.productId); if(!p) return;
+    c.base=priceOf(p); const v=INV.variantOf(p,c.variantId);
+    const mp=(c.mp!=null)?c.mp:Math.max(0,(c.modPrice||0)-((v&&v.priceDelta)||0));  // บิลเก่าที่ยังไม่มี mp
+    c.mp=mp; c.modPrice=mp+vDeltaOf(v); }); renderCart(); }
   function renderTabs(){
     const cats=STORE.scoped('categories').filter(c=>!c.deletedAt).slice().sort((a,b)=>a.sort-b.sort);
     $('#tabs').innerHTML=`<button class="tab ${cat==='featured'?'active':''}" onclick="POS.setCat('featured')">⭐ ขายดี</button>`+
@@ -3772,14 +3778,14 @@ const POS = (()=>{
     // ⭐ ชื่อที่แสดง = ชื่อเมนู + (แบบ) -> ใบเสร็จ/จอครัว/ใบครัว/รายงาน เห็นตรงกันหมดโดยไม่ต้องแก้ที่อื่น
     const vName=(variant&&variant.name)||'';
     const dispName=p.name+(vName?(' ('+vName+')'):'');
-    const vDelta=(variant&&variant.priceDelta)||0;
+    const vDelta=vDeltaOf(variant);
     // รวมรายการเหมือนกัน (เมนู+แบบ+ตัวเลือก เดียวกัน) เป็นชิ้นเดียว
     const sig=p.id+'|'+((variant&&variant.id)||'')+'|'+mods.map(m=>m.group+':'+m.name).join(',');
     const ex=cart.find(c=>c.sig===sig);
     if(ex) ex.qty+=qty;
     else cart.push({line:STORE.uuid(),sig,productId:p.id,name:dispName,
       variantId:(variant&&variant.id)||null, variantName:vName,
-      base:priceOf(p),modPrice:(modPrice||0)+vDelta,mods,qty,note:''});
+      base:priceOf(p),mp:(modPrice||0),modPrice:(modPrice||0)+vDelta,mods,qty,note:''});
     renderCart(); UI.toast(dispName+' x'+qty,'ok');
   }
   function chQty(line,d){
@@ -3910,7 +3916,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -3940,7 +3946,7 @@ const MOD = (()=>{
       <div class="opt-chips">${vs.map(v=>{
         const out=(v.recipe||[]).some(r=>{ const ig=STORE.find('ingredients',r.ingredientId); if(!ig) return false;
           const tracked=(ig.parLevel>0)||(ig.purchaseQty>0)||(ig.stock>0); return tracked&&ig.stock<r.qty; });
-        return `<button class="opt-chip ${vSel===v.id?'sel':''}" ${out?'disabled style="opacity:.45"':''} onclick="MOD.pickVariant('${v.id}')">${esc(v.name)}${v.priceDelta>0?` +${STORE.baht(v.priceDelta)}`:''}${out?' · หมด':''}</button>`;
+        return `<button class="opt-chip ${vSel===v.id?'sel':''}" ${out?'disabled style="opacity:.45"':''} onclick="MOD.pickVariant('${v.id}')">${esc(v.name)}${POS.vDeltaOf(v)>0?` +${STORE.baht(POS.vDeltaOf(v))}`:''}${out?' · หมด':''}</button>`;
       }).join('')}</div></div>` : '';
     $('#modBody').innerHTML=vHtml+optsOf(prod).map(m=>`
       <div class="opt-group"><h4>${esc(m.name)}${m.required?' *':''}</h4>
@@ -3970,7 +3976,7 @@ const MOD = (()=>{
     return {price,chosen};
   }
   function updateBtn(){
-    const c=calcMods(), v=curVariant(), vd=(v&&v.priceDelta)||0;
+    const c=calcMods(), v=curVariant(), vd=POS.vDeltaOf(v);
     $('#modAdd').textContent=`เพิ่ม ${qty} รายการ • ${STORE.baht((POS.priceOf(prod)+c.price+vd)*qty)}`;
   }
   function confirm(){
@@ -5808,7 +5814,7 @@ const BO = (()=>{
     const cats=STORE.scoped('categories');
     const prods=STORE.scoped('products').filter(p=>!p.deletedAt);
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" style="background:var(--danger);color:#fff" onclick="BO.clearMenu()">🗑️ ล้างเมนูเดิม</button><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.manageMods()">⚙️ จัดการตัวเลือก</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px;flex-wrap:wrap"><button class="add-fab" style="background:var(--danger);color:#fff" onclick="BO.clearMenu()">🗑️ ล้างเมนูเดิม</button><button class="add-fab" onclick="BO.importMenu()">📥 นำเข้าเมนู</button><button class="add-fab" onclick="BO.exportMenu()">📤 ส่งออก</button><button class="add-fab" onclick="BO.manageCats()">🏷️ จัดการหมวดหมู่</button><button class="add-fab" onclick="BO.manageMods()">⚙️ จัดการตัวเลือก</button><button class="add-fab" onclick="BO.dlvPrice()">💸 ราคาเดลิเวอรี่</button><button class="add-fab" onclick="BO.dedupeMenu()">🧹 ล้างเมนูซ้ำ</button><button class="add-fab" onclick="BO.editProduct()">+ เพิ่มเมนู</button></div>
       <table><thead><tr><th>เมนู</th><th>หมวด</th><th>ราคา</th><th>ต้นทุน</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${prods.map(p=>`<tr>
         <td><div style="display:flex;align-items:center;gap:10px">${p.img?`<img src="${esc(p.img)}" style="width:40px;height:40px;border-radius:9px;object-fit:cover;box-shadow:var(--shadow)">`:`<span style="font-size:24px;width:40px;text-align:center">${esc(p.emoji||'☕')}</span>`}<span>${p.featured?'⭐ ':''}${esc(p.name)}</span></div></td>
@@ -6028,6 +6034,99 @@ const BO = (()=>{
         // ⭐ แบบเมนู (ร้อน/เย็น/ปั่น) พร้อมสูตรของแต่ละแบบ
         variants:(p.variants||[]).filter(v=>v&&!v.deletedAt).map(v=>({name:v.name,priceDelta:v.priceDelta||0,recipe:(v.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient)}))}))};
     try{ const blob=new Blob([JSON.stringify(out)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='เมนู_'+(out.shopName||'ร้าน')+'.json'; document.body.appendChild(a); a.click(); a.remove(); UI.toast('ส่งออกเมนูแล้ว ('+prods.length+' เมนู)','ok'); }catch(e){ UI.toast('ส่งออกไม่สำเร็จ','err'); }
+  }
+  // ⭐ ตั้งราคาเดลิเวอรี่ทีเดียวทั้งร้าน (Grab/LINE MAN/Shopee หัก GP ไม่เท่ากัน)
+  let _dlv={mode:'percent',g:30,l:30,s:30,round:1,cat:''};
+  const _IN='width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)';
+  function dlvSet(k,v){ _dlv[k]=(k==='mode'||k==='cat')?v:(parseFloat(v)||0); if(k==='mode'||k==='cat'||k==='round') dlvPrice(); else dlvPreview(); }
+  function _dlvTargets(){ const ps=STORE.scoped('products').filter(p=>!p.deletedAt);
+    return _dlv.cat?ps.filter(p=>p.cat===_dlv.cat):ps; }
+  function _dlvCalc(base,n){                       // base=สตางค์, n=%หรือบาท -> สตางค์
+    if(!n) return null;                            // 0 = ไม่ตั้ง (ใช้ราคาทานที่ร้าน)
+    let v=Math.round(_dlv.mode==='percent'?base*(1+n/100):base+n*100);  // ตัดเศษทศนิยมลอยตัวก่อนปัด
+    const step=_dlv.round*100; if(step>0) v=Math.ceil(v/step)*step;
+    return v;
+  }
+  function dlvPreview(){
+    const box=$('#dlvPrev'); if(!box) return;
+    const ps=_dlvTargets().slice(0,6);
+    if(!ps.length){ box.innerHTML='<div class="empty">ไม่มีเมนูในขอบเขตที่เลือก</div>'; return; }
+    const ch=[['g','Grab'],['l','LINE MAN'],['s','Shopee']].filter(c=>_dlv[c[0]]);
+    box.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px">
+      <tr style="color:var(--muted);text-align:left"><th style="padding:4px 0">เมนู</th><th>ร้าน</th>${ch.map(c=>'<th>'+c[1]+'</th>').join('')}</tr>
+      ${ps.map(p=>{ const vs=INV.variantsOf(p);
+        const rows=vs.length?vs.map(v=>[p.name+' ('+v.name+')',p.price+(v.priceDelta||0),v.priceDelta||0]):[[p.name,p.price,0]];
+        return rows.map(r=>`<tr style="border-top:1px dashed var(--line)">
+          <td style="padding:5px 0">${esc(r[0])}</td><td>${(r[1]/100).toFixed(0)}</td>
+          ${ch.map(c=>{ const nb=_dlvCalc(p.price+r[2],_dlv[c[0]]); return '<td style="color:var(--gold)"><b>'+(nb==null?'-':(nb/100).toFixed(0))+'</b></td>'; }).join('')}
+        </tr>`).join(''); }).join('')}
+    </table>
+    <p style="color:var(--muted);font-size:11px;margin:8px 0 0">แสดง ${ps.length} เมนูแรกจาก ${_dlvTargets().length} เมนู</p>`;
+  }
+  function dlvPrice(){
+    const cats=STORE.scoped('categories').filter(c=>!c.deletedAt).sort((a,b)=>(a.sort||0)-(b.sort||0));
+    const unit=_dlv.mode==='percent'?'%':'บาท';
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>💸 ตั้งราคาเดลิเวอรี่ทั้งร้าน</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="color:var(--muted);font-size:12px;margin:0 0 12px">คิดจากราคา <b>ทานที่ร้าน</b> ของแต่ละเมนู · ใส่ <b>0</b> = ช่องทางนั้นใช้ราคาเท่าทานที่ร้าน</p>
+        <div class="field"><label>วิธีบวก</label>
+          <select style="${_IN}" onchange="BO.dlvSet('mode',this.value)">
+            <option value="percent" ${_dlv.mode==='percent'?'selected':''}>บวกเป็น % (ตรงกับ GP ที่แอปหัก)</option>
+            <option value="amount" ${_dlv.mode==='amount'?'selected':''}>บวกเป็นบาทเท่า ๆ กัน</option></select></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:10px 0">
+          <div class="field" style="margin:0"><label>🛵 Grab (${unit})</label><input type="number" style="${_IN}" value="${_dlv.g}" oninput="BO.dlvSet('g',this.value)"></div>
+          <div class="field" style="margin:0"><label>🛵 LINE MAN (${unit})</label><input type="number" style="${_IN}" value="${_dlv.l}" oninput="BO.dlvSet('l',this.value)"></div>
+          <div class="field" style="margin:0"><label>🛵 Shopee (${unit})</label><input type="number" style="${_IN}" value="${_dlv.s}" oninput="BO.dlvSet('s',this.value)"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div class="field" style="margin:0"><label>ปัดเศษขึ้นเป็น</label>
+            <select style="${_IN}" onchange="BO.dlvSet('round',this.value)">
+              <option value="1" ${_dlv.round==1?'selected':''}>1 บาท</option>
+              <option value="5" ${_dlv.round==5?'selected':''}>5 บาท</option>
+              <option value="10" ${_dlv.round==10?'selected':''}>10 บาท</option>
+              <option value="0" ${_dlv.round==0?'selected':''}>ไม่ปัด</option></select></div>
+          <div class="field" style="margin:0"><label>ขอบเขต</label>
+            <select style="${_IN}" onchange="BO.dlvSet('cat',this.value)">
+              <option value="" ${!_dlv.cat?'selected':''}>ทุกเมนู (${STORE.scoped('products').filter(p=>!p.deletedAt).length})</option>
+              ${cats.map(c=>`<option value="${c.id}" ${_dlv.cat===c.id?'selected':''}>${esc(c.name)} (${STORE.scoped('products').filter(p=>p.cat===c.id&&!p.deletedAt).length})</option>`).join('')}</select></div>
+        </div>
+        <div style="margin-top:14px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)">
+          <div style="font-weight:600;font-size:13px;margin-bottom:6px">ตัวอย่างราคาที่จะได้</div>
+          <div id="dlvPrev"></div>
+        </div>
+      </div>
+      <div class="modal-f" style="gap:8px">
+        <button class="sub-tab" style="color:var(--danger)" onclick="BO.dlvClear()">ล้างราคาเดลิเวอรี่</button>
+        <button class="btn-gold" onclick="BO.dlvApply()">ใช้ราคานี้</button>
+      </div>`;
+    UI.open('genOverlay'); dlvPreview();
+  }
+  function dlvApply(){
+    if(!_dlv.g&&!_dlv.l&&!_dlv.s){ UI.toast('ใส่ตัวเลขอย่างน้อย 1 ช่องทาง','err'); return; }
+    const ps=_dlvTargets(); if(!ps.length){ UI.toast('ไม่มีเมนูในขอบเขตที่เลือก','err'); return; }
+    UI.confirm2('ตั้งราคาเดลิเวอรี่ '+ps.length+' เมนู?','ราคาเดลิเวอรี่เดิมของเมนูเหล่านี้จะถูกเขียนทับ (ราคาทานที่ร้านไม่เปลี่ยน)',()=>{
+      let n=0;
+      ps.forEach(p=>{ p.prices=p.prices||{}; p.prices['dine-in']=p.price;
+        [['grab','g'],['lineman','l'],['shopee','s']].forEach(([k,f])=>{
+          const v=_dlvCalc(p.price,_dlv[f]); if(v==null) delete p.prices[k]; else p.prices[k]=v;
+          // ⭐ ส่วนต่างแบบเมนู (ปั่น/เย็น) ต้องบวกตามด้วย ไม่งั้นเดลิเวอรี่ขายปั่นขาดทุน
+          (p.variants||[]).forEach(vr=>{ if(!vr||vr.deletedAt) return; vr.priceDeltas=vr.priceDeltas||{};
+            const nv=_dlvCalc(p.price+(vr.priceDelta||0),_dlv[f]);
+            if(nv==null||v==null) delete vr.priceDeltas[k]; else vr.priceDeltas[k]=nv-v; }); });
+        p.updatedAt=STORE.now(); CLOUD.pushItem('products',p); n++; });
+      STORE.save(); render();
+      UI.toast('ตั้งราคาเดลิเวอรี่แล้ว '+n+' เมนู','ok');
+    });
+  }
+  function dlvClear(){
+    const ps=_dlvTargets();
+    UI.confirm2('ล้างราคาเดลิเวอรี่ '+ps.length+' เมนู?','ทุกช่องทางจะกลับไปใช้ราคาเท่าทานที่ร้าน',()=>{
+      ps.forEach(p=>{ (p.variants||[]).forEach(vr=>{ if(vr&&vr.priceDeltas) ['grab','lineman','shopee','delivery'].forEach(k=>delete vr.priceDeltas[k]); });
+        if(!p.prices) return; ['grab','lineman','shopee','delivery'].forEach(k=>delete p.prices[k]);
+        p.updatedAt=STORE.now(); CLOUD.pushItem('products',p); });
+      STORE.save(); render(); UI.toast('ล้างราคาเดลิเวอรี่แล้ว','ok');
+    });
   }
   function manageCats(){
     const cats=STORE.scoped('categories').filter(c=>!c.deletedAt).sort((a,b)=>(a.sort||0)-(b.sort||0));
@@ -6950,7 +7049,7 @@ const BO = (()=>{
     });
   }
   return {render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
-          recipe,recQty,recRemove,recAdd,recSave,variants,varEdit,varDel,modOptRecipe,modRecQty,modRecRemove,modRecAdd,modRecBack,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
+          recipe,recQty,recRemove,recAdd,recSave,variants,varEdit,varDel,modOptRecipe,modRecQty,modRecRemove,modRecAdd,modRecBack,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,dlvPrice,dlvSet,dlvApply,dlvClear,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
 
@@ -7425,7 +7524,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v10.9</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.0</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7653,7 +7752,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.5 (build v10.9) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.0) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9994,7 +10093,7 @@ const APP = (()=>{
 })();
 
 document.addEventListener('DOMContentLoaded',APP.init);
-/* SAO CAFE POS v2.5 — แบบเมนู + ตัวเลือกมีสูตร (เพิ่มช็อต/เปลี่ยนเมล็ด) + ความหวาน % + ราคาแยกช่องทางขาย */
+/* SAO CAFE POS v2.6 — แบบเมนู + ตัวเลือกมีสูตร (เพิ่มช็อต/เปลี่ยนเมล็ด) + ความหวาน % + ราคาแยกช่องทางขาย + ตั้งราคาเดลิเวอรี่หมู่ */
 </script>
 <div id="printHost"></div>
 </body>
