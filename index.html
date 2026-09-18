@@ -2961,7 +2961,7 @@ const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
 const returnStockOf=(o)=>{
   if(!canReturnStock(o)) return false;
   const touched=new Map();
-  if(o.stockUsed && typeof o.stockUsed==='object' && Object.keys(o.stockUsed).length){
+  if(o.stockUsed && typeof o.stockUsed==='object'){      // ⭐ v11.1 stockUsed ว่าง = ไม่ได้ตัดจริง -> ไม่คืนอะไร (เดิมไปคืนตามสูตร = สต็อกงอก)
     Object.keys(o.stockUsed).forEach(id=>{ const ig=STORE.find('ingredients',id); if(ig){ ig.stock+=o.stockUsed[id]; touched.set(ig.id,ig); } });
   } else {
     (o.items||[]).forEach(it=>{ const agg=INV.linesOf(it);
@@ -3281,7 +3281,9 @@ const STORE = (()=>{
   function scoped(key){ const b=bid(); return (DB[key]||[]).filter(x=> (x.branchId||'BR-001')===b ); }
   // ===== รหัสร้าน (แยกข้อมูลร้านใครร้านมันใน Supabase ก้อนเดียวกัน) =====
   const SHOP_KEY='saocafe_shop', SHOP_DEFAULT='SHOP-SAO';
-  function shopId(){ try{ return (localStorage.getItem(SHOP_KEY)||SHOP_DEFAULT).trim().toUpperCase(); }catch(e){ return SHOP_DEFAULT; } }
+  let _shopOverride='';   // ⭐ v11.1 รหัสร้านจากลิงก์ลูกค้า (QR โต๊ะ/สมัครสมาชิก) — ใช้เฉพาะรอบนี้ ไม่บันทึกลงเครื่อง
+  function setShopOverride(v){ _shopOverride=String(v||'').trim().toUpperCase(); }
+  function shopId(){ if(_shopOverride) return _shopOverride; try{ return (localStorage.getItem(SHOP_KEY)||SHOP_DEFAULT).trim().toUpperCase(); }catch(e){ return SHOP_DEFAULT; } }
   function setShopId(v){ try{ localStorage.setItem(SHOP_KEY, String(v||SHOP_DEFAULT).trim().toUpperCase()); }catch(e){} }
   function newShopId(){ let t=''; const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; for(let i=0;i<4;i++) t+=A[Math.floor(Math.random()*A.length)]; return 'SHOP-'+t; }
   // รหัสเครื่อง 2 ตัว (คงที่ต่อเครื่อง) — กันเลขบิลชนกันเมื่อขายหลายเครื่องพร้อมกัน
@@ -3322,7 +3324,9 @@ const STORE = (()=>{
       ensureHQ(data); DB=data; return DB;
     }catch(e){
       console.error('load fail',e);
-      DB=seed(); stampBranches(DB); save(); return DB; // fallback ไม่ให้ระบบล่ม
+      // ⭐ v11.1 เก็บข้อมูลที่พังไว้กู้ทีหลัง (ไม่เขียนทับทิ้ง) + ปักธงข้อมูลตัวอย่าง กันหลุดขึ้น cloud ร้านจริง
+      try{ const _raw=localStorage.getItem(KEY); if(_raw) localStorage.setItem(KEY+'_corrupt',_raw); }catch(_e){}
+      DB=markSeed(seed()); stampBranches(DB); save(); return DB; // fallback ไม่ให้ระบบล่ม
     }
   }
   function save(){
@@ -3339,11 +3343,11 @@ const STORE = (()=>{
       return false; }
   }
   let _lastSaveOk=true;
-  function reset(){ if(confirm('ล้างข้อมูลทั้งหมดและเริ่มใหม่?')){ DB=seed(); stampBranches(DB); save(); location.reload(); } }
+  function reset(){ if(confirm('ล้างข้อมูลทั้งหมดและเริ่มใหม่?')){ DB=markSeed(seed()); stampBranches(DB); save(); location.reload(); } }
   function get(){ return DB; }
   function find(arr,id){ return (DB[arr]||[]).find(x=>x.id===id); }
 
-  function hardReset(){ DB=seed(); stampBranches(DB); save(); try{localStorage.removeItem('saocafe_cart');}catch(e){} location.reload(); }
+  function hardReset(){ DB=markSeed(seed()); stampBranches(DB); save(); try{localStorage.removeItem('saocafe_cart');}catch(e){} location.reload(); }
   function bid(){ return (DB&&DB.meta&&DB.meta.currentBranchId)||'BR-001'; }
   function setBid(id){ if(DB&&DB.meta){ DB.meta.currentBranchId=id; save(); } }
   function curBranch(){ return (DB.branches||[]).find(b=>b.id===bid())||null; }
@@ -3354,7 +3358,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
+  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,setShopOverride,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -4203,7 +4207,7 @@ const PAY = (()=>{
     const m=STORE.binfo(), items=order.items;
     const rows=items.map(it=>{
       const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
-      return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`;
+      return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`;
     }).join('');
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`
@@ -4222,7 +4226,7 @@ const PAY = (()=>{
           ${order.service>0?`<tr><td>Service</td><td style="text-align:right">${STORE.baht(order.service)}</td></tr>`:''}
           ${order.vat>0?`<tr><td>VAT ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(order.vat)}</td></tr>`:''}
           <tr class="rtot"><td>สุทธิ</td><td style="text-align:right">${STORE.baht(order.total)}</td></tr>
-          <tr><td>รับ (${order.method})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          <tr><td>รับ (${esc(order.method)})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
@@ -4315,7 +4319,7 @@ const PAY = (()=>{
       const per=(st.ptEarnPerBaht!=null?st.ptEarnPerBaht:100);
       const pts=per>0?Math.floor((order.total||0)/(per*100)):0;
       const bonus=(st.joinBonusPts!=null?st.joinBonusPts:10);
-      const url=location.origin+location.pathname+'?join='+encodeURIComponent(order.id);
+      const url=location.origin+location.pathname+'?join='+encodeURIComponent(order.id)+'&shop='+encodeURIComponent(STORE.shopId());
       let q=''; try{ const g=qrcode(0,'M'); g.addData(url); g.make(); q=g.createSvgTag({cellSize:4,margin:1}); }catch(e){ return ''; }
       if(!q||q.indexOf('<svg')<0) return '';
       return '<div class="rdiv"></div>'
@@ -4350,7 +4354,7 @@ const PAY = (()=>{
   }
   function renderFullTax(o,buyer){
     const m=STORE.binfo(); const preVat=o.total-o.vat;
-    const rows=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); const line=(it.base+it.modPrice)*it.qty; return `<tr><td>${esc(it.name)}${mt?' ('+esc(mt)+')':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht(line)}</td></tr>`; }).join('');
+    const rows=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); const line=(it.base+it.modPrice)*it.qty; return `<tr><td>${esc(it.name)}${mt?' ('+esc(mt)+')':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht(line)}</td></tr>`; }).join('');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🧾 ใบกำกับภาษีเต็มรูป</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div id="rcptPrint" style="background:#fff;color:#000;padding:18px;font-size:13px;line-height:1.5">
@@ -4386,7 +4390,7 @@ const PAY = (()=>{
   }
   function rcptHtml(order){   // สร้าง HTML ใบเสร็จจากออเดอร์โดยตรง (พิมพ์ได้แม้ไม่ได้เปิดหน้าใบเสร็จ เช่น ตรวจสลิปผ่านอัตโนมัติ)
     const m=STORE.binfo(), items=order.items||[];
-    const rows=items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`; }).join('');
+    const rows=items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`; }).join('');
     return `<div class="receipt">
         <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
         <div class="rdiv"></div>
@@ -4401,7 +4405,7 @@ const PAY = (()=>{
           ${order.service>0?`<tr><td>Service</td><td style="text-align:right">${STORE.baht(order.service)}</td></tr>`:''}
           ${order.vat>0?`<tr><td>VAT ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(order.vat)}</td></tr>`:''}
           <tr class="rtot"><td>สุทธิ</td><td style="text-align:right">${STORE.baht(order.total)}</td></tr>
-          <tr><td>รับ (${order.method})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          <tr><td>รับ (${esc(order.method)})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
@@ -4716,7 +4720,9 @@ const INV = (()=>{
     return agg;
   }
   function deduct(order){
-    if(order.stockDeducted) return;          // กันตัดสต็อกซ้ำ (กดยืนยันซ้ำ/หลายเครื่อง)
+    if(window._CUSTOMER_MODE) return;        // ⭐ v11.1 มือถือลูกค้าไม่มีข้อมูลวัตถุดิบ -> ห้ามตัด/ห้ามปักธง ให้เครื่องร้านตัดตอนรับออเดอร์เข้าครัว
+    const _emptyQR=(order.channel==='qr' && order.stockUsed && typeof order.stockUsed==='object' && !Object.keys(order.stockUsed).length);   // บิล QR รุ่นเก่าที่ปักธงมาจากมือถือลูกค้าแต่ไม่ได้ตัดจริง
+    if(order.stockDeducted && !_emptyQR) return;   // กันตัดสต็อกซ้ำ (กดยืนยันซ้ำ/หลายเครื่อง)
     order.stockDeducted=true;                // ธงให้ตอนยกเลิกรู้ว่าบิลนี้เคยตัดสต็อกจริง
     const used={}, touched=new Map();        // จดจำนวนที่ "หักได้จริง" -> ตอนยกเลิกคืนเท่าที่หักจริง (กันสต็อกงอก)
     order.items.forEach(it=>{
@@ -4778,7 +4784,7 @@ const KDS = (()=>{
       const items=o.items.map((it,i)=>{
         const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
         const done=(o.itemDone||[]).includes(i);
-        return `<div class="kitem ${done?'done':''}" onclick="KDS.toggleItem('${o.id}',${i})"><span class="kq">${it.qty}×</span><div style="flex:1;min-width:0"><b>${esc(it.name)}</b>${mt?`<div class="kmods">${esc(mt)}</div>`:''}</div><span class="kchk">${done?'✓':''}</span></div>`;
+        return `<div class="kitem ${done?'done':''}" onclick="KDS.toggleItem('${o.id}',${i})"><span class="kq">${esc(it.qty)}×</span><div style="flex:1;min-width:0"><b>${esc(it.name)}</b>${mt?`<div class="kmods">${esc(mt)}</div>`:''}</div><span class="kchk">${done?'✓':''}</span></div>`;
       }).join('');
       return `<div class="ticket ${cls}">
         <div class="ticket-h"><b>${esc(o.no)}</b><span class="ticket-type">${esc(otypeShort(o.type))}</span>${o.table?`<span class="ticket-type" style="background:var(--gold)">🪑${esc(o.table)}</span>`:''}<span class="tmr" data-at="${o.createdAt}">${mmss(mins)}</span></div>
@@ -4800,13 +4806,14 @@ const KDS = (()=>{
   function setStatus(oid,st){
     const o=STORE.find('orders',oid); if(!o) return;
     o.status=st; if(st==='done') o.closedAt=STORE.now();
+    if(st!=='void') try{ INV.deduct(o); }catch(e){}   // ⭐ v11.1 ออเดอร์ QR จากมือถือลูกค้า ยังไม่เคยตัดสต็อก -> ตัดที่เครื่องร้าน (ตัดแล้วจะข้ามเอง)
     STORE.save(); CLOUD.pushOrder(o); render(); updateBadge();
     if(st==='ready') UI.toast(o.no+' พร้อมเสิร์ฟ','ok');
   }
   // ใบเสิร์ฟ: พิมพ์รายการในออเดอร์ ไว้ให้พนักงานเสิร์ฟ+ทวนลูกค้า (เปิด/ปิดได้ในตั้งค่า)
   function serveSlipHtml(o){
     const m=STORE.binfo();
-    const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${it.qty}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
+    const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${esc(it.qty)}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
     const tp=otypeName(o.type);
     const where=o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp;
     // ⭐ ไม่ใส่โลโก้ — ประหยัดกระดาษ · เลขออเดอร์อยู่บนสุด ตัวใหญ่สุด เห็นชัดตอนเรียกคิว
@@ -5361,7 +5368,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o||!o.slipImg){ UI.toast('ไม่มีสลิปแนบ','err'); return; }
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>📎 สลิป ${o.table?'โต๊ะ '+esc(o.table):esc(o.no)} · ${STORE.baht(o.total)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b" style="text-align:center"><img src="${o.slipImg}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" alt="slip"><p style="color:var(--muted);font-size:12px;margin-top:10px">ตรวจยอด <b>${STORE.baht(o.total)}</b> ให้ตรงกับสลิป แล้วปิดป๊อปอัพ กด "รับเงินแล้ว → ครัว"</p></div>`;
+      <div class="modal-b" style="text-align:center"><img src="${esc(o.slipImg)}" style="max-width:100%;border-radius:10px;border:1px solid var(--line)" alt="slip"><p style="color:var(--muted);font-size:12px;margin-top:10px">ตรวจยอด <b>${STORE.baht(o.total)}</b> ให้ตรงกับสลิป แล้วปิดป๊อปอัพ กด "รับเงินแล้ว → ครัว"</p></div>`;
     UI.open('genOverlay');
   }
   function confirm(id){
@@ -5404,6 +5411,7 @@ const PENDING = (()=>{
     o.method=method; o.payStatus='paid'; o.paid=o.total; if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     SHIFT.recordSale(o);                                                                         // ⭐ เงินสดเข้าลิ้นชัก
+    try{ INV.deduct(o); }catch(e){}                                                              // ⭐ v11.1 โต๊ะค้างชำระจาก QR ลูกค้า: ถ้ายังไม่เคยตัดสต็อก ตัดตอนปิดบิล
     STORE.save(); CLOUD.pushOrder(o); UI.close('genOverlay'); updateBadge(); render();
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('ปิดบิลแล้ว '+(o.table?'โต๊ะ '+o.table:o.no)+' · '+STORE.baht(o.total),'ok');
@@ -6202,7 +6210,7 @@ const BO = (()=>{
         <td style="text-align:right;white-space:nowrap"><button class="sub-tab" onclick="BO.tableQR('${t.id}')">🔗 QR</button><button class="sub-tab" onclick="BO.toggleTable('${t.id}')">${t.active?'ปิด':'เปิด'}</button><button class="sub-tab" onclick="BO.editTable('${t.id}')">แก้ไข</button><button class="sub-tab" style="color:var(--danger)" onclick="BO.delTable('${t.id}')">ลบ</button></td></tr>`).join('')||'<tr><td colspan="4"><div class="empty">ยังไม่มีโต๊ะ</div></td></tr>'}
       </tbody></table>`;
   }
-  function orderUrl(name){ const base=(STORE.get().meta.orderBaseUrl||'').replace(/\/$/,''); return base+'/?t='+encodeURIComponent(name)+'&b='+encodeURIComponent(STORE.bid())+'&order=1'; }
+  function orderUrl(name){ const base=(STORE.get().meta.orderBaseUrl||'').replace(/\/$/,''); return base+'/?t='+encodeURIComponent(name)+'&b='+encodeURIComponent(STORE.bid())+'&shop='+encodeURIComponent(STORE.shopId())+'&order=1'; }
   function qrFor(url){ try{ const q=qrcode(0,'M'); q.addData(url); q.make(); return q.createSvgTag({cellSize:5,margin:2}); }catch(e){ return '<p style="color:var(--danger)">สร้าง QR ไม่ได้</p>'; } }
   function tableQR(id){
     const t=STORE.find('tables',id); if(!t) return;
@@ -7524,7 +7532,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.0</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.1</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7752,7 +7760,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.0) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.1) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9533,6 +9541,26 @@ const CLOUD = (()=>{
     KDS.updateBadge&&KDS.updateBadge(); PENDING.updateBadge&&PENDING.updateBadge();
     if(v==='kds')KDS.render(); else if(v==='pending')PENDING.render(); else if(v==='history')HISTORY.render(); else if(v==='report')REPORT.render(); else if(v==='settings')SETTINGS.render(); else if(v==='bo'&&BO.render)BO.render(); else if(v==='pos'&&POS.render)POS.render();
   }
+  // ⭐ v11.1 กรองข้อมูลขาเข้าจาก cloud — ตาราง orders เปิดให้ลูกค้า (anon) insert ได้ จึงห้ามเชื่อค่าใด ๆ ก่อนเอาไปแสดงผล/ใส่ใน onclick
+  const _badId=/['"<>\\`&\s]/;
+  const _num=(v)=>{ v=Number(v); return isFinite(v)?v:0; };
+  const _code=(v,max)=>(typeof v==='number')?v:String(v==null?'':(typeof v==='object'?'':v)).replace(/[<>"'`&\\]/g,'').slice(0,max||60);
+  function cleanIn(key,o){
+    if(!o||typeof o!=='object'||o.id==null) return null;
+    o.id=String(o.id); if(!o.id||o.id.length>80||_badId.test(o.id)) return null;
+    if(key!=='orders') return o;
+    ['no','receiptNo','method','status','payStatus','type','channel','branchId','memberId','staffId','slipRef'].forEach(k=>{ if(o[k]!=null) o[k]=_code(o[k]); });
+    ['subtotal','discount','vat','service','total','paid','change','createdAt'].forEach(k=>{ if(o[k]!=null) o[k]=_num(o[k]); });
+    o.items=(Array.isArray(o.items)?o.items:[]).filter(it=>it&&typeof it==='object');
+    o.items.forEach(it=>{
+      it.qty=_num(it.qty);
+      ['base','modPrice','price','cost'].forEach(k=>{ if(it[k]!=null) it[k]=_num(it[k]); });
+      ['line','productId','variantId'].forEach(k=>{ if(it[k]!=null) it[k]=_code(it[k],80); });
+      if(!Array.isArray(it.mods)) it.mods=[];
+    });
+    if(o.slipImg && !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(String(o.slipImg))) o.slipImg='';
+    return o;
+  }
   const _qrNoticed=new Set();
   function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียว · ไม่เด้งของเก่า)
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
@@ -9556,7 +9584,7 @@ const CLOUD = (()=>{
       if(r.error||!r.data) return {ok:false,msg:(r.error&&r.error.message)||'ดึงไม่สำเร็จ'};
       const D=STORE.get(), arr=D.orders||(D.orders=[]);
       const have=new Set(arr.map(x=>x.id)); let n=0;
-      r.data.forEach(row=>{ const o=row.data; if(!o||!o.id||have.has(o.id)) return;
+      r.data.forEach(row=>{ const o=cleanIn('orders',row.data); if(!o||have.has(o.id)) return;
         const c=o.createdAt||0; if(c<fromMs||c>toMs) return;
         o._uat=row.updated_at||0; o._arch=1; arr.push(o); n++; });      // _arch = ชั่วคราว ไม่เซฟ
       return {ok:true,n};
@@ -9570,7 +9598,7 @@ const CLOUD = (()=>{
       const r=await selShop('members','data,updated_at',q=>q.filter('data->>phone','eq',String(phone)));
       if(r.error||!r.data||!r.data.length) return null;
       const D=STORE.get(), arr=D.members||(D.members=[]); let hit=null;
-      r.data.forEach(row=>{ const o=row.data; if(!o||!o.id) return;
+      r.data.forEach(row=>{ const o=cleanIn('members',row.data); if(!o) return;
         const i=arr.findIndex(x=>x.id===o.id);
         if(i>=0){ if((arr[i]._uat||0) <= (row.updated_at||0)){ o._uat=row.updated_at||0; arr[i]=o; } hit=arr[i]; }
         else { o._uat=row.updated_at||0; arr.push(o); hit=o; } });
@@ -9611,7 +9639,7 @@ const CLOUD = (()=>{
       const {data,error}=await selShop('orders','data,updated_at',q=>q.gte('updated_at',since));
       if(error||!data) return;
       const D=STORE.get(), arr=D.orders||(D.orders=[]); let chg=false;
-      data.forEach(r=>{ const o=r.data; if(!o||!o.id) return; const i=arr.findIndex(x=>x.id===o.id);
+      data.forEach(r=>{ const o=cleanIn('orders',r.data); if(!o) return; const i=arr.findIndex(x=>x.id===o.id);
         if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; chg=true; } }
         else { o._uat=r.updated_at||0; arr.push(o); chg=true; try{ noticeQR(o); }catch(e){} } });
       if(chg){ STORE.save(); rerender(); }
@@ -9622,6 +9650,7 @@ const CLOUD = (()=>{
     const uat=(p.new.updated_at)||Date.now();
     if(table==='app_meta'){ const D=STORE.get(); mergeMeta(D,o); STORE.save(); rerender(); return; }
     const key=TMAP[table]; if(!key) return;
+    if(!cleanIn(key,o)) return;                    // ⭐ v11.1 ข้อมูลผิดรูปแบบ/อันตราย -> ไม่รับ
     const D=STORE.get(), arr=D[key]||(D[key]=[]); const i=arr.findIndex(x=>x.id===o.id);
     if(i>=0){ if((arr[i]._uat||0) > uat) return;  // conflict guard: local ใหม่กว่า -> ไม่ทับ
       o._uat=uat; arr[i]=o; }
@@ -9694,11 +9723,13 @@ const CLOUD = (()=>{
         const _oFrom = (t==='orders') ? Math.max(0, STORE.keepFrom()-86400000) : 0;   // ⭐ ย้อนหลังตามช่วงเก็บ ไม่ผูกกับเวลาที่ล้าง
         const {data,error}= _oFrom
           ? await selShop(t,'data,updated_at',q=>q.gte('updated_at',_oFrom))   // ⭐ บิลเก่าอยู่บน cloud ไม่ต้องลากลงเครื่อง
-          : await selShop(t,'data,updated_at');
+          : (t==='branches'&&!authUser)
+            ? await selShopSoft('branch_public','data')                        // ⭐ v11.1 ยังไม่ล็อกอิน (เครื่องใหม่ใส่รหัสสาขา) -> อ่านรายชื่อสาขาจาก view ที่ตัดข้อมูลลับแล้ว
+            : await selShop(t,'data,updated_at');
         if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
-        data.forEach(r=>{ const o=r.data; if(!o||!o.id) return;
-          if(_skip(key,o)) return;                                                                    // ⭐ ของสาขาอื่น ไม่เก็บลงเครื่อง
+        data.forEach(r=>{ const o=cleanIn(key,r.data); if(!o) return;
+          if(_skip(key,o)) return;                                                                   // ⭐ ของสาขาอื่น ไม่เก็บลงเครื่อง
           const i=arr.findIndex(x=>x.id===o.id);
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
@@ -9723,6 +9754,7 @@ const CLOUD = (()=>{
    ============================================================ */
 const CUSTOMER = (()=>{
   async function start(table){
+    window._CUSTOMER_MODE=true;              // ⭐ v11.1 ธงโหมดลูกค้า (INV.deduct ใช้เช็ค)
     document.querySelector('#lockScreen').classList.add('hide');
     const hd=document.querySelector('header'); if(hd) hd.style.display='none';
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -9883,6 +9915,8 @@ const APP = (()=>{
       const sp=new URLSearchParams(location.search);
       const q=(sp.get('shop')||'').trim().toUpperCase();
       const bq=(sp.get('b')||'').trim().toUpperCase();
+      // ⭐ v11.1 โหมดลูกค้า (QR โต๊ะ / สมัครสมาชิก): ใช้รหัสร้านจากลิงก์เสมอ · ไม่ถาม · ไม่เขียนทับเครื่อง · ไม่ลบออกจาก URL (รีเฟรชแล้วยังอยู่ร้านเดิม)
+      if(sp.get('t')||sp.get('order')==='1'||sp.get('join')){ if(q && /^[A-Z0-9-]{4,24}$/.test(q)) STORE.setShopOverride(q); return; }
       const drop=(k)=>{ try{ sp.delete(k); }catch(e){} };
       const clean=()=>{ try{ const qs=sp.toString();
         history.replaceState(null,'',location.pathname+(qs?('?'+qs):'')); }catch(e){} };
