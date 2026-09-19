@@ -625,7 +625,8 @@ tr:hover td{background:var(--surface-2)}
 
 <div id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- ⭐ v11.2 ล็อกเวอร์ชัน (เดิม @2 ลอย = ถ้า supabase ออกรุ่นที่มีบั๊ก ทุกสาขาพังพร้อมกันโดยเราไม่ได้แก้อะไร) -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0"></script>
 <script>
 /* QR Code Generator (Kazuhiko Arase, MIT) — ฝังเพื่อสร้าง PromptPay QR แบบออฟไลน์ */
 //---------------------------------------------------------------------
@@ -2934,6 +2935,10 @@ var qrcode = function() {
    ============================================================ */
 "use strict";
 const $=(s)=>document.querySelector(s);
+// ⭐ v11.2 โหมดลูกค้า (QR โต๊ะ / สมัครสมาชิก) รู้ตั้งแต่บรรทัดแรก — ใช้แยกที่เก็บข้อมูล + ไม่ดึงตารางหลังร้าน
+// ⭐ v11.2 จับ error ที่หลุดจากงานเบื้องหลัง พร้อมที่มา — ไว้ไล่ปัญหาหน้างาน (ดูได้ใน Console)
+window.addEventListener('unhandledrejection',(e)=>{ try{ console.error('[SAO] งานเบื้องหลังล้ม:', (e.reason&&e.reason.stack)||e.reason); }catch(_){} });
+window._CUSTOMER_MODE=(()=>{ try{ const sp=new URLSearchParams(location.search); return !!(sp.get('t')||sp.get('order')==='1'||sp.get('join')); }catch(e){ return false; } })();
 const $$=(s)=>document.querySelectorAll(s);
 const esc=(s)=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); // กัน XSS
 /* ===== ช่องทางขาย — ราคาแยกตามช่องทางได้ (เดลิเวอรี่แต่ละเจ้าหักค่า GP ไม่เท่ากัน) =====
@@ -3009,7 +3014,7 @@ function ppPayload(id,amountBaht){
    1. STORE — persistence, migration, seed, helpers
    ============================================================ */
 const STORE = (()=>{
-  const KEY='saocafe_v2', VERSION=6;
+  const KEY=window._CUSTOMER_MODE?'saocafe_cust':'saocafe_v2', VERSION=6;   // ⭐ v11.2 โหมดลูกค้าใช้ที่เก็บแยก — เปิดลิงก์ QR บนเครื่องร้านแล้วเมนู/สูตร/สาขาของเครื่องไม่ถูกทับ
   let _saveFail=0;
   // เพดาน localStorage ต่างกันตามเบราว์เซอร์ — iOS/Safari ~5MB · Chrome/Edge/Firefox ~10MB
   function quotaBytes(){
@@ -3032,10 +3037,11 @@ const STORE = (()=>{
     const sz=o=>{ try{ return JSON.stringify(o||null).length*2; }catch(e){ return 0; } };
     const D=DB||{}; const out=[];
     const imgs=(D.products||[]).filter(p=>p.img&&String(p.img).length>200);
-    out.push({k:'รูปเมนู', b:imgs.reduce((a,p)=>a+String(p.img).length*2,0), n:imgs.length, act:'zip'});
+    const _ext=IMG.ready()?' · เก็บนอกพื้นที่หลักแล้ว (ไม่นับในแถบด้านบน)':'';
+    out.push({k:'รูปเมนู'+_ext, b:imgs.reduce((a,p)=>a+String(p.img).length*2,0), n:imgs.length, act:'zip'});
     out.push({k:'บิลขาย', b:sz(D.orders), n:(D.orders||[]).length, act:'orders'});
     out.push({k:'ความเคลื่อนไหวสต็อก', b:sz(D.stockmoves), n:(D.stockmoves||[]).length, act:'moves'});
-    out.push({k:'สลิปโอนเงิน', b:(D.orders||[]).reduce((a,o)=>a+(o.slipImg?String(o.slipImg).length*2:0),0),
+    out.push({k:'สลิปโอนเงิน'+_ext, b:(D.orders||[]).reduce((a,o)=>a+(o.slipImg?String(o.slipImg).length*2:0),0),
               n:(D.orders||[]).filter(o=>o.slipImg).length, act:'zipslip'});
     { const lg=(D.branches||[]).reduce((a,b)=>a+(b.logo?String(b.logo).length*2:0),0)+((D.meta||{}).logo?String(D.meta.logo).length*2:0);
       const nlg=(D.branches||[]).filter(b=>b.logo).length+((D.meta||{}).logo?1:0);
@@ -3192,6 +3198,8 @@ const STORE = (()=>{
         if(!hasReal) return;                                  // ยังไม่มีของจริง เก็บตัวอย่างไว้ก่อน
         const keep=arr.filter(o=>!(o&&o._seed)); n+=arr.length-keep.length; D[k]=keep;
       });
+      // ⭐ v11.2 ร้านจริงแล้ว (มีเมนูจริง) -> สมาชิก/โค้ดโปรตัวอย่างต้องไป ไม่งั้นแต้ม 120 ของสมาชิกตัวอย่าง + โค้ด WELCOME10/SAVE50 ใช้ได้จริง
+      if((D.products||[]).some(o=>o&&!o._seed)){ ['members','promos'].forEach(k=>{ const arr=D[k]||[]; const keep=arr.filter(o=>!(o&&o._seed)); n+=arr.length-keep.length; D[k]=keep; }); }
       if(n){ delete D._isSeed; save(); console.info('ลบข้อมูลตัวอย่าง '+n+' รายการ (มีข้อมูลจริงจาก cloud แล้ว)'); }
       return n;
     }catch(e){ return 0; }
@@ -3315,6 +3323,62 @@ const STORE = (()=>{
     }catch(e){}
     return data;
   }
+  /* ===== ⭐ v11.2 IMG — รูป (เมนู/สลิป/รูปบิลซื้อของ) เก็บใน IndexedDB แทน localStorage =====
+     localStorage มีแค่ ~5-10MB ร้านที่มีรูปเมนูเยอะจะเต็มแล้ว "บันทึกไม่ลง" · IndexedDB ได้หลายร้อย MB
+     หลักการ: ในหน่วยความจำยังเป็น data URL เต็มเหมือนเดิม (โค้ดแสดงผล/ส่งขึ้น cloud ไม่ต้องแก้)
+              เฉพาะตอนเขียนลง localStorage จะแทนรูปด้วยป้าย 'idb:<key>|<sig>' และตอนเปิดแอปจะเติมรูปกลับก่อนเริ่มทำงาน
+     ปลอดภัย: แทนเป็นป้ายเฉพาะรูปที่ยืนยันแล้วว่าเขียนลง IndexedDB สำเร็จ · เปิด IndexedDB ไม่ได้ = ทำงานแบบเดิม */
+  const IMG=(()=>{
+    const FIELDS=[['products','img'],['orders','slipImg'],['stockmoves','photo']], MIN=1500, PFX='idb:';
+    let idb=null, ok=false, timer=null; const have=new Map(), pend=new Map();
+    const sig=v=>v.length+':'+v.slice(-24), keyOf=(t,id,f)=>t+':'+id+':'+f;
+    function open(){ return new Promise(res=>{ let done=false; const fin=v=>{ if(!done){ done=true; res(v); } };
+      try{ if(!window.indexedDB) return fin(false);
+        const rq=indexedDB.open(window._CUSTOMER_MODE?'saocafe_img_cust':'saocafe_img',1);   // โหมดลูกค้าใช้คลังรูปแยก (ไม่ไปลบรูปของเครื่องร้าน)
+        rq.onupgradeneeded=()=>{ try{ rq.result.createObjectStore('imgs'); }catch(e){} };
+        rq.onsuccess=()=>{ idb=rq.result; ok=true; fin(true); }; rq.onerror=()=>fin(false); rq.onblocked=()=>fin(false);
+        setTimeout(()=>fin(ok),4000);
+      }catch(e){ fin(false); } }); }
+    function getAll(){ return new Promise(res=>{ const out=new Map();
+      try{ const rq=idb.transaction('imgs','readonly').objectStore('imgs').openCursor();
+        rq.onsuccess=()=>{ const c=rq.result; if(c){ out.set(c.key,c.value); c.continue(); } else res(out); }; rq.onerror=()=>res(out);
+      }catch(e){ res(out); } }); }
+    function put(k,v){ return new Promise(res=>{ try{ const tx=idb.transaction('imgs','readwrite'); tx.objectStore('imgs').put(v,k);
+      tx.oncomplete=()=>res(true); tx.onerror=tx.onabort=()=>res(false); }catch(e){ res(false); } }); }
+    function delMany(keys){ if(!keys.length) return; try{ const tx=idb.transaction('imgs','readwrite'); const st=tx.objectStore('imgs'); keys.forEach(k=>st.delete(k)); }catch(e){} }
+    // เปิดแอป: เติมรูปกลับเข้าหน่วยความจำ (ต้องเสร็จก่อนต่อ cloud ไม่งั้นป้ายจะถูกส่งขึ้น cloud แทนรูป)
+    async function hydrate(D){
+      if(!(await open())) return {ok:false};
+      const all=await getAll(), used=new Set(); let miss=0;
+      FIELDS.forEach(([t,f])=>(D[t]||[]).forEach(o=>{ const v=o&&o[f]; if(typeof v!=='string'||v.slice(0,4)!==PFX) return;
+        const k=v.slice(4).split('|')[0], data=all.get(k);
+        if(typeof data==='string'&&data){ o[f]=data; have.set(k,sig(data)); used.add(k); }
+        else { o[f]=''; o._strip=1; o._uat=0; miss++; }      // รูปหาย (เบราว์เซอร์ล้าง IndexedDB) -> ห้ามส่งของเปล่าทับ cloud + ให้ cloud ชนะรอบ sync หน้า = รูปกลับมาเอง
+      }));
+      delMany([...all.keys()].filter(k=>!used.has(k)));      // เก็บกวาดรูปที่ไม่มีใครอ้างถึงแล้ว
+      return {ok:true,n:used.size,miss};
+    }
+    // ตอนเซฟ: คืน JSON ที่รูปซึ่ง "อยู่ใน IndexedDB แน่นอนแล้ว" ถูกแทนด้วยป้าย · รูปใหม่ = เขียนลง IndexedDB ก่อน แล้วค่อยเซฟซ้ำ
+    function pack(D){
+      if(!ok) return JSON.stringify(D);
+      const swaps=[];
+      FIELDS.forEach(([t,f])=>(D[t]||[]).forEach(o=>{ const v=o&&o[f]; if(typeof v!=='string'||v.length<MIN||v.slice(0,4)===PFX) return;
+        const k=keyOf(t,o.id,f), s=sig(v);
+        if(have.get(k)===s){ swaps.push([o,f,v]); o[f]=PFX+k+'|'+s; } else pend.set(k,[v,s]); }));
+      let json; try{ json=JSON.stringify(D); } finally { swaps.forEach(x=>{ x[0][x[1]]=x[2]; }); }
+      if(pend.size && !timer) timer=setTimeout(flush,50);
+      return json;
+    }
+    async function flush(){ timer=null; const jobs=[...pend.entries()]; pend.clear(); let wrote=0;
+      for(const [k,[v,s]] of jobs){ if(await put(k,v)){ have.set(k,s); wrote++; } }
+      if(wrote){ try{ save(); }catch(e){} } }                  // เซฟซ้ำ -> localStorage เล็กลงทันที
+    async function flushNow(){ if(timer){ clearTimeout(timer); timer=null; } if(pend.size) await flush(); }
+    return {hydrate,pack,flushNow,ready:()=>ok,count:()=>have.size};
+  })();
+  // เซฟแบบรอให้รูปลง IndexedDB ครบก่อน (ใช้ตอนกู้คืนไฟล์สำรอง/ก่อนรีโหลด)
+  async function saveAsync(){ save(); try{ await IMG.flushNow(); }catch(e){} return save(); }
+  async function importRaw(data){ if(!data||typeof data!=='object'||!data.meta) throw new Error('bad backup'); DB=data; return await saveAsync(); }
+  async function hydrate(){ try{ const r=await IMG.hydrate(DB); if(r&&r.miss) console.warn('รูปในเครื่องหาย '+r.miss+' รูป — จะดึงจาก cloud ใหม่'); return r; }catch(e){ console.error('hydrate',e); return {ok:false}; } }
   function load(){
     try{
       const raw=localStorage.getItem(KEY);
@@ -3337,7 +3401,7 @@ const STORE = (()=>{
     catch(e){ if(_bak) DB.orders=_bak; return false; }
   }
   function _save0(){
-    try{ localStorage.setItem(KEY,JSON.stringify(DB)); _saveFail=0; return true; }
+    try{ localStorage.setItem(KEY,IMG.pack(DB)); _saveFail=0; return true; }
     catch(e){ console.error('save fail',e); _saveFail++; _lastSaveOk=false;
       if(_saveFail===1||_saveFail%20===0) UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — ไปที่ ตั้งค่า → 🧹 ล้างพื้นที่เครื่อง ด่วน','err');
       return false; }
@@ -3358,7 +3422,7 @@ const STORE = (()=>{
     return m ? m.id : ((bs[0]&&bs[0].id)||'BR-001');
   }
   function atHQ(){ return bid()===hqBid(); }
-  return {load,save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,setShopOverride,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
+  return {load,hydrate,saveAsync,importRaw,imgReady:()=>IMG.ready(),imgCount:()=>IMG.count(),save,reset,hardReset,get,find,uuid,now,baht,toSatang,seed,bid,setBid,curBranch,scoped,stampBranches,cloneBranch,bcounter,deviceTag,binfo,storageInfo,shopId,setShopId,setShopOverride,newShopId,hqBid,atHQ,storageBreak,purge,purgedOrdersAt,shrink,keepDays,keepFrom,autoPurgeOrders,dropSeed,ensureHQ:()=>ensureHQ(DB)};
 })();
 
 /* ============================================================
@@ -3379,6 +3443,8 @@ const PWA = (()=>{
   }
   function canPrompt(){ return !!deferred; }
   function init(){
+    // ⭐ v11.2 Service Worker — เปิดแอปได้แม้เน็ตหลุด/ถูกปิดแล้วเปิดใหม่ (เดิมขายออฟไลน์ได้เฉพาะตอนแท็บยังเปิดค้าง)
+    try{ if('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register('sw.js').catch(e=>console.warn('sw',e)); }catch(e){}
     try{
       window.addEventListener('beforeinstallprompt',(e)=>{
         e.preventDefault(); deferred=e;
@@ -3498,6 +3564,16 @@ const AUTH = (()=>{
     return p.includes('*')||p.includes(perm);
   }
   function defaultPerms(role){ return PERMS[role]||[]; }
+  // ⭐ v11.2 กันเดา PIN: ผิด 5 ครั้งติด -> พัก 1 นาที แล้วเพิ่มเป็น 2,4,8,15 นาที (จำข้ามการรีเฟรช)
+  const PL_KEY='saocafe_pinlock';
+  const _pl=()=>{ try{ return JSON.parse(localStorage.getItem(PL_KEY)||'{}')||{}; }catch(e){ return {}; } };
+  const _plSave=(o)=>{ try{ localStorage.setItem(PL_KEY,JSON.stringify(o)); }catch(e){} };
+  function pinWait(){ const o=_pl(); const left=Math.ceil(((o.until||0)-Date.now())/1000); return left>0?left:0; }
+  function pinFail(){ const o=_pl(); o.fails=(o.fails||0)+1; if(o.fails>=5){ o.round=(o.round||0)+1; o.until=Date.now()+Math.min(15,Math.pow(2,o.round-1))*60000; o.fails=0; } _plSave(o); }
+  function pinOk(){ _plSave({}); }
+  function pinBlocked(){ const w=pinWait(); if(w>0){ UI.toast('ใส่ PIN ผิดหลายครั้ง — รอ '+(w>=60?Math.ceil(w/60)+' นาที':w+' วินาที'),'err'); return true; } return false; }
+  // พนักงานที่ใช้ PIN บนเครื่องนี้ได้ = ยังทำงานอยู่ + เป็น HQ หรืออยู่สาขานี้
+  function staffHere(s){ return !!s && s.active && !s.deletedAt && (s.hq || (s.branchId||'BR-001')===STORE.bid()); }
   function isHQ(){ return !!current && current.hq===true; }
   function get(){ return current; }
   function login(staff,pin){
@@ -3518,7 +3594,7 @@ const AUTH = (()=>{
       const tmin=STORE.get().settings.sessionTimeoutMin||0;
       const maxAge=tmin>0?tmin*60000:7*24*3600000;   // 0=ไม่ล็อก (คงสภาพ 7 วัน)
       if(STORE.now()-ses.at > maxAge) return false;
-      const staff=STORE.find('staff',ses.id); if(!staff||!staff.active) return false;
+      const staff=STORE.find('staff',ses.id); if(!staff||!staff.active||staff.deletedAt) return false;   // ⭐ v11.2 พนักงานที่ถูกลบแล้วห้ามคืน session
       current=staff; if(!isHQ() && staff.branchId) STORE.setBid(staff.branchId);
       saveSession();                             // ต่ออายุ session
       renderChip(); NAV.build(); NAV.go(can('pos')?'pos':'kds');
@@ -3560,15 +3636,18 @@ const AUTH = (()=>{
     if(buf.length===4){ mode==='lock'?tryLogin(buf):tryApprove(buf); }
   }
   function tryLogin(pin){
+    if(pinBlocked()){ pinBuf=''; renderDots(); return; }
     // ถ้าเลือกพนักงานไว้ใช้คนนั้น ไม่งั้นค้นหาพนักงานจาก PIN เลย
     let staff = selStaff ? STORE.find('staff',selStaff) : STORE.get().staff.find(x=>x.active&&!x.deletedAt&&x.pin===pin&&(x.hq||(x.branchId||'BR-001')===STORE.bid()));
-    if(staff && login(staff,pin)){ $('#lockScreen').classList.add('hide'); UI.toast('ยินดีต้อนรับ '+staff.name,'ok'); }
-    else { $('#lockMsg').textContent='PIN ไม่ถูกต้อง ลองใหม่'; pinBuf=''; selStaff=null; renderLock(); $('#lockMsg').textContent='PIN ไม่ถูกต้อง ลองใหม่'; }
+    if(staff && login(staff,pin)){ pinOk(); $('#lockScreen').classList.add('hide'); UI.toast('ยินดีต้อนรับ '+staff.name,'ok'); }
+    else { pinFail(); $('#lockMsg').textContent='PIN ไม่ถูกต้อง ลองใหม่'; pinBuf=''; selStaff=null; renderLock(); $('#lockMsg').textContent='PIN ไม่ถูกต้อง ลองใหม่'; }
   }
   // ---- Approval gate (อนุมัติด้วย PIN ผจก./เจ้าของ) ----
   let approveBuf='';
-  function requireApproval(reason,cb){
-    if(can('void')||current.role==='owner'){ cb(); return; } // มีสิทธิ์อยู่แล้ว
+  let approvePerm='void';
+  function requireApproval(reason,cb,perm){
+    approvePerm=perm||'void';
+    if(can(approvePerm)||(current&&current.role==='owner')){ cb(); return; } // มีสิทธิ์อยู่แล้ว
     approveCb=cb; approveBuf='';
     $('#pinModal').innerHTML=`
       <div class="modal-h"><h3>🔐 ขออนุมัติผู้จัดการ</h3><button class="x" onclick="UI.close('pinOverlay')">×</button></div>
@@ -3581,11 +3660,14 @@ const AUTH = (()=>{
   }
   function renderApproveDots(){ const el=$('#approveDots'); if(el) el.innerHTML=[0,1,2,3].map(i=>`<div class="pindot ${i<approveBuf.length?'fill':''}"></div>`).join(''); }
   function tryApprove(pin){
-    const mgr=STORE.get().staff.find(s=>(s.role==='manager'||s.role==='owner')&&s.pin===pin&&s.active);
-    if(mgr){ UI.close('pinOverlay'); UI.toast('อนุมัติโดย '+mgr.name,'ok'); if(approveCb) approveCb(); approveCb=null; }
-    else { approveBuf=''; renderApproveDots(); UI.toast('PIN ผู้จัดการไม่ถูกต้อง','err'); }
+    if(pinBlocked()){ approveBuf=''; renderApproveDots(); return; }
+    // ⭐ v11.2 ผู้อนุมัติ = คนที่ "มีสิทธิ์นั้นจริง" + ยังไม่ถูกลบ + อยู่สาขานี้ (เดิม: ผจก.สาขาไหนก็ได้ รวมคนที่ถูกลบแล้ว)
+    const _has=(s)=>{ if(s.role==='owner') return true; const rp=(STORE.get().settings.rolePerms||{})[s.role]; const p=Array.isArray(rp)?rp:(PERMS[s.role]||[]); return p.includes('*')||p.includes(approvePerm); };
+    const mgr=STORE.get().staff.find(s=>staffHere(s)&&s.pin===pin&&_has(s));
+    if(mgr){ pinOk(); UI.close('pinOverlay'); UI.toast('อนุมัติโดย '+mgr.name,'ok'); if(approveCb) approveCb(); approveCb=null; }
+    else { pinFail(); approveBuf=''; renderApproveDots(); UI.toast('PIN ไม่ถูกต้อง หรือไม่มีสิทธิ์อนุมัติ','err'); }
   }
-  return {can,get,login,lock,pick,key,renderLock,renderChip,requireApproval,roleTh,tryRestore,defaultPerms,PERMS,isHQ};
+  return {can,get,login,lock,pick,key,renderLock,renderChip,requireApproval,roleTh,tryRestore,defaultPerms,PERMS,isHQ,staffHere,pinBlocked,pinFail,pinOk};
 })();
 
 /* ============================================================
@@ -3805,10 +3887,15 @@ const POS = (()=>{
       if(discount.type==='percent'||discount.type==='happyhour') disc=Math.round(sub*discount.value/100);
       else if(discount.type==='amount') disc=discount.value;
       else if(discount.type==='points') disc=discount.value;
-      disc=Math.min(disc,sub);
+      disc=Math.max(0,Math.min(disc,sub));       // ⭐ v11.2 คุมขาล่างด้วย (ส่วนลดติดลบทำยอดบวม)
     }
+    return totals(sub,disc);
+  }
+  // ⭐ v11.2 สูตร service/VAT ตัวเดียวใช้ทั้งหน้าร้านและออเดอร์ QR · cfg = ค่าที่เผยแพร่ไว้ที่สาขา (มือถือลูกค้าไม่มี meta ของร้าน)
+  function totals(sub,disc,cfg){
+    disc=disc||0;
     const afterDisc=sub-disc;
-    const m=STORE.get().meta;
+    const m=cfg||STORE.get().meta;
     let vat=0, service=0, total=afterDisc;
     if(m.serviceCharge>0){ service=Math.round(afterDisc*m.serviceCharge/100); }
     const baseForVat=afterDisc+service;
@@ -3915,12 +4002,14 @@ const POS = (()=>{
         +'กดใช้ส่วนลด '+esc(MEMBER.bdLabelOf(o))+'</button></div>';
     }catch(e){ return ''; }
   }
-  function setMember(m){ member=m; renderCart(); }
+  function setMember(m){   // ⭐ v11.2 ส่วนลดที่ผูกกับสมาชิกคนเดิม (วันเกิด/แลกแต้ม) ห้ามติดไปกับสมาชิกคนใหม่
+    if(discount){ const own=discount.bdayMemberId||discount.memberId; if(own && (!m || m.id!==own)) discount=null; }
+    member=m; renderCart(); }
   function getCart(){ return cart; }
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -4060,7 +4149,8 @@ const DISC = (()=>{
 })();
 
 const PROMO = (()=>{
-  function quick(type,value,label){ POS.setDiscount({type,value,label}); UI.close('discOverlay'); UI.toast('ใช้ส่วนลด: '+label,'ok'); }
+  // ⭐ v11.2 ส่วนลดที่พนักงานกดเอง ต้องมีสิทธิ์ 'discount' (หรือให้ ผจก. ใส่ PIN อนุมัติ) — โค้ดโปร/สิทธิ์สมาชิก ไม่ผ่านตรงนี้
+  function quick(type,value,label){ UI.close('discOverlay'); AUTH.requireApproval('ให้ส่วนลด: '+label,()=>{ POS.setDiscount({type,value,label}); UI.toast('ใช้ส่วนลด: '+label,'ok'); },'discount'); }
   function clear(){ POS.setDiscount(null); UI.close('discOverlay'); UI.toast('ล้างส่วนลดแล้ว','ok'); }
   function applyCode(code){
     if(!code) return;
@@ -4183,8 +4273,9 @@ const PAY = (()=>{
     };
     STORE.get().orders.push(order);
     INV.deduct(order);                 // ตัดสต็อกตามสูตร
+    try{ MEMBER.consume(order,discount); }catch(e){ console.error('consume',e); }   // ⭐ v11.2 ตัดแต้มที่แลกตอนจ่ายจริง
     if(member) MEMBER.earn(member,order); // สะสมแต้ม
-    try{ if(member && discount && discount.bdayTier) MEMBER.markBirthdayUsed(member.id, discount.bdayTier); }catch(e){}
+    try{ if(discount && discount.bdayTier) MEMBER.markBirthdayUsed(discount.bdayMemberId||(member&&member.id), discount.bdayTier); }catch(e){}   // ⭐ v11.2 ปักว่าใช้สิทธิ์ที่ "เจ้าของสิทธิ์" ไม่ใช่สมาชิกที่สลับมาทีหลัง
     try{ PAY.resetBdayAsk(); }catch(e){}
     if(st){ st.sales=(st.sales||0)+s.total; } // ยอดต่อพนักงาน
     SHIFT.recordSale(order);           // บันทึกเข้ากะ
@@ -4445,6 +4536,22 @@ const MEMBER = (()=>{
     if(s.length<7) return s ? (s.slice(0,2)+'xxxx') : '-';
     return s.slice(0,3)+'-xxx-'+s.slice(-4);
   }
+  // ⭐ v11.2 ตัดแต้มที่แลก ตอนปิดบิลจริง · คืนแต้มเมื่อยกเลิกบิล
+  function consume(order,disc,ratio){
+    if(!disc||disc.type!=='points'||!disc.pts||!disc.memberId) return;
+    const m=STORE.find('members',disc.memberId); if(!m) return;
+    const pts=Math.min(m.points||0, Math.round(disc.pts*(ratio==null?1:ratio))); if(pts<=0) return;
+    m.points-=pts; order.pointsRedeemed=(order.pointsRedeemed||0)+pts; order.redeemMemberId=m.id; sync(m);
+  }
+  function reverse(order){
+    if(!order||order.pointsReversed) return;
+    const earnM=order.memberId?STORE.find('members',order.memberId):null;
+    if(earnM){ const hrec=(earnM.history||[]).find(x=>x.orderId===order.id); const pts=hrec?(hrec.points||0):0;
+      earnM.points=Math.max(0,(earnM.points||0)-pts); earnM.totalSpent=Math.max(0,(earnM.totalSpent||0)-(order.total||0)); earnM.visits=Math.max(0,(earnM.visits||0)-1);
+      earnM.tier=tierFor(earnM.totalSpent); if(hrec) hrec.voided=true; sync(earnM); }
+    if(order.pointsRedeemed&&order.redeemMemberId){ const rm=STORE.find('members',order.redeemMemberId); if(rm){ rm.points=(rm.points||0)+order.pointsRedeemed; sync(rm); } }
+    order.pointsReversed=true;
+  }
   function earn(member,order){
     const m=STORE.find('members',member.id); if(!m) return;
     const per=cfg().per; const pts=per>0?Math.floor(order.total/(per*100)):0;   // ใช้จ่ายทุก per บาท = 1 แต้ม
@@ -4602,7 +4709,7 @@ const MEMBER = (()=>{
     if(isNaN(mo)) return '';
     const t=new Date(); if(mo!==(t.getMonth()+1)) return '';
     const b=bp();
-    if(d===t.getDate() && bdNum(b.day).value>0) return 'day';
+    if(d===t.getDate() && bdNum(b.day).value>0 && ((mem.bdayUsed||{}).day)!==t.getFullYear()) return 'day';   // ⭐ v11.2 ส่วนลดวันเกิด = ปีละครั้ง (เดิมใช้ได้ไม่จำกัดบิลในวันนั้น)
     if(bdNum(b.month).value>0){
       if(b.monthOnce && (((mem.bdayUsed||{}).month)===t.getFullYear())) return '';   // ใช้ไปแล้วปีนี้
       return 'month';
@@ -4643,26 +4750,28 @@ const MEMBER = (()=>{
     const pts=parseInt(($('#memRedeemPts').value||'0'))||0;
     if(pts<=0){ UI.toast('ใส่จำนวนแต้ม','err'); return; }
     if(m.points<pts){ UI.toast('แต้มไม่พอ (มี '+m.points+')','err'); return; }
-    const baht=pts*cfg().val; m.points-=pts; sync(m);
-    POS.setMember(m); POS.setDiscount({type:'points',value:Math.round(baht*100),label:'แลก '+pts+' แต้ม'});
-    UI.close('genOverlay'); UI.toast('แลก '+pts+' แต้ม = ลด ฿'+baht,'ok');
+    // ⭐ v11.2 ยังไม่ตัดแต้มตรงนี้ — ตัดตอน "จ่ายเงินสำเร็จ" (เดิมตัดทันที: ล้างส่วนลด/ยกเลิก/กดซ้ำ = แต้มหายฟรี)
+    const _sub=POS.calc().sub, _val=cfg().val; const _max=_val>0?Math.ceil(_sub/(_val*100)):pts;
+    const use=Math.min(pts,Math.max(0,_max)); if(use<=0){ UI.toast('ยังไม่มีรายการในตะกร้า','err'); return; }
+    const baht=use*_val;
+    POS.setMember(m); POS.setDiscount({type:'points',value:Math.round(baht*100),label:'แลก '+use+' แต้ม',pts:use,memberId:m.id});
+    if(use<pts) UI.toast('ใช้แค่ '+use+' แต้มก็พอกับยอดบิล','ok');
+    UI.close('genOverlay'); UI.toast('แลก '+use+' แต้ม = ลด ฿'+baht+' (ตัดแต้มเมื่อชำระเงิน)','ok');
   }
   function redeemReward(id,rid){
     const m=STORE.find('members',id); const r=(STORE.get().settings.rewards||[]).find(x=>x.id===rid); if(!m||!r) return;
     if(m.points<r.points){ UI.toast('แต้มไม่พอ (ต้องการ '+r.points+')','err'); return; }
-    m.points-=r.points; sync(m);
-    POS.setMember(m); POS.setDiscount({type:'points',value:r.discount,label:'🎁 '+r.name});
+    POS.setMember(m); POS.setDiscount({type:'points',value:r.discount,label:'🎁 '+r.name,pts:r.points,memberId:m.id});
     UI.close('genOverlay'); UI.toast('แลก: '+r.name,'ok');
   }
   function redeem(){
     const m=POS.getMember(); if(!m){ UI.toast('เลือกสมาชิกก่อน','err'); return; }
     const mem=STORE.find('members',m.id);
     if(mem.points<50){ UI.toast('แต้มไม่พอ (ต้องการ 50)','err'); return; }
-    mem.points-=50; sync(mem);
-    POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม'});
+    POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม',pts:50,memberId:mem.id});
     POS.setMember(mem); DISC.showMember(mem); UI.toast('แลกแต้มสำเร็จ ลด ฿50','ok');
   }
-  return {tierTh,tierFor,earn,redeem,open,find,create,sync,maskPhone,normBday,askBday,bdayScan,bdayFixAll,bdTier,bdOffer,bdLabelOf,markBirthdayUsed,birthdayThisMonth,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
+  return {tierTh,tierFor,earn,consume,reverse,redeem,open,find,create,sync,maskPhone,normBday,askBday,bdayScan,bdayFixAll,bdTier,bdOffer,bdLabelOf,markBirthdayUsed,birthdayThisMonth,renderBox,use,redeemPts,redeemReward,birthdayEligible,applyBirthday,TIERS};
 })();
 
 /* ============================================================
@@ -4841,6 +4950,10 @@ const QR = (()=>{
   let qcart=[], qcat='all', idx=0, items=[], stage='menu', qtable=null, fixedTable=false;
   let touchX=null, touchY=null;
   function render(){ stage='menu'; qcart=[]; idx=0; if(!fixedTable) qtable=null; renderMenu(); }
+  // ⭐ v11.2 ยอดออเดอร์ QR = สูตรเดียวกับหน้าร้าน (เดิม total=sub เฉย ๆ -> VAT แยกนอก/service เก็บขาด + รายงาน VAT ต่ำ)
+  function qtot(){ const s0=qcart.reduce((s,c)=>s+c.price*c.qty,0); const b=STORE.curBranch()||{};
+    const cfg=b.taxCfg || (window._CUSTOMER_MODE ? {vatRate:0,vatIncluded:true,serviceCharge:0} : null);   // มือถือลูกค้า + ร้านยังไม่เคยกดบันทึกตั้งค่า -> เหมือนเดิม (ไม่เดา)
+    return POS.totals(s0,0,cfg); }
   function startCustomer(table){ fixedTable=!!table; qtable=table||null; stage='menu'; qcart=[]; idx=0; renderMenu(); }
   function curItems(){
     let it=STORE.scoped('products').filter(p=>p.available!==false&&!p.deletedAt&&!INV.outOfStock(p));
@@ -4932,7 +5045,7 @@ const QR = (()=>{
   }
   function checkout(){ if(!qcart.length) return; stage='cart'; renderCartReview(); }
   function renderCartReview(){
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _t=qtot(), sub=_t.total;
     const tables=fixedTable?[]:STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt);
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">ตะกร้าของคุณ</div><small>ตรวจรายการก่อนยืนยัน</small></div>
@@ -4974,7 +5087,7 @@ const QR = (()=>{
     stage='pay'; renderPay();
   }
   function renderPay(){
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _t=qtot(), sub=_t.total;
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">เลือกวิธีชำระ</div><small>${qtable?'โต๊ะ '+esc(qtable)+' · ':''}ยอด ${STORE.baht(sub)}</small></div>
       <div style="flex:1;overflow-y:auto;padding:20px;max-width:480px;margin:0 auto;width:100%;text-align:center">
@@ -4993,7 +5106,7 @@ const QR = (()=>{
         const max=1100; let w=img.width,h=img.height; const sc=Math.min(1,max/Math.max(w,h)); w=Math.round(w*sc); h=Math.round(h*sc);
         const cv=document.createElement('canvas'); cv.width=w; cv.height=h; cv.getContext('2d').drawImage(img,0,0,w,h);
         const b64=cv.toDataURL('image/jpeg',0.8); _slipImg=b64;
-        const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+        const _t=qtot(), sub=_t.total;
         $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:50px"><div style="font-size:60px">🔍</div><h2 style="margin:14px 0">กำลังตรวจสลิป...</h2><p style="color:var(--muted)">รอสักครู่</p></div>`;
         try{
           const res=await CLOUD.invokeFn('slipok-verify',{amount:sub,image:b64,branchId:STORE.bid()});
@@ -5025,13 +5138,13 @@ const QR = (()=>{
     try{ return await _submitOrder(m,sl); }catch(e){ console.error('qr order',e); }finally{ _qrBusy=false; } }
   async function _submitVerified(method,info,slipImg){
     _slipImg='';
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _t=qtot(), sub=_t.total;
     const _rno=await CLOUD.nextNo('receipt');
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
-      subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:sub,change:0,
+      subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method,paid:sub,change:0,
       status:'preparing',payStatus:'paid',slipVerified:true,slipRef:(info&&info.ref)||'',slipImg:slipImg||'',
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
@@ -5073,7 +5186,7 @@ const QR = (()=>{
     }catch(e){ UI.toast('บันทึกไม่สำเร็จ ลองกดค้างที่รูป','err'); }
   }
   function payBy(method){
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0), m=STORE.binfo(); _slipImg='';
+    const _t=qtot(), sub=_t.total, m=STORE.binfo(); _slipImg='';
     if(method==='promptpay'||method==='transfer'){
       $('#qrRoot').innerHTML=`
         <div class="qrc-head"><div class="qn">${method==='promptpay'?'สแกนจ่าย':'โอนเงิน'}</div><small>ยอด ${STORE.baht(sub)}</small></div>
@@ -5098,13 +5211,13 @@ const QR = (()=>{
   function confirmOrder(){ if(!qcart.length) return; if(cfg().payPolicy==='pay_later') submitOpenTab(); else toPay(); }
   async function _submitOpenTab(){
     // โหมดเปิดบิลค้าง: เข้าครัวทันที จ่ายตอนกลับ
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _t=qtot(), sub=_t.total;
     const _rno=await CLOUD.nextNo('receipt');
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
-      subtotal:sub,discount:0,vat:0,service:0,total:sub,method:'unpaid',paid:0,change:0,
+      subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method:'unpaid',paid:0,change:0,
       status:'preparing',payStatus:'open',
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
@@ -5113,14 +5226,14 @@ const QR = (()=>{
     stage='done'; renderTrack(order,'open');
   }
   async function _submitOrder(method,slipImg){
-    const sub=qcart.reduce((s,c)=>s+c.price*c.qty,0);
+    const _t=qtot(), sub=_t.total;
     const _slip=(slipImg||_slipImg||''); _slipImg='';
     const _rno=await CLOUD.nextNo('receipt');
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
       items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
-      subtotal:sub,discount:0,vat:0,service:0,total:sub,method,paid:0,change:0,
+      subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method,paid:0,change:0,
       status:'wait_payment',payStatus:method==='cash'?'wait_cash':'wait_verify',slipImg:_slip,
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
     };
@@ -5374,7 +5487,7 @@ const PENDING = (()=>{
   function confirm(id){
     const o=STORE.find('orders',id); if(!o) return;
     if(o.status!=='wait_payment'){ UI.toast('บิลนี้ถูกยืนยันไปแล้ว','err'); render(); return; }   // กันกดซ้ำ/หลายเครื่องพร้อมกัน
-    o.status='preparing'; o.payStatus='paid'; o.paid=o.total;
+    o.status='preparing'; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now();   // ⭐ v11.2 เวลา "รับเงินจริง" — ยอดกะ/สิ้นวันใช้ตัวนี้
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     INV.deduct(o); SHIFT.recordSale(o);                                                          // ⭐ เงินสดเข้าลิ้นชัก
     STORE.save(); CLOUD.pushOrder(o); if(STORE.get().settings.kdsServeSlip && !STORE.get().settings.autoPrint) KDS.serveSlip(o); KDS.updateBadge(); updateBadge(); render();
@@ -5408,7 +5521,7 @@ const PENDING = (()=>{
   function settlePay(id,method){
     const o=STORE.find('orders',id); if(!o) return;
     if(o.payStatus==='paid'||o.status==='void'){ UI.toast('บิลนี้ปิดไปแล้ว','err'); render(); return; }   // กันกดซ้ำ
-    o.method=method; o.payStatus='paid'; o.paid=o.total; if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
+    o.method=method; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now(); if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     SHIFT.recordSale(o);                                                                         // ⭐ เงินสดเข้าลิ้นชัก
     try{ INV.deduct(o); }catch(e){}                                                              // ⭐ v11.1 โต๊ะค้างชำระจาก QR ลูกค้า: ถ้ายังไม่เคยตัดสต็อก ตัดตอนปิดบิล
@@ -5418,13 +5531,15 @@ const PENDING = (()=>{
   }
   function cancel(id){
     const o=STORE.find('orders',id); if(!o) return;
-    UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>{
+    // ⭐ v11.2 บิลที่เข้าครัว/เปิดโต๊ะแล้ว = ของถูกทำไปแล้ว -> ต้องมีสิทธิ์ void หรือ ผจก.อนุมัติ (บิลรอชำระที่ลูกค้าไม่มาจ่าย ยกเลิกได้เลย)
+    const _go=(fn)=> o.status==='wait_payment' ? fn() : AUTH.requireApproval('ยกเลิกบิล '+(o.table?'โต๊ะ '+o.table:o.no)+' ('+STORE.baht(o.total)+')',fn,'void');
+    UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>_go(()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
       returnStockOf(o);
       refundCashOf(o,'ยกเลิก');                                   // ⭐ หักเงินออกจากลิ้นชัก (ถ้าเคยรับเงินสดแล้ว)
       o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.payStatus='void'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
-    },true);
+    }),true);
   }
   function moveTable(id){
     const o=STORE.find('orders',id); if(!o) return;
@@ -5447,9 +5562,15 @@ const PENDING = (()=>{
   }
   function merge(target,src){
     // รวมรายการ src เข้า target (อาหารยังต้องทำ จึงไม่คืนสต็อก)
+    try{ INV.deduct(src); INV.deduct(target); }catch(e){}     // ⭐ v11.2 ให้ทั้งสองบิลตัดสต็อกให้เรียบร้อยก่อนรวม (ตัดแล้วจะข้ามเอง)
     target.items=target.items.concat(src.items);
     target.subtotal=target.items.reduce((s,it)=>s+(it.base+it.modPrice)*it.qty,0);
-    target.total=target.subtotal;
+    { const _t=POS.totals(target.subtotal,0,(STORE.curBranch()||{}).taxCfg||null);     // ⭐ v11.2 รวมบิลต้องคิด service/VAT ใหม่ (เดิม total=subtotal ทิ้ง VAT)
+      target.vat=_t.vat; target.service=_t.service; target.discount=0; target.total=_t.total; }
+    // ⭐ v11.2 ย้ายประวัติการตัดสต็อกตามรายการไปด้วย — ไม่งั้นยกเลิกบิลรวมทีหลังจะคืนสต็อกไม่ครบ
+    if(src.stockUsed && typeof src.stockUsed==='object'){ target.stockUsed=target.stockUsed||{};
+      Object.keys(src.stockUsed).forEach(k=>{ target.stockUsed[k]=(target.stockUsed[k]||0)+src.stockUsed[k]; }); if(src.stockDeducted) target.stockDeducted=true; }
+    src.stockReturned=true; src.merged=true;                                                  // บิลต้นทาง: ห้ามคืนสต็อก + ไม่นับเป็น 'บิลยกเลิก'
     src.status='void'; src.voidReason='รวมบิลไปโต๊ะ '+(target.table||target.no); src.closedAt=STORE.now();
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
@@ -5561,12 +5682,12 @@ const REPORT = (()=>{
     if(!isHQ()) return '';
     const branches=STORE.get().branches||[];
     if(branches.length<2) return '';
-    const all=STORE.get().orders.filter(o=>o.status!=='void'&&o.method!=='unpaid'&&inPeriod(o));
+    const all=STORE.get().orders.filter(o=>isPaidOrder(o)&&inPeriod(o));
     const rows=branches.map(b=>{
       const os=all.filter(o=>(o.branchId||'BR-001')===b.id);
       const rev=os.reduce((s,o)=>s+o.total,0);
       let cost=0; os.forEach(o=>o.items.forEach(it=>{ const p=STORE.find('products',it.productId); if(p) cost+=p.cost*it.qty; }));
-      return {name:b.name,type:b.type,rev,count:os.length,profit:rev-cost};
+      return {name:b.name,type:b.type,rev,count:os.length,profit:rev-os.reduce((s,o)=>s+(o.vat||0),0)-cost};   // ⭐ v11.2 กำไรไม่รวม VAT (ให้ตรงกับรายงานหลัก)
     }).sort((a,b)=>b.rev-a.rev);
     const maxRev=Math.max(1,...rows.map(r=>r.rev));
     const medal=['🥇','🥈','🥉'];
@@ -5577,7 +5698,7 @@ const REPORT = (()=>{
       </tbody></table></div>`;
   }
   function chartSvg(){
-    const all=STORE.get().orders.filter(o=>o.status!=='void'&&o.method!=='unpaid'&&inBranch(o));
+    const all=STORE.get().orders.filter(o=>isPaidOrder(o)&&inBranch(o));
     let buckets=[], title='';
     if(period==='all'){
       title='ยอดขายทั้งหมด (รายเดือน)';
@@ -5619,7 +5740,8 @@ const REPORT = (()=>{
   function exportCSV(){
     const orders=sales();
     let csv='เลขที่,วันที่เวลา,ประเภท,พนักงาน,วิธีชำระ,ยอดรวม,ส่วนลด,VAT,สุทธิ\n';
-    orders.forEach(o=>{ csv+=`${o.no},${new Date(o.createdAt).toLocaleString('th-TH')},${o.type},${o.staffName},${o.method},${o.subtotal/100},${o.discount/100},${o.vat/100},${o.total/100}\n`; });
+    const _cs=(v)=>{ v=String(v==null?'':v).replace(/[\r\n,]/g,' '); return /^[=+@-]/.test(v)?"'"+v:v; };   // ⭐ v11.2 กันสูตร Excel ฝังในชื่อ/เลขบิล
+    orders.forEach(o=>{ csv+=`${_cs(o.no)},${new Date(o.createdAt).toLocaleString('th-TH')},${_cs(o.type)},${_cs(o.staffName)},${_cs(o.method)},${o.subtotal/100},${o.discount/100},${o.vat/100},${o.total/100}\n`; });
     const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sao_sales_'+period+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
     UI.toast('ดาวน์โหลด CSV แล้ว','ok');
@@ -5629,7 +5751,7 @@ const REPORT = (()=>{
     const revenue=orders.reduce((s,o)=>s+o.total,0);
     const vat=orders.reduce((s,o)=>s+o.vat,0);
     const disc=orders.reduce((s,o)=>s+o.discount,0);
-    const voids=STORE.get().orders.filter(o=>o.status==='void'&&inPeriod(o)&&inBranch(o));
+    const voids=STORE.get().orders.filter(o=>o.status==='void'&&!o.merged&&inPeriod(o)&&inBranch(o));
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>🧾 Z-Report (ปิดยอด)</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
@@ -5728,7 +5850,7 @@ const HISTORY = (()=>{
     let base=STORE.get().orders.filter(o=>inP(o)&&(o.branchId||'BR-001')===STORE.bid());
     if(q) base=base.filter(o=>(o.no||'').toLowerCase().includes(q));
     const sum={}; let allN=0, allV=0;                       // สรุปแยกช่องทาง (ไม่นับบิลยกเลิก)
-    base.filter(o=>o.status!=='void').forEach(o=>{ const k=o.method||'unpaid';
+    base.filter(o=>o.status!=='void').forEach(o=>{ const k=isPaidOrder(o)?o.method:'unpaid';   // ⭐ v11.2 บิลรอชำระ/รอตรวจสลิป ไม่นับเป็นยอดเงินสด/โอน
       if(!sum[k]) sum[k]={n:0,v:0}; sum[k].n++; sum[k].v+=(o.total||0); allN++; allV+=(o.total||0); });
     let orders=(pay==='all')?base:base.filter(o=>(o.method||'unpaid')===pay);
     orders=orders.slice().sort((a,b)=>b.createdAt-a.createdAt);
@@ -6531,7 +6653,7 @@ const BO = (()=>{
       ${stockHistoryHtml()}`;
   }
   function stockHistoryHtml(){
-    const all=STORE.scoped('stockmoves'); const mv=all.slice(-40).reverse(); if(!mv.length) return '';
+    const all=STORE.scoped('stockmoves').filter(x=>!x.deletedAt); const mv=all.slice(-40).reverse(); if(!mv.length) return '';
     const ing=(id)=>(STORE.find('ingredients',id)||{}).name||'-';
     const lbl={in:'📥 รับเข้า',waste:'🗑️ ของเสีย',count:'🔢 นับจริง'};
     return `<h3 style="margin:20px 0 10px;font-size:15px">📋 ประวัติทำรายการวัตถุดิบ ${all.length>40?'(แสดง 40 ล่าสุด จาก '+all.length+')':''}</h3>
@@ -6553,7 +6675,10 @@ const BO = (()=>{
     const mv=STORE.get().stockmoves||[]; const m=mv.find(x=>x.id===id); if(!m) return;
     UI.confirm2('ย้อนรายการ','ยกเลิกรายการนี้และคืนค่าสต็อกกลับ?',()=>{
       const ig=STORE.find('ingredients',m.ingredientId); if(ig) ig.stock=Math.max(0,ig.stock-(m.qty||0));   // กลับ delta
-      STORE.get().stockmoves=mv.filter(x=>x.id!==id); STORE.save(); render(); UI.toast('ย้อนรายการแล้ว คืนสต็อก','ok');
+      // ⭐ v11.2 ลบแบบปักธง + ส่งขึ้น cloud (เดิมลบทิ้งในเครื่อง -> sync รอบหน้ารายการงอกกลับ และสต็อกที่คืนไม่ขึ้น cloud)
+      m.deletedAt=STORE.now(); if(m.photo) m.photo='';
+      STORE.save(); try{ CLOUD.pushItem('stockmoves',m); if(ig) CLOUD.pushItem('ingredients',ig); }catch(e){}
+      render(); UI.toast('ย้อนรายการแล้ว คืนสต็อก','ok');
     },true);
   }
   function movePhoto(id){
@@ -7165,8 +7290,8 @@ const SHIFT = (()=>{
     if(!sh) return null;
     const D=STORE.get(), bid=sh.branchId||'BR-001';
     const from=sh.openedAt||0, to=sh.closedAt||STORE.now();
-    const all=(D.orders||[]).filter(o=>(o.branchId||'BR-001')===bid && o.createdAt>=from && o.createdAt<=to);
-    const ok=all.filter(isPaidOrder), voided=all.filter(o=>o.status==='void');
+    const all=(D.orders||[]).filter(o=>(o.branchId||'BR-001')===bid && (o.paidAt||o.createdAt)>=from && (o.paidAt||o.createdAt)<=to);   // ⭐ v11.2 โต๊ะค้างที่ปิดบิลข้ามกะ -> นับในกะที่รับเงิน
+    const ok=all.filter(isPaidOrder), voided=all.filter(o=>o.status==='void'&&!o.merged);
     const openTab=all.filter(o=>o.payStatus==='open'&&o.status!=='void');     // เปิดโต๊ะไว้ ยังไม่เก็บเงิน
     const waitPay=all.filter(o=>o.status==='wait_payment');                   // ลูกค้าสแกนสั่งแล้ว รอจ่าย
     // เลขกะของวันนี้ (กะที่ 1, 2, 3...)
@@ -7207,8 +7332,10 @@ const SHIFT = (()=>{
   // ขั้นที่ 1: ใส่ PIN ผู้ตรวจ — ต้องเป็นตำแหน่งที่เจ้าของอนุญาตให้ตรวจเงิน
   function cashCountPIN(){
     UI.ask('🔍 ตรวจนับเงิน — ยืนยันผู้ตรวจ',[{key:'pin',label:'ใส่ PIN ผู้ตรวจ',type:'password',value:''}],(o)=>{
-      const st=STORE.get().staff.find(x=>x.pin===String(o.pin).trim()&&x.active);
-      if(!st){ UI.toast('PIN ไม่ถูกต้อง','err'); return; }
+      if(AUTH.pinBlocked()) return;
+      const st=STORE.get().staff.find(x=>AUTH.staffHere(x)&&x.pin===String(o.pin).trim());
+      if(!st){ AUTH.pinFail(); UI.toast('PIN ไม่ถูกต้อง','err'); return; }
+      AUTH.pinOk();
       const rp=(STORE.get().settings.rolePerms||{})[st.role];
       const perms=Array.isArray(rp)?rp:(AUTH.PERMS[st.role]||[]);
       const ok = st.role==='owner'||perms.includes('*')||perms.includes('cashcount');
@@ -7532,7 +7659,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.1</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.2</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7760,7 +7887,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.1) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.2) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -7776,7 +7903,7 @@ const SETTINGS = (()=>{
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
     // ⭐ ค่าที่ลูกค้าต้องใช้ ต้องเก็บที่ "สาขา" (มือถือลูกค้าไม่ได้ sync settings)
     { const _b=STORE.curBranch();
-      if(_b){ _b.qrPayPolicy=s.qrPayPolicy; try{ CLOUD.pushItem('branches',_b); }catch(e){} } }
+      if(_b){ _b.qrPayPolicy=s.qrPayPolicy; _b.taxCfg={vatRate:m.vatRate,vatIncluded:m.vatIncluded,serviceCharge:m.serviceCharge};   /* ⭐ v11.2 ให้ออเดอร์ QR คิด VAT/service ตรงกับหน้าร้าน */ try{ CLOUD.pushItem('branches',_b); }catch(e){} } }
     // สิทธิ์แพ็กเกจเสริม แยกไปที่ปุ่ม "บันทึกสิทธิ์สาขานี้" (SETTINGS.featSave) { const sv=$('#setSlipVerify'); if(sv){ s.slipVerify=sv.value==='1'; const _cb=STORE.curBranch(); if(_cb){ _cb.slipVerify=s.slipVerify; try{ CLOUD.pushItem('branches',_cb); }catch(e){} } } }
     const cust=($('#setSessionCustom').value||'').trim();
     s.sessionTimeoutMin = cust!=='' ? Math.max(0,parseInt(cust)||0) : (parseInt($('#setSession').value)||0);
@@ -7867,6 +7994,8 @@ const SETTINGS = (()=>{
     setTimeout(cleanup,400);
   }
   function doPurge(kind,days){
+    // ⭐ v11.2 ล้างบิล/สต็อกได้เฉพาะตอนข้อมูลขึ้น cloud ครบแล้ว (เดิมกดล้างตอนคิวค้าง = บิลหายจริง ทั้งที่ข้อความบอกว่า "ยังอยู่บน cloud")
+    if(kind!=='slip'){ try{ if(CLOUD.getStatus()!=='online' || CLOUD.pendingCount()>0){ UI.toast('ยังล้างไม่ได้ — '+(CLOUD.getStatus()!=='online'?'ยังไม่ออนไลน์':'มีข้อมูลค้างส่ง '+CLOUD.pendingCount()+' รายการ')+' · รอให้ป้ายซิงค์ขึ้นครบก่อน','err'); return; } }catch(e){} }
     const th={orders:'บิลเก่า',moves:'ความเคลื่อนไหวสต็อกเก่า',slip:'รูปสลิปเก่า'}[kind]||kind;
     UI.confirm2('ล้าง'+th+'?',
       (days?('ลบเฉพาะที่เก่ากว่า '+days+' วัน\n'):'')+
@@ -8185,7 +8314,10 @@ const SETTINGS = (()=>{
   function restore(input){
     const file=input.files[0]; if(!file) return;
     const r=new FileReader();
-    r.onload=(e)=>{ try{ const data=JSON.parse(e.target.result); localStorage.setItem('saocafe_v2',JSON.stringify(data)); UI.toast('กู้คืนสำเร็จ','ok'); setTimeout(()=>location.reload(),800); }catch(err){ UI.toast('ไฟล์ไม่ถูกต้อง','err'); } };
+    r.onload=async(e)=>{ try{ const data=JSON.parse(e.target.result);
+        const ok=await STORE.importRaw(data);                       // ⭐ v11.2 ผ่านตัวเซฟปกติ (รูปลง IndexedDB) — เดิมยัดทั้งก้อนลง localStorage ไฟล์ที่มีรูปเยอะจะกู้ไม่ได้
+        if(!ok){ UI.toast('กู้คืนไม่สำเร็จ — พื้นที่เครื่องไม่พอ','err'); return; }
+        UI.toast('กู้คืนสำเร็จ','ok'); setTimeout(()=>location.reload(),800); }catch(err){ UI.toast('ไฟล์ไม่ถูกต้อง','err'); } };
     r.readAsText(file);
   }
   function confirmReset(){
@@ -8208,6 +8340,8 @@ function voidOrder(oid){
       // คืนสต็อกเฉพาะบิลที่ "เคยตัดสต็อกจริง" และยังไม่เคยคืน (กันสต็อกงอกจากบิลรอชำระ)
       returnStockOf(ord);
       const _refunded=refundCashOf(ord,o.reason);                 // ⭐ หักเงินออกจากลิ้นชัก
+      try{ MEMBER.reverse(ord); }catch(e){ console.error('reverse pts',e); }          // ⭐ v11.2 คืน/หักแต้มกลับ (เดิมยกเลิกบิลแล้วแต้มยังอยู่ = ปั๊มแต้มฟรีได้)
+      try{ if(isPaidOrder(Object.assign({},ord,{status:'done'})) && ord.staffId){ const _s=STORE.find('staff',ord.staffId); if(_s){ _s.sales=Math.max(0,(_s.sales||0)-(ord.total||0)); CLOUD.pushItem('staff',_s); } } }catch(e){}
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
       if(_refunded) UI.toast('หักเงินคืน '+STORE.baht(ord.total)+' ออกจากลิ้นชักแล้ว','ok');
       LINEN.send(LINEN.voidMsg(ord,o.reason),'voided');
@@ -8280,6 +8414,9 @@ const SPLIT = (()=>{
       status:'preparing',payStatus:'paid',memberId:null,staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null };
     STORE.get().orders.push(order);
     INV.deduct(order); SHIFT.recordSale(order); CLOUD.pushOrder(order); STORE.save();
+    { const _d0=POS.getDiscount(); if(_d0&&_d0.type==='points'&&_d0.pts&&_d0.value>0&&sh.discount>0){ const _r=Math.min(1,sh.discount/_d0.value); try{ MEMBER.consume(order,_d0,_r); if(order.pointsRedeemed){ STORE.save(); CLOUD.pushOrder(order); } }catch(e){} _d0.pts=Math.max(0,_d0.pts-Math.round(_d0.pts*_r)); } }
+    { const _d=POS.getDiscount();   // ⭐ v11.2 ส่วนลดแบบบาท/แต้ม: หักส่วนที่บิลแยกใช้ไปแล้วออก ไม่งั้นตะกร้าที่เหลือได้ลดเต็มก้อนซ้ำ
+      if(_d && (_d.type==='amount'||_d.type==='points') && sh.discount>0) _d.value=Math.max(0,_d.value-sh.discount); }
     const cart=POS.getCart(); sel.forEach(x=>{ x.line.qty-=x.qty; });
     for(let i=cart.length-1;i>=0;i--){ if(cart[i].qty<=0) cart.splice(i,1); }
     KDS.updateBadge(); PAY.receipt(order);
@@ -8326,7 +8463,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
     const td=new Date().toDateString();
     const all=STORE.get().orders.filter(x=>(x.branchId||'BR-001')===STORE.bid()&&new Date(x.createdAt).toDateString()===td);
     const ok=all.filter(isPaidOrder);
-    const voided=all.filter(x=>x.status==='void');
+    const voided=all.filter(x=>x.status==='void'&&!x.merged);
     const tot=ok.reduce((a,b)=>a+b.total,0);
     const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer');
     const times=ok.map(x=>x.createdAt).sort((a,b)=>a-b);
@@ -8576,8 +8713,8 @@ const DAYEND = (()=>{
   function data(ts){
     const ref=new Date(ts||STORE.now()).toDateString();
     const bid=STORE.bid();
-    const all=(STORE.get().orders||[]).filter(o=>(o.branchId||'BR-001')===bid && new Date(o.createdAt).toDateString()===ref);
-    const voided=all.filter(o=>o.status==='void');
+    const all=(STORE.get().orders||[]).filter(o=>(o.branchId||'BR-001')===bid && new Date((isPaidOrder(o)&&o.paidAt)||o.createdAt).toDateString()===ref);
+    const voided=all.filter(o=>o.status==='void'&&!o.merged);
     const ok=all.filter(isPaidOrder);
     const openTab=all.filter(o=>o.payStatus==='open'&&o.status!=='void');
     const waitPay=all.filter(o=>o.status==='wait_payment');
@@ -9336,7 +9473,9 @@ const CLOUD = (()=>{
     try{
       const {error}=await client.from('app_meta').select('id').limit(1);
       if(error){ status='error'; if(!silent) UI.toast('เชื่อมต่อไม่ได้: '+error.message,'err'); }
-      else { status='online'; if(!silent) UI.toast('เชื่อมต่อ Supabase สำเร็จ ✅','ok'); subscribeAll(); flushQ(); pullSync(); }
+      else { status='online'; if(!silent) UI.toast('เชื่อมต่อ Supabase สำเร็จ ✅','ok');
+             if(window._CUSTOMER_MODE){ flushQ(); }                       // ⭐ v11.2 มือถือลูกค้า: ส่งออเดอร์ที่ค้างอย่างเดียว ไม่ subscribe/ไม่ดึงตารางหลังร้าน
+             else { subscribeAll(); flushQ(); pullSync(); } }
     }catch(e){ status='error'; if(!silent) UI.toast('ผิดพลาด: '+(e.message||e),'err'); }
     refresh();
   }
@@ -9349,43 +9488,67 @@ const CLOUD = (()=>{
   const rowOf=(o,uat)=> shopCol ? {id:o.id,data:o,updated_at:uat,shop_id:SID()} : {id:o.id,data:o,updated_at:uat};
   // select ที่กรองตามร้าน — ถ้า DB ยังไม่มีคอลัมน์ จะถอยไปแบบไม่กรองอัตโนมัติ
   async function selShop(table,cols,tweak){
-    const build=()=>{ let q=client.from(table).select(cols); if(shopCol) q=q.eq('shop_id',SID()); if(tweak) q=tweak(q); return q; };
-    let r=await build();
-    if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; console.warn('ยังไม่มีคอลัมน์ shop_id — ทำงานแบบไม่แยกร้านไปก่อน'); r=await build(); }
-    return r;
+    // ⭐ v11.2 ดึงทีละหน้า (Supabase ตัดผลที่ 1000 แถวแบบเงียบ ๆ -> ข้อมูล/รายงานย้อนหลังขาดโดยไม่มี error)
+    const PAGE=1000, MAXP=60;
+    const build=(p)=>{ let q=client.from(table).select(cols); if(shopCol) q=q.eq('shop_id',SID()); if(tweak) q=tweak(q); return q.order('id',{ascending:true}).range(p*PAGE,p*PAGE+PAGE-1); };
+    let r=await build(0);
+    if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; console.warn('ยังไม่มีคอลัมน์ shop_id — ทำงานแบบไม่แยกร้านไปก่อน'); r=await build(0); }
+    if(!r||r.error||!r.data||r.data.length<PAGE) return r;
+    let all=r.data.slice();
+    for(let p=1;p<MAXP;p++){ const x=await build(p); if(!x||x.error){ return {data:null,error:(x&&x.error)||{message:'page fail'}}; }   // หน้าใดพัง = ถือว่าทั้งก้อนพัง (ห้ามคืนข้อมูลครึ่งเดียว)
+      all=all.concat(x.data||[]); if(!x.data||x.data.length<PAGE) break; }
+    return {data:all,error:null};
   }
   // สำหรับ view (menu_public/branch_public) — ไม่ไปปิดโหมดแยกร้านทั้งระบบถ้า view ไม่มีคอลัมน์
-  async function selShopSoft(table,cols){
-    if(shopCol){ const r=await client.from(table).select(cols).eq('shop_id',SID()); if(!r.error) return r; }
-    return await client.from(table).select(cols);
+  async function selShopSoft(table,cols,tweak){
+    const tw=(q)=>tweak?tweak(q):q;
+    if(shopCol){ const r=await tw(client.from(table).select(cols).eq('shop_id',SID())); if(!r.error) return r; }
+    return await tw(client.from(table).select(cols));
   }
   // ---- คิวงานค้าง (ออฟไลน์/ล้มเหลว) เก็บใน localStorage กันรีเฟรชหาย ----
   const QKEY='saocafe_syncq';
   const loadQ=()=>{ try{ return JSON.parse(localStorage.getItem(QKEY)||'[]'); }catch(e){ return []; } };
-  const saveQ=q=>{ try{ localStorage.setItem(QKEY,JSON.stringify(q)); }catch(e){} };
+  let _qSaveFail=false;
+  const saveQ=q=>{ try{ localStorage.setItem(QKEY,JSON.stringify(q)); _qSaveFail=false; }
+    catch(e){ _qSaveFail=true; console.error('saveQ',e); try{ UI.toast('⚠️ คิวส่งข้อมูลบันทึกไม่ลง (พื้นที่เต็ม) — อย่าปิดหน้านี้ แล้วไปล้างพื้นที่เครื่อง','err'); }catch(_){} } };   // ⭐ v11.2 เดิมล้มเงียบ = บิลหายได้
+  const DEADQ='saocafe_syncq_dead';
+  const _qk=(j)=> j.table+':'+((j.row&&j.row.id)||'')+':'+((j.row&&j.row.updated_at)||0);
   function enqueue(table,row){
     const q=loadQ(); q.push({table,row});
     const seen={},out=[];                          // เก็บเฉพาะ row ล่าสุดต่อ id (กันคิวบวม)
     for(let i=q.length-1;i>=0;i--){ const k=q[i].table+':'+q[i].row.id; if(seen[k])continue; seen[k]=1; out.unshift(q[i]); }
     saveQ(out);
   }
+  const _later=new Set();                              // บิล _strip ที่รอส่งเมื่อออนไลน์ (ไม่เข้าคิวปกติ เพราะแถวในคิวจะมี slipImg ว่าง)
+  function enqueueLater(o){ _later.add(o.id); }
+  function retryLater(){ if(!_later.size||status!=='online'||!authUser) return; const ids=[..._later]; _later.clear(); ids.forEach(id=>{ const o=STORE.find('orders',id); if(o) pushOrder(o); }); }
   let _flushing=false, _qErr=null;
   function lastQError(){ return _qErr; }
   async function flushQ(){
     if(status!=='online'||!client||_flushing) return;      // กันรันซ้อน (ถูกเรียกจาก 3 ทาง)
+    try{ retryLater(); }catch(e){}
     _flushing=true;
     try{
       const done=new Set(); let firstErr=null;
+      const dead=[], failsBy={};
       for(const j of loadQ()){
         try{
+          // ⭐ v11.2 ในเครื่องมีของใหม่กว่าและส่งตรงสำเร็จไปแล้ว -> แถวในคิวเป็นของเก่า ห้ามส่งทับ cloud
+          { const _key=TMAP[j.table]; const _loc=_key&&j.row?STORE.find(_key,j.row.id):null;
+            if(_loc && (_loc._uat||0) > (j.row.updated_at||0)){ done.add(_qk(j)); continue; } }
           const r = (!authUser && j.table==='orders') ? await client.from(j.table).insert(j.row) : await client.from(j.table).upsert(j.row);
-          if(!r || !r.error || r.error.code==='23505') done.add(j.table+':'+((j.row&&j.row.id)||''));
-          else if(!firstErr){ firstErr={table:j.table, code:r.error.code, msg:r.error.message};
+          if(!r || !r.error || r.error.code==='23505') done.add(_qk(j));
+          else { // ⭐ v11.2 ถูกปฏิเสธถาวร (สิทธิ์/กฎฝั่ง server) ซ้ำ ๆ -> ย้ายไปกองพัก ไม่ให้ค้างคิวตลอดกาลจนล้างพื้นที่อัตโนมัติไม่ทำงาน
+            const perm=['42501','P0001','23514','22P02','PGRST204'].includes(String(r.error.code));
+            if(perm){ j.fails=(j.fails||0)+1; failsBy[_qk(j)]=j.fails; if(j.fails>=15){ dead.push(j); done.add(_qk(j)); } } }
+          if(r && r.error && r.error.code!=='23505' && !firstErr){ firstErr={table:j.table, code:r.error.code, msg:r.error.message};
                               console.error('ส่งขึ้น cloud ไม่สำเร็จ',j.table,r.error); }
         }catch(e){ if(!firstErr) firstErr={table:j.table, code:'EXC', msg:String(e&&e.message||e)}; }
       }
       _qErr=firstErr;
-      saveQ(loadQ().filter(j=>!done.has(j.table+':'+((j.row&&j.row.id)||''))));   // ลบเฉพาะที่สำเร็จ งานใหม่ระหว่างส่งไม่หาย
+      if(dead.length){ try{ const d=JSON.parse(localStorage.getItem(DEADQ)||'[]').concat(dead.map(j=>({table:j.table,id:j.row&&j.row.id,at:Date.now(),row:(j.table==='orders'?j.row:undefined)}))).slice(-50); localStorage.setItem(DEADQ,JSON.stringify(d)); }catch(e){} }
+      { const cur=loadQ(); cur.forEach(j=>{ const f=failsBy[_qk(j)]; if(f) j.fails=f; });
+        saveQ(cur.filter(j=>!done.has(_qk(j)))); }   // ลบเฉพาะแถว (id+เวลา) ที่ส่งสำเร็จ — แถวใหม่กว่าที่เข้าคิวระหว่างส่ง ไม่ถูกลบ
     } finally { _flushing=false; }
   }
   function pendingCount(){ return loadQ().length; }
@@ -9397,6 +9560,13 @@ const CLOUD = (()=>{
   async function pushOrder(o){
     if(!o) return; o._uat=Date.now(); try{ STORE.save(); }catch(e){}       // ⭐ เซฟ _uat ลงเครื่อง
     let row=rowOf(o,o._uat);
+    // ⭐ v11.2 บิลที่ล้างรูปสลิปในเครื่องไปแล้ว (_strip): ห้ามส่ง slipImg ว่างไปทับของจริงบน cloud -> ดึงรูปเดิมจาก cloud มาใส่ในแถวที่จะส่ง
+    if(o._strip && !o.slipImg){
+      let _img=null;
+      if(status==='online'&&client&&authUser){ try{ const g=await client.from('orders').select('slip:data->>slipImg').eq('id',o.id).limit(1); if(g&&!g.error&&g.data&&g.data[0]) _img=g.data[0].slip||''; }catch(e){} }
+      if(_img===null){ enqueueLater(o); return; }                                   // ยังถาม cloud ไม่ได้ -> อย่าเพิ่งส่ง (กันทับ) รอบหน้าค่อยลองใหม่
+      const _d=Object.assign({},o,{slipImg:_img}); delete _d._strip; row=rowOf(_d,o._uat);
+    }
     if(status==='online'&&client){
       try{
         let r = authUser ? await client.from('orders').upsert(row) : await client.from('orders').insert(row);  // anon มีสิทธิ์แค่ insert
@@ -9427,16 +9597,21 @@ const CLOUD = (()=>{
   // ---- เลขรันบิล atomic ฝั่ง server (กันเลขซ้ำเมื่อหลายเครื่องในสาขาเดียว) ----
   async function nextNo(kind){            // kind: 'order' | 'receipt'
     if(status==='online'&&client){
-      try{ const r=await client.rpc('next_seq',{s:SID(),b:STORE.bid(),k:kind}); if(!r.error&&r.data!=null) return Number(r.data); }catch(e){}
-      try{ const r=await client.rpc('next_seq',{b:STORE.bid(),k:kind});          if(!r.error&&r.data!=null) return Number(r.data); }catch(e){ console.error('next_seq',e); }
+      // ⭐ v11.2 จำกัดเวลา 3 วิ — เน็ตค้างแต่สถานะยัง 'online' เดิมหน้าจ่ายเงินค้างยาว ตอนนี้ถอยไปใช้เลขในเครื่อง
+      const _to=(p)=>Promise.race([p,new Promise(res=>setTimeout(()=>res({error:{message:'timeout'}}),3000))]);
+      try{ const r=await _to(client.rpc('next_seq',{s:SID(),b:STORE.bid(),k:kind})); if(!r.error&&r.data!=null) return Number(r.data);
+           if(r.error&&r.error.message==='timeout') throw new Error('timeout'); }catch(e){ if(String(e&&e.message)==='timeout'){ const c0=STORE.bcounter(); return kind==='order'?c0.orderNo++:c0.receiptNo++; } }
+      try{ const r=await _to(client.rpc('next_seq',{b:STORE.bid(),k:kind}));          if(!r.error&&r.data!=null) return Number(r.data); }catch(e){ console.error('next_seq',e); }
     }
     const c=STORE.bcounter(); return kind==='order'?c.orderNo++:c.receiptNo++;   // offline fallback: local
   }
   // ---- อัปข้อมูลทั้งหมดขึ้น cloud (ครั้งแรก/seed) ----
   // ดันการตั้งค่าร้าน (อัตราแต้ม/VAT/ชื่อร้าน ฯลฯ) ขึ้น cloud — ต้องเรียกทุกครั้งที่กดบันทึกตั้งค่า
   // ไม่งั้นสาขาอื่นและ Edge Function จะใช้ค่าเก่า
+  const MDIRTY='saocafe_metadirty';     // ⭐ v11.2 ตั้งค่าที่บันทึกตอนออฟไลน์ -> จำไว้ แล้วส่งเองตอนกลับมาออนไลน์ (เดิมหายเงียบ)
+  const metaDirty=()=>{ try{ return localStorage.getItem(MDIRTY)==='1'; }catch(e){ return false; } };
   async function pushMeta(silent){
-    if(status!=='online'||!client) return false;
+    if(status!=='online'||!client){ try{ localStorage.setItem(MDIRTY,'1'); }catch(e){} return false; }
     try{
       const D=STORE.get(), now=STORE.now();
       const _meta=Object.assign({},D.meta); delete _meta.currentBranchId;
@@ -9445,7 +9620,8 @@ const CLOUD = (()=>{
       if(shopCol) _mrow.shop_id=SID();
       let r=await client.from('app_meta').upsert(_mrow);
       if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; delete _mrow.shop_id; r=await client.from('app_meta').upsert(_mrow); }
-      if(r&&r.error){ if(!silent) UI.toast('ตั้งค่ายังไม่ขึ้น cloud: '+r.error.message,'err'); return false; }
+      if(r&&r.error){ try{ localStorage.setItem(MDIRTY,'1'); }catch(e){} if(!silent) UI.toast('ตั้งค่ายังไม่ขึ้น cloud: '+r.error.message,'err'); return false; }
+      try{ localStorage.removeItem(MDIRTY); }catch(e){}
       return true;
     }catch(e){ console.error('pushMeta',e); return false; }
   }
@@ -9482,13 +9658,16 @@ const CLOUD = (()=>{
     try{
       const D=STORE.get();
       // เมนูลูกค้า: อ่านจาก view สาธารณะที่ "ตัดต้นทุน/สูตร" ออกแล้ว (menu_public) — ถ้าไม่มี view ค่อย fallback ตาราง products
+      // ⭐ v11.2 มือถือลูกค้า: ดึงเฉพาะของ "สาขาที่สแกน" (เดิมดึงเมนู+รูปของทุกสาขา -> ช้า ~10 วิ และเต็มพื้นที่มือถือลูกค้า)
+      const _bid=STORE.bid(), _okBid=/^[A-Za-z0-9-]{3,24}$/.test(_bid);
+      const byBranch=(window._CUSTOMER_MODE&&_okBid) ? (q=>q.or(_bid==='BR-001' ? 'data->>branchId.eq.BR-001,data->>branchId.is.null' : 'data->>branchId.eq.'+_bid)) : null;
       let prod=null;
-      try{ const r=await selShopSoft('menu_public','data'); if(!r.error&&r.data) prod=r.data; }catch(e){}
-      if(!prod){ const r=await selShop('products','data'); if(!r.error&&r.data) prod=r.data; }
+      try{ const r=await selShopSoft('menu_public','data',byBranch); if(!r.error&&r.data) prod=r.data; }catch(e){}
+      if(!prod){ const r=await selShop('products','data',byBranch); if(!r.error&&r.data) prod=r.data; }
       if(prod) D.products=prod.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i);
       // หมวด/ตัวเลือก/โต๊ะ = อ่านตรง (ไม่ใช่ข้อมูลลับ)
       const ent=[['categories','categories'],['modifiers','modifiers'],['tables_','tables']];
-      for(const [t,key] of ent){ const {data,error}=await selShop(t,'data'); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
+      for(const [t,key] of ent){ const {data,error}=await selShop(t,'data',byBranch); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
       // ข้อมูลร้าน/PromptPay สำหรับลูกค้า: อ่านจาก branch_public (ตัดข้อมูลลับ เช่น geminiKey) ถ้ามี
       try{ const {data:bp}=await selShopSoft('branch_public','data'); if(bp&&bp.length){ D.branches=bp.map(r=>r.data); } }catch(e){}
       // ไม่ดึง ingredients (กันรั่วต้นทุน) และไม่ดึง app_meta/settings (กันรั่ว key) สำหรับโหมดลูกค้า
@@ -9672,8 +9851,9 @@ const CLOUD = (()=>{
       if(incRev<myRev){ /* cloud เก่ากว่าเครื่อง -> ไม่ทับ (กันชื่อร้าน/โลโก้หายตอน sync) */ }
       else { const keepBid=mine.currentBranchId; D.meta=Object.assign({},D.meta,o.meta); if(keepBid) D.meta.currentBranchId=keepBid; }
     }
-    if(o.settings){ const mine={}; LOCAL_KEYS.forEach(k=>{ if((D.settings||{})[k]!==undefined) mine[k]=D.settings[k]; }); D.settings=Object.assign({},D.settings,o.settings,mine); }
-    if(o.counters) D.counters=Object.assign({},D.counters,o.counters);
+    // ⭐ v11.2 settings ใช้ _rev ตัวเดียวกับ meta — เครื่องที่ถือค่าเก่ากว่าจะไม่ถูกทับ/ไม่ไปทับคนอื่น
+    if(o.settings && +((o.meta||{})._rev||0) >= +(((D.meta||{})._rev)||0)){ const mine={}; LOCAL_KEYS.forEach(k=>{ if((D.settings||{})[k]!==undefined) mine[k]=D.settings[k]; }); D.settings=Object.assign({},D.settings,o.settings,mine); }
+    if(o.counters){ D.counters=D.counters||{}; Object.keys(o.counters).forEach(k=>{ const a=+D.counters[k]||0,b=+o.counters[k]||0; D.counters[k]=(typeof o.counters[k]==='number')?Math.max(a,b):(D.counters[k]!==undefined?D.counters[k]:o.counters[k]); }); }   // เลขรันห้ามถอยหลัง
     if(o.branchCounters){ D.branchCounters=D.branchCounters||{};
       Object.keys(o.branchCounters).forEach(b=>{ const cur=D.branchCounters[b]||{orderNo:1,receiptNo:1}, inc=o.branchCounters[b]||{};
         D.branchCounters[b]={orderNo:Math.max(cur.orderNo||1,inc.orderNo||1), receiptNo:Math.max(cur.receiptNo||1,inc.receiptNo||1)}; });
@@ -9701,7 +9881,7 @@ const CLOUD = (()=>{
     try{ rerender(); }catch(e){}
   }
   async function pullSync(){
-    if(status!=='online'||!client) return;
+    if(status!=='online'||!client||window._CUSTOMER_MODE) return;
     try{
       const D=STORE.get();
       const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
@@ -9734,6 +9914,12 @@ const CLOUD = (()=>{
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
       }
+      // ⭐ v11.2 ดึงการตั้งค่าร้าน (VAT/อัตราแต้ม/ของรางวัล) ทุกรอบ — เดิมมาทาง realtime อย่างเดียว เครื่องที่ออฟไลน์ตอนแก้จะไม่ได้ค่าใหม่เลย
+      if(authUser){ try{
+        let mr=await client.from('app_meta').select('data').eq('id',SID()).limit(1);
+        if(mr&&!mr.error&&mr.data&&mr.data[0]) mergeMeta(D,mr.data[0].data);
+        if(metaDirty()) pushMeta(true);                     // มีตั้งค่าที่บันทึกตอนออฟไลน์ค้างอยู่ -> ส่งขึ้น
+      }catch(e){} }
       try{ STORE.dropSeed(); }catch(e){}     // ⭐ ได้ข้อมูลจริงแล้ว -> ทิ้งเมนู/พนักงานตัวอย่างของเครื่องใหม่
       try{ STORE.ensureHQ(); }catch(e){}     // ⭐ ดึงรายชื่อจากส่วนกลางมาแล้ว -> ถอด HQ ชั่วคราวของเครื่องสาขาทิ้ง
       STORE.save();
@@ -9754,16 +9940,15 @@ const CLOUD = (()=>{
    ============================================================ */
 const CUSTOMER = (()=>{
   async function start(table){
-    window._CUSTOMER_MODE=true;              // ⭐ v11.1 ธงโหมดลูกค้า (INV.deduct ใช้เช็ค)
     document.querySelector('#lockScreen').classList.add('hide');
     const hd=document.querySelector('header'); if(hd) hd.style.display='none';
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     document.querySelector('#v-qr').classList.add('active');
     document.querySelector('#qrRoot').innerHTML='<div class="empty" style="margin:auto"><div class="ic">☕</div>กำลังโหลดเมนู...</div>';
-    CLOUD.init();
+    if(CLOUD.getStatus()==='off') CLOUD.init();     // ⭐ v11.2 APP.init ต่อ cloud ให้แล้ว — ไม่สร้าง client ซ้ำ
     // รอเชื่อม cloud + ดึงเมนูล่าสุด (กันเมนูไม่ตรง)
     let tries=0; while(CLOUD.getStatus()!=='online'&&tries<20){ await new Promise(r=>setTimeout(r,300)); tries++; }
-    await CLOUD.pullMenu();                                            // ต้องได้ข้อมูลสาขาก่อนเช็คสิทธิ์
+    const _gotMenu=await CLOUD.pullMenu();                             // ต้องได้ข้อมูลสาขาก่อนเช็คสิทธิ์
     if(!FEAT.on('qrOrder')){                                           // ⭐ สาขานี้ยังไม่ได้เปิดบริการสั่งผ่าน QR
       const b=STORE.curBranch()||{};
       document.querySelector('#qrRoot').innerHTML=
@@ -9775,7 +9960,7 @@ const CUSTOMER = (()=>{
         +'</div>';
       return;
     }
-    if(CLOUD.getStatus()==='online'){ await CLOUD.pullMenu(); }
+    if(!_gotMenu && CLOUD.getStatus()==='online'){ await CLOUD.pullMenu(); }   // ⭐ v11.2 ดึงซ้ำเฉพาะเมื่อรอบแรกพลาด (เดิมดึง 2 รอบเสมอ = ช้าเท่าตัว)
     QR.startCustomer(table);
   }
   return {start};
@@ -9786,7 +9971,7 @@ const AI = (()=>{
   const baht=s=>Math.round((s||0)/100);
   function ctx(){
     const bid=STORE.bid(), now=Date.now(), DAY=86400000;
-    const ords=STORE.get().orders.filter(o=>(o.branchId||'BR-001')===bid && o.status!=='void' && o.method && o.method!=='unpaid');
+    const ords=STORE.get().orders.filter(o=>(o.branchId||'BR-001')===bid && isPaidOrder(o));
     const sum=a=>a.reduce((x,o)=>x+(o.total||0),0);
     const inD=d=>ords.filter(o=>now-o.createdAt<=d*DAY);
     const today=ords.filter(o=>new Date(o.createdAt).toDateString()===new Date().toDateString());
@@ -10044,8 +10229,9 @@ const APP = (()=>{
       ()=>{ a.clean(); STORE.setShopId(a.to); UI.toast('ตั้งรหัสร้าน '+a.to+' แล้ว — กำลังรีโหลด','ok'); setTimeout(()=>location.reload(),900); });
     a.clean();
   }
-  function init(){
+  async function init(){
     STORE.load();
+    await STORE.hydrate();               // ⭐ v11.2 เติมรูปจาก IndexedDB ให้ครบก่อนต่อ cloud/วาดหน้า
     try{ PWA.init(); }catch(e){}
     applyShopFromLink();               // ⭐ ต้องทำก่อน CLOUD.init เพื่อให้ต่อ cloud ด้วยรหัสร้านที่ถูก
     applyBrand();
