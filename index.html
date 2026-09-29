@@ -4119,6 +4119,7 @@ const DISC = (()=>{
     if(m) showMember(m);
   }
   function lookupMember(){
+    if(LOYAL.on()){ UI.close('discOverlay'); LOYAL.open(); try{ $('#loyPhone').value=$('#memPhone')?$('#memPhone').value:''; }catch(e){} return; }
     const phone=$('#memPhone').value.trim();
     if(!phone){ UI.toast('ใส่เบอร์โทร','err'); return; }
     let mem=STORE.get().members.find(x=>x.phone===phone&&!x.deletedAt);
@@ -4268,13 +4269,14 @@ const PAY = (()=>{
       items:JSON.parse(JSON.stringify(cart)),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
       method, paid:method==='cash'?cashIn:s.total, change:method==='cash'?cashIn-s.total:0,
-      status:'preparing', payStatus:'paid', memberId:member?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
+      status:'preparing', payStatus:'paid', memberId:(member&&!member.ext)?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
       channel:'pos', createdAt:STORE.now(), closedAt:null
     };
     STORE.get().orders.push(order);
     INV.deduct(order);                 // ตัดสต็อกตามสูตร
     try{ MEMBER.consume(order,discount); }catch(e){ console.error('consume',e); }   // ⭐ v11.2 ตัดแต้มที่แลกตอนจ่ายจริง
-    if(member) MEMBER.earn(member,order); // สะสมแต้ม
+    if(member&&member.ext){ LOYAL.earn(order,member); }   // ⭐ v11.4 ให้แต้มในระบบสมาชิก SAO (ทำงานเบื้องหลัง ไม่หน่วงการขาย)
+    else if(member) MEMBER.earn(member,order); // สะสมแต้ม
     try{ if(discount && discount.bdayTier) MEMBER.markBirthdayUsed(discount.bdayMemberId||(member&&member.id), discount.bdayTier); }catch(e){}   // ⭐ v11.2 ปักว่าใช้สิทธิ์ที่ "เจ้าของสิทธิ์" ไม่ใช่สมาชิกที่สลับมาทีหลัง
     try{ PAY.resetBdayAsk(); }catch(e){}
     if(st){ st.sales=(st.sales||0)+s.total; } // ยอดต่อพนักงาน
@@ -4321,7 +4323,7 @@ const PAY = (()=>{
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
-        ${joinQR(order)}
+        ${LOYAL.rcptLine(order)}${joinQR(order)}
         <div class="rc">${esc(m.shopName)} · ขอบคุณค่ะ<br>${esc(STORE.get().settings.receiptFooter)}</div>
       </div></div>
       <div class="modal-f">
@@ -4401,7 +4403,7 @@ const PAY = (()=>{
   // ---- QR สมัครสมาชิกท้ายใบเสร็จ (แพ็กเกจเสริม · เฉพาะบิลที่ยังไม่ผูกสมาชิก) ----
   function joinQR(order){
     try{
-      if(!order || order.memberId) return '';                 // ผูกสมาชิกที่เคาน์เตอร์แล้ว ไม่ต้องพิมพ์
+      if(!order || order.memberId || order.loyal || LOYAL.on()) return '';   // ⭐ v11.4 สาขาที่ใช้ระบบสมาชิก SAO ไม่พิมพ์ QR สมัครสมาชิกของ POS (กันแต้มสองระบบ)                 // ผูกสมาชิกที่เคาน์เตอร์แล้ว ไม่ต้องพิมพ์
       if(!isPaidOrder(order)) return '';                      // บิลยังไม่ปิด
       if(!FEAT.on('memberJoin')) return '';                   // สาขานี้ยังไม่ได้เปิดบริการ
       const st=STORE.get().settings;
@@ -4500,17 +4502,18 @@ const PAY = (()=>{
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
-        ${joinQR(order)}
+        ${LOYAL.rcptLine(order)}${joinQR(order)}
         <div class="rc">${esc(m.shopName)} · ขอบคุณค่ะ<br>${esc(STORE.get().settings.receiptFooter)}</div>
       </div>`;
   }
-  function autoPrint(order){
+  function autoPrint(order,opt){                          // opt.noKitchen = ใบเสร็จอย่างเดียว (ตอนปิดบิลโต๊ะ — ใบครัวออกไปแล้วตอนสั่ง)
     const st=STORE.get().settings; if(!st.autoPrint) return;
+    const _kit=st.kdsServeSlip && !(opt&&opt.noKitchen);
     if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order);
-      if(st.kdsServeSlip) setTimeout(()=>printDocs([KDS.serveSlipHtml(order)]),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
+      if(_kit) setTimeout(()=>printDocs([KDS.serveSlipHtml(order)]),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
       return; }
     const docs=[rcptHtml(order)];                          // ใบเสร็จ (สร้างจากออเดอร์ตรง ๆ)
-    if(st.kdsServeSlip) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
+    if(_kit) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
     setTimeout(()=>printDocs(docs),200);
   }
   return {open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
@@ -4562,6 +4565,7 @@ const MEMBER = (()=>{
   }
   // ---- ปุ่มสมาชิกหน้าขาย: ค้นหา/สมัคร/แลกแต้ม-ของรางวัล ง่ายๆ ----
   function open(){
+    if(LOYAL.on()){ LOYAL.open(); return; }          // ⭐ v11.4 สาขาที่เชื่อมระบบสมาชิก SAO -> ใช้แต้มจากระบบนั้น
     const cur=POS.getMember();
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>👤 สมาชิก / สะสมแต้ม</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
@@ -4766,7 +4770,8 @@ const MEMBER = (()=>{
   }
   function redeem(){
     const m=POS.getMember(); if(!m){ UI.toast('เลือกสมาชิกก่อน','err'); return; }
-    const mem=STORE.find('members',m.id);
+    if(m.ext){ UI.toast('สมาชิก SAO: แลกแต้มผ่านแอปสมาชิก','err'); return; }
+    const mem=STORE.find('members',m.id); if(!mem) return;
     if(mem.points<50){ UI.toast('แต้มไม่พอ (ต้องการ 50)','err'); return; }
     POS.setDiscount({type:'points',value:5000,label:'แลก 50 แต้ม',pts:50,memberId:mem.id});
     POS.setMember(mem); DISC.showMember(mem); UI.toast('แลกแต้มสำเร็จ ลด ฿50','ok');
@@ -5528,6 +5533,10 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(o); UI.close('genOverlay'); updateBadge(); render();
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('ปิดบิลแล้ว '+(o.table?'โต๊ะ '+o.table:o.no)+' · '+STORE.baht(o.total),'ok');
+    // ⭐ v11.3 ปิดบิลโต๊ะแล้วต้องมีใบเสร็จให้ลูกค้า (เดิมไม่แสดง/ไม่พิมพ์อะไรเลย) — ใบครัวไม่พิมพ์ซ้ำ
+    try{ PAY.receipt(o); }catch(e){ console.error('receipt',e); }
+    try{ if(method==='cash') PRINT.kickDrawer(); }catch(e){}
+    try{ PAY.autoPrint(o,{noKitchen:true}); }catch(e){ console.error('autoPrint',e); }
   }
   function cancel(id){
     const o=STORE.find('orders',id); if(!o) return;
@@ -5536,7 +5545,7 @@ const PENDING = (()=>{
     UI.confirm2('ยกเลิกออเดอร์','ยกเลิก '+(o.table?'โต๊ะ '+o.table:o.no)+'?',()=>_go(()=>{
       // ถ้าเคยเข้าครัว (ตัดสต็อกแล้ว) ให้คืนสต็อก
       returnStockOf(o);
-      refundCashOf(o,'ยกเลิก');                                   // ⭐ หักเงินออกจากลิ้นชัก (ถ้าเคยรับเงินสดแล้ว)
+      refundCashOf(o,'ยกเลิก'); try{ LOYAL.onVoid(o); }catch(e){}                                   // ⭐ หักเงินออกจากลิ้นชัก (ถ้าเคยรับเงินสดแล้ว)
       o.status='void'; o.voidReason='ยกเลิก/ไม่ชำระ'; o.payStatus='void'; o.closedAt=STORE.now(); STORE.save(); CLOUD.pushOrder(o); KDS.updateBadge(); updateBadge(); render();
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     }),true);
@@ -7659,7 +7668,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.2</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.4</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7758,6 +7767,9 @@ const SETTINGS = (()=>{
             <div class="field"><label>🎁 แต้มโบนัส สมัครครั้งแรกผ่าน QR</label><input id="setJoinBonus" type="number" min="0" value="${s.joinBonusPts!=null?s.joinBonusPts:10}"><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">ให้เฉพาะคนที่ยังไม่เคยเป็นสมาชิก · ไม่ให้ซ้ำ</div></div>
             <div class="field"><label>แลกแต้ม: 1 แต้ม = กี่บาท</label><input id="setPtVal" type="number" min="0" step="0.01" value="${s.ptValueBaht!=null?s.ptValueBaht:1}"></div>
           </div>
+          <div class="field" style="margin-top:6px"><label>🔗 ระบบสมาชิก / สะสมแต้ม (แอปสมาชิก SAO)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="font-size:13px">${esc(LOYAL.label())}${LOYAL.pending().length?(' · <b style="color:var(--warn)">ต้องตรวจ '+LOYAL.pending().length+' รายการ</b>'):''}</span>
+            <button class="sub-tab" onclick="LOYAL.setup()">ตั้งค่า / เข้าสู่ระบบ</button><button class="sub-tab" onclick="LOYAL.review()">📋 รายการที่ต้องตรวจ</button></div></div>
           <button class="btn-gold" style="width:100%;padding:13px;border-radius:10px;margin-top:8px" onclick="SETTINGS.save()">💾 บันทึกการตั้งค่า</button>
         </div>
       </div>
@@ -7887,7 +7899,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.2) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.4) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -8340,7 +8352,8 @@ function voidOrder(oid){
       // คืนสต็อกเฉพาะบิลที่ "เคยตัดสต็อกจริง" และยังไม่เคยคืน (กันสต็อกงอกจากบิลรอชำระ)
       returnStockOf(ord);
       const _refunded=refundCashOf(ord,o.reason);                 // ⭐ หักเงินออกจากลิ้นชัก
-      try{ MEMBER.reverse(ord); }catch(e){ console.error('reverse pts',e); }          // ⭐ v11.2 คืน/หักแต้มกลับ (เดิมยกเลิกบิลแล้วแต้มยังอยู่ = ปั๊มแต้มฟรีได้)
+      try{ MEMBER.reverse(ord); }catch(e){ console.error('reverse pts',e); }
+      try{ LOYAL.onVoid(ord); }catch(e){}          // ⭐ v11.2 คืน/หักแต้มกลับ (เดิมยกเลิกบิลแล้วแต้มยังอยู่ = ปั๊มแต้มฟรีได้)
       try{ if(isPaidOrder(Object.assign({},ord,{status:'done'})) && ord.staffId){ const _s=STORE.find('staff',ord.staffId); if(_s){ _s.sales=Math.max(0,(_s.sales||0)-(ord.total||0)); CLOUD.pushItem('staff',_s); } } }catch(e){}
       ord.status='void'; ord.voidReason=o.reason||'-'; ord.closedAt=STORE.now(); STORE.save();
       if(_refunded) UI.toast('หักเงินคืน '+STORE.baht(ord.total)+' ออกจากลิ้นชักแล้ว','ok');
@@ -9750,7 +9763,9 @@ const CLOUD = (()=>{
     if(needs&&fresh){
       try{ PENDING.alertNew(); }catch(e){}
       try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
-      try{ if(o.payStatus==='paid') PAY.autoPrint(o); }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
+      try{ if(o.payStatus==='paid') PAY.autoPrint(o);
+           else if(o.payStatus==='open'){ const _s=STORE.get().settings; if(_s.autoPrint && _s.kdsServeSlip) KDS.serveSlip(o); }   // ⭐ v11.3 โต๊ะ "จ่ายตอนกลับ": ของเข้าครัวเลย -> ใบครัวต้องออกทันที (เดิมพิมพ์เฉพาะบิลที่จ่ายแล้ว)
+      }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
       try{ pushOrder(o); }catch(e){}
     }
   }
@@ -9933,6 +9948,223 @@ const CLOUD = (()=>{
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
   return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+})();
+
+/* ============================================================
+   LOYAL — เชื่อมระบบสมาชิก/สะสมแต้มเดิม (Supabase โปรเจคแยก "Sales Report")   ⭐ v11.4
+   หลักการ
+   • ระบบแต้มเดิม = ตัวจริงของแต้ม · POS แค่ "เรียกฟังก์ชันเดิม" (get_customer_by_phone / branch_earn_points_by_phone)
+     -> กติกา (35 บาท = 1 แต้ม · เลื่อนระดับ) คำนวณฝั่งระบบแต้มเหมือนที่พนักงานคีย์ในหน้าแอดมินทุกอย่าง
+   • ล็อกอินด้วย "บัญชีสาขา" ของระบบแต้ม ครั้งเดียวต่อเครื่อง (รหัสผ่านไม่ถูกเก็บ เก็บแค่ session ของ Supabase)
+   • บิลหนึ่งใบให้แต้มได้ครั้งเดียว (จำสถานะไว้ในบิล) · ถ้าส่งแล้วไม่รู้ผล จะ "ไม่ส่งซ้ำเอง" ให้พนักงานตรวจก่อน (แต้ม = เงิน)
+   ============================================================ */
+const LOYAL = (()=>{
+  const CKEY='saocafe_loyal', RATE=35;
+  let cli=null, cliSig='', me=null;           // me = {role,branch_code}
+  const cfg=()=>{ try{ return JSON.parse(localStorage.getItem(CKEY)||'{}')||{}; }catch(e){ return {}; } };
+  const saveCfg=(c)=>{ try{ localStorage.setItem(CKEY,JSON.stringify(c)); }catch(e){} };
+  const on=()=>{ const c=cfg(); return !!(c.on && c.url && c.key && c.branchCode && !window._CUSTOMER_MODE); };
+  const digits=(s)=>String(s||'').replace(/[^0-9]/g,'');
+  const mask=(p)=>{ const d=digits(p); return d.length>=7 ? d.slice(0,3)+'-xxx-'+d.slice(-4) : d; };
+  const tierTh=(t)=>({Bronze:'Bronze 🥉',Silver:'Silver 🥈',Gold:'Gold 🥇',Platinum:'Platinum 💎'}[t]||t||'-');
+  const ptsOf=(satang)=>Math.floor((satang||0)/100/RATE);
+
+  function client(){
+    const c=cfg(); if(!c.url||!c.key||!window.supabase) return null;
+    const sig=c.url+'|'+c.key;
+    if(!cli||cliSig!==sig){
+      cli=window.supabase.createClient(c.url,c.key,{auth:{storageKey:'sao-loyal-auth',persistSession:true,autoRefreshToken:true}});
+      cliSig=sig; me=null;
+    }
+    return cli;
+  }
+  const withTimeout=(p,ms)=>Promise.race([p,new Promise(res=>setTimeout(()=>res({data:null,error:{message:'timeout',_timeout:true}}),ms||8000))]);
+  async function rpc(fn,args,ms){
+    const c=client(); if(!c) return {data:null,error:{message:'ยังไม่ได้ตั้งค่าระบบสมาชิก'}};
+    try{ return await withTimeout(c.rpc(fn,args||{}),ms); }
+    catch(e){ return {data:null,error:{message:String(e&&e.message||e),_net:true}}; }
+  }
+  async function whoami(){
+    const r=await rpc('get_my_role',{}); me=(r&&!r.error&&r.data)||null; return me;
+  }
+
+  // ---------- ตั้งค่า / ล็อกอิน ----------
+  function setup(){
+    const c=cfg(), b=STORE.curBranch()||{}, pre=(b.loyal||{});
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🔗 เชื่อมระบบสมาชิก (สะสมแต้ม)</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;line-height:1.7">ใช้บัญชี <b>สาขา</b> ของระบบสะสมแต้ม (ตัวเดียวกับที่พนักงานใช้คีย์ยอดให้แต้ม) · ตั้งครั้งเดียวต่อเครื่อง · รหัสผ่านไม่ถูกบันทึก</p>
+        <div id="loyStat" style="padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:13px;margin-bottom:12px">กำลังตรวจสถานะ…</div>
+        <div class="field"><label>Project URL ของระบบแต้ม</label><input id="loyUrl" placeholder="https://xxxx.supabase.co" value="${esc(c.url||pre.url||'')}"></div>
+        <div class="field"><label>anon public key (ห้ามใช้ service_role)</label><input id="loyKey" placeholder="eyJ..." value="${esc(c.key||pre.key||'')}"></div>
+        <div class="row2">
+          <div class="field"><label>อีเมลบัญชีสาขา</label><input id="loyMail" type="email" autocomplete="username" value="${esc(c.email||'')}"></div>
+          <div class="field"><label>รหัสผ่าน</label><input id="loyPass" type="password" autocomplete="current-password"></div>
+        </div>
+        <div class="field"><label>รหัส id สาขาในระบบแต้ม (เว้นว่างได้ — ระบบหาให้เอง)</label><input id="loyBid" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" value="${esc(c.branchId||'')}"></div>
+        <button class="btn-gold" style="width:100%;padding:12px;border-radius:10px" onclick="LOYAL.connect()">🔐 เข้าสู่ระบบ + เปิดใช้งาน</button>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn-ghost" style="flex:1" onclick="LOYAL.review()">📋 รายการแต้มที่ต้องตรวจ</button>
+          <button class="btn-ghost" style="flex:1;color:var(--danger)" onclick="LOYAL.disconnect()">ปิดการเชื่อม</button>
+        </div>
+      </div>`;
+    UI.open('genOverlay'); status();
+  }
+  async function status(){
+    const el=$('#loyStat'); if(!el) return;
+    const c=cfg();
+    if(!c.url||!c.key){ el.innerHTML='⚪ ยังไม่ได้ตั้งค่า'; return; }
+    const m=await whoami();
+    if(m&&m.role&&(m.role==='branch'||m.role==='admin')){
+      el.innerHTML='🟢 เชื่อมแล้ว · บัญชี <b>'+esc(c.email||'')+'</b> · สิทธิ์ <b>'+esc(m.role)+'</b> · สาขา <b>'+esc(c.branchCode||m.branch_code||'-')+'</b>'+(c.on?'':' · <span style="color:var(--warn)">ยังปิดใช้งาน</span>');
+    } else if(m&&m.role){ el.innerHTML='🔴 บัญชีนี้เป็นสิทธิ์ <b>'+esc(m.role)+'</b> — ต้องใช้บัญชีสาขา'; }
+    else el.innerHTML='🟡 ยังไม่ได้เข้าสู่ระบบ (หรือ session หมดอายุ)';
+  }
+  async function connect(){
+    const url=($('#loyUrl').value||'').trim().replace(/\/+$/,''), key=($('#loyKey').value||'').trim();
+    const mail=($('#loyMail').value||'').trim(), pass=$('#loyPass').value||'';
+    if(!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)){ UI.toast('Project URL ไม่ถูกต้อง','err'); return; }
+    if(key.length<40){ UI.toast('anon key ไม่ถูกต้อง','err'); return; }
+    try{ const pl=JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); if(pl&&pl.role&&pl.role!=='anon'){ UI.toast('คีย์นี้ไม่ใช่ anon key — ห้ามใส่ service_role ในแอป','err'); return; } }catch(e){}
+    if(!mail||!pass){ UI.toast('ใส่อีเมลและรหัสผ่านบัญชีสาขา','err'); return; }
+    const c=Object.assign({},cfg(),{url,key,email:mail}); saveCfg(c);
+    const cl=client(); if(!cl){ UI.toast('โหลดระบบเชื่อมต่อไม่ได้','err'); return; }
+    UI.toast('กำลังเข้าสู่ระบบ…','ok');
+    let r; try{ r=await withTimeout(cl.auth.signInWithPassword({email:mail,password:pass}),12000); }catch(e){ r={error:{message:String(e&&e.message||e)}}; }
+    $('#loyPass').value='';
+    if(!r||r.error){ UI.toast('เข้าสู่ระบบไม่สำเร็จ: '+((r&&r.error&&r.error.message)||''),'err'); status(); return; }
+    const m=await whoami();
+    if(!m||!(m.role==='branch'||m.role==='admin')){ UI.toast('บัญชีนี้ไม่ใช่บัญชีสาขาของระบบแต้ม','err'); status(); return; }
+    // หา id สาขาในระบบแต้ม (ฟังก์ชันให้แต้มต้องใช้)
+    let bcode=m.branch_code||'', bid='', bname='';
+    try{ const q=await withTimeout(cl.from('branches').select('id,code,name').eq('code',bcode).limit(1),8000);
+      if(q&&!q.error&&q.data&&q.data[0]){ bid=q.data[0].id; bname=q.data[0].name||''; } }catch(e){}
+    if(!bcode){ UI.toast('บัญชีนี้ยังไม่ได้ผูกรหัสสาขาในระบบแต้ม','err'); status(); return; }
+    if(!bid){ const man=(($('#loyBid')||{}).value||'').trim(); if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(man)) bid=man; }
+    saveCfg(Object.assign({},cfg(),{on:true,branchCode:bcode,branchId:bid||null,branchName:bname}));
+    // ให้เครื่องอื่นของสาขานี้ไม่ต้องพิมพ์ URL/คีย์ซ้ำ (anon key เป็นคีย์สาธารณะ)
+    try{ const b=STORE.curBranch(); if(b){ b.loyal={url,key}; STORE.save(); CLOUD.pushItem('branches',b); } }catch(e){}
+    UI.toast('เชื่อมระบบสมาชิกแล้ว ✅ สาขา '+(bname||bcode),'ok'); status();
+    try{ if(NAV.cur()==='settings') SETTINGS.render(); }catch(e){}
+  }
+  async function disconnect(){
+    try{ const cl=client(); if(cl) await cl.auth.signOut(); }catch(e){}
+    saveCfg(Object.assign({},cfg(),{on:false})); me=null;
+    UI.toast('ปิดการเชื่อมระบบสมาชิกแล้ว (กลับไปใช้สมาชิกในตัว POS)','ok'); status();
+  }
+  function label(){ const c=cfg(); return on()?('🟢 เชื่อมแล้ว · สาขา '+(c.branchName||c.branchCode)):'⚪ ยังไม่เชื่อม'; }
+
+  // ---------- ค้นสมาชิกที่หน้าขาย ----------
+  function open(){
+    const cur=POS.getMember();
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>👤 สมาชิก SAO / สะสมแต้ม</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <div class="field"><label>เบอร์โทรลูกค้า</label>
+          <div style="display:flex;gap:8px"><input id="loyPhone" inputmode="numeric" placeholder="08x-xxx-xxxx" value="${cur&&cur.ext?esc(cur.phone):''}" style="flex:1" onkeydown="if(event.key==='Enter'){event.stopPropagation();LOYAL.find();}">
+          <button class="btn-gold" style="padding:0 18px;border-radius:10px" onclick="LOYAL.find()">ค้นหา</button></div></div>
+        <div id="loyBox"></div>
+      </div>`;
+    UI.open('genOverlay'); if(cur&&cur.ext) box(cur);
+    setTimeout(()=>{ try{ $('#loyPhone').focus(); }catch(e){} },80);
+  }
+  let _finding=false;
+  async function find(){
+    if(_finding) return;
+    let ph=digits(($('#loyPhone')||{}).value); if(/^66\d{9}$/.test(ph)) ph='0'+ph.slice(2);   // +66 8x -> 08x
+    if(ph.length<9){ UI.toast('เบอร์โทรไม่ถูกต้อง','err'); return; }
+    _finding=true; const bx=$('#loyBox'); if(bx) bx.innerHTML='<p style="text-align:center;color:var(--muted);padding:14px">กำลังค้นหา…</p>';
+    try{
+      const c=cfg(); const r=await rpc('get_customer_by_phone',{p_branch_code:c.branchCode,p_phone:ph});
+      const d=r&&r.data;
+      if(r.error||!d){ if(bx) bx.innerHTML='<p style="text-align:center;color:var(--danger);padding:14px">ติดต่อระบบสมาชิกไม่ได้: '+esc((r.error&&r.error.message)||'')+'<br><small style="color:var(--muted)">ขายต่อได้ตามปกติ · ให้แต้มทีหลังได้ที่หน้าแอดมิน</small></p>'; return; }
+      if(!d.success){ if(bx) bx.innerHTML='<div style="text-align:center;padding:14px;background:var(--surface-2);border-radius:12px"><p><b>'+esc(d.error||'ไม่พบสมาชิก')+'</b></p><p style="color:var(--muted);font-size:13px;margin-top:6px">ให้ลูกค้าสมัครผ่านแอป/QR สมาชิก แล้วค้นใหม่อีกครั้ง</p></div>'; return; }
+      box({id:'loyal:'+d.id, ext:true, extId:d.id, phone:ph, name:d.full_name||d.nickname||'ลูกค้า', points:Number(d.total_points||0), tier:d.member_tier||'', spend:Number(d.total_spend||0)});
+    } finally { _finding=false; }
+  }
+  let _cand=null;
+  function box(m){
+    _cand=m; const bx=$('#loyBox'); if(!bx) return;
+    const will=ptsOf(POS.calc().total);
+    bx.innerHTML=`<div style="background:var(--surface-2);border-radius:12px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div><b style="font-size:16px">${esc(m.name)}</b><br><small style="color:var(--muted)">${esc(mask(m.phone))} · ${esc(tierTh(m.tier))}</small></div>
+          <div style="text-align:right"><b style="font-size:22px;color:var(--gold)">${esc(m.points)}</b><br><small style="color:var(--muted)">แต้มคงเหลือ</small></div>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px">⚠️ ตรวจ <b>ชื่อ</b> ให้ตรงกับลูกค้าก่อนกดใช้ · บิลนี้จะได้ประมาณ <b>${will}</b> แต้ม (ทุก ${RATE} บาท = 1 แต้ม)</p>
+        <button class="btn-gold" style="width:100%;padding:12px;border-radius:10px;margin-top:8px" onclick="LOYAL.use()">✓ ใช้สมาชิกนี้กับบิลนี้</button>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">แลกแต้ม/ใช้คูปอง: ยังทำผ่านแอปสมาชิก + หน้าแอดมินเดิม</p>
+      </div>`;
+  }
+  function use(){ if(!_cand) return; POS.setMember(_cand); UI.close('genOverlay'); UI.toast('สมาชิก: '+_cand.name,'ok'); }
+
+  // ---------- ให้แต้มตอนปิดบิล ----------
+  async function earn(order,m){
+    try{
+      if(!order||!m||!m.ext||!on()) return;
+      if(order.loyal&&order.loyal.status) return;                        // บิลนี้เคยส่งแล้ว (สำเร็จ/รอตรวจ) -> ไม่ส่งซ้ำ
+      const amount=Math.round(order.total||0)/100, pts=ptsOf(order.total);
+      order.loyal={phone:m.phone,name:m.name,extId:m.extId||null,amount,points:pts,at:STORE.now(),status:pts<1?'skip':'sending'};
+      STORE.save();
+      if(pts<1) return;
+      await send(order);
+    }catch(e){ console.error('loyal earn',e); }
+  }
+  async function send(order){
+    const c=cfg(), L=order.loyal; if(!L) return false;
+    L.status='sending'; L.tries=(L.tries||0)+1; STORE.save();
+    const r=await rpc('branch_earn_points_by_phone',{p_phone:L.phone,p_branch_id:c.branchId||null,p_branch_code:c.branchCode,p_amount:L.amount},10000);
+    const d=r&&r.data;
+    if(d&&d.success){ L.status='done'; L.points=Number(d.points_earned||L.points); L.name=d.customer_name||L.name; L.doneAt=STORE.now();
+      UI.toast('🏅 '+L.name+' ได้รับ '+L.points+' แต้ม','ok'); }
+    else if(d&&d.success===false){ L.status='rejected'; L.err=String(d.error||''); UI.toast('ให้แต้มไม่สำเร็จ: '+L.err,'err'); }   // ระบบแต้มตอบปฏิเสธชัดเจน = แต้มยังไม่เข้า
+    else if(r&&r.error&&r.error.code&&!r.error._timeout&&!r.error._net){ L.status='rejected'; L.err=String(r.error.message||r.error.code); UI.toast('ให้แต้มไม่สำเร็จ: '+L.err,'err'); }   // ฐานข้อมูลตอบ error = รายการถูกยกเลิกทั้งก้อน แต้มยังไม่เข้า
+    else { L.status='unknown'; L.err=String((r&&r.error&&r.error.message)||'ไม่ทราบผล');                                        // ส่งไปแล้วไม่รู้ผล -> ห้ามส่งซ้ำเอง
+      UI.toast('⚠️ ให้แต้มไม่ทราบผล (เน็ต/ระบบช้า) — ตรวจที่ ตั้งค่า → เชื่อมระบบสมาชิก → รายการที่ต้องตรวจ','err'); }
+    STORE.save(); try{ CLOUD.pushOrder(order); }catch(e){}
+    return L.status==='done';
+  }
+  // รายการที่ต้องให้คนตรวจ: ไม่ทราบผล / ถูกปฏิเสธ / บิลถูกยกเลิกหลังให้แต้มแล้ว
+  function pending(){ return (STORE.scoped('orders')||[]).filter(o=>o.loyal&&(['unknown','rejected','sending'].includes(o.loyal.status)||o.loyal.needReverse)); }
+  function review(){
+    const list=pending().slice(-60).reverse();
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>📋 แต้มที่ต้องตรวจ (${list.length})</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">"ไม่ทราบผล" = ส่งไปแล้วแต่ไม่ได้คำตอบ → <b>เปิดหน้าแอดมินระบบแต้มดูก่อน</b> ว่าแต้มเข้าหรือยัง ถ้ายังค่อยกด "ส่งอีกครั้ง" (กดซ้ำทั้งที่เข้าแล้ว = ลูกค้าได้แต้มสองรอบ)</p>
+        ${list.length?list.map(o=>{ const L=o.loyal; const st=L.needReverse?'ยกเลิกบิลแล้ว — ต้องหักแต้มคืน '+L.points+' แต้ม (ทำที่หน้าแอดมิน)':({unknown:'ไม่ทราบผล',rejected:'ถูกปฏิเสธ: '+(L.err||''),sending:'ค้างส่ง'}[L.status]||L.status);
+          return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">
+            <b>${esc(o.no||'')}</b> · ${STORE.baht(o.total)} · ${esc(L.name||'')} <small style="color:var(--muted)">${esc(mask(L.phone))} · ${new Date(L.at).toLocaleString('th-TH')}</small>
+            <div style="font-size:13px;color:var(--warn);margin:4px 0">${esc(st)}</div>
+            <div style="display:flex;gap:6px">${L.needReverse?`<button class="sub-tab" onclick="LOYAL.mark('${esc(o.id)}','reversed')">✓ หักคืนแล้ว</button>`
+              :`<button class="sub-tab" onclick="LOYAL.resend('${esc(o.id)}')">↻ ส่งอีกครั้ง</button><button class="sub-tab" onclick="LOYAL.mark('${esc(o.id)}','done')">✓ แต้มเข้าแล้ว</button><button class="sub-tab" onclick="LOYAL.mark('${esc(o.id)}','skip')">ไม่ให้แต้มบิลนี้</button>`}</div></div>`; }).join('')
+          :'<p style="text-align:center;color:var(--muted);padding:20px">ไม่มีรายการค้าง ✅</p>'}
+      </div>`;
+    UI.open('genOverlay');
+  }
+  let _resending=false;
+  async function resend(id){
+    if(_resending) return; const o=STORE.find('orders',id); if(!o||!o.loyal||o.loyal.status==='done') return;
+    UI.confirm2('ส่งให้แต้มอีกครั้ง?','ตรวจในหน้าแอดมินระบบแต้มแล้วใช่ไหม ว่าบิล '+(o.no||'')+' ('+STORE.baht(o.total)+') ยังไม่มีแต้มเข้า\n\nถ้าแต้มเข้าไปแล้ว การส่งอีกครั้งจะทำให้ลูกค้าได้แต้มซ้ำ',async()=>{
+      _resending=true; try{ await send(o); }finally{ _resending=false; } review(); },true);
+  }
+  function mark(id,st){ const o=STORE.find('orders',id); if(!o||!o.loyal) return;
+    if(st==='reversed'){ o.loyal.needReverse=false; o.loyal.reversedAt=STORE.now(); } else o.loyal.status=st;
+    STORE.save(); try{ CLOUD.pushOrder(o); }catch(e){} review(); }
+  // ยกเลิกบิลที่ให้แต้มไปแล้ว: สาขาหักคืนเองไม่ได้ (ระบบแต้มให้เฉพาะแอดมิน) -> จดไว้ + แจ้งเตือน
+  function onVoid(order){
+    const L=order&&order.loyal; if(!L||L.status!=='done'||L.needReverse||L.reversedAt) return;
+    L.needReverse=true;
+    try{ UI.toast('⚠️ บิลนี้ให้แต้มไปแล้ว '+L.points+' แต้ม — แจ้งแอดมินหักคืน','err'); }catch(e){}
+    try{ LINEN.send('⚠️ ยกเลิกบิล '+(order.no||'')+' ที่ให้แต้มแล้ว\n👤 '+(L.name||'')+' ('+mask(L.phone)+')\n🏅 ต้องหักแต้มคืน '+L.points+' แต้ม (ยอด '+STORE.baht(order.total)+') ที่หน้าแอดมินระบบแต้ม','voided'); }catch(e){}
+  }
+  // บรรทัดบนใบเสร็จ
+  function rcptLine(order){
+    const L=order&&order.loyal; if(!L||!L.points||L.status==='skip'||L.status==='rejected') return '';
+    return '<div style="text-align:center;border-top:1px dashed #000;margin-top:8px;padding-top:6px;font-size:12px">🏅 สมาชิก: <b>'+esc(L.name||'')+'</b> ('+esc(mask(L.phone))+')<br>บิลนี้ได้รับ <b>'+esc(L.points)+'</b> แต้ม</div>';
+  }
+  return {on,setup,status,connect,disconnect,label,open,find,use,earn,review,resend,mark,onVoid,rcptLine,pending,ptsOf};
 })();
 
 /* ============================================================
