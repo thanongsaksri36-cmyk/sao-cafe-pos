@@ -2991,6 +2991,7 @@ const refundCashOf=(o,reason)=>{
 };
 const canReturnStock=(o)=>{
   if(!o||o.stockReturned) return false;
+  if(o.stockDeducted==null && o.channel==='qr') return false;   // ⭐ v11.5 บิล QR จากมือถือลูกค้าไม่มีธง = ยังไม่เคยตัดสต็อก (เดิมไปคืนตามสูตร = สต็อกงอก)
   if(o.stockDeducted===true) return true;
   if(o.stockDeducted===false) return false;
   return o.status!=='wait_payment';        // บิลเก่าที่ไม่มีธง: บิลรอชำระไม่เคยตัดสต็อก
@@ -3348,14 +3349,15 @@ const STORE = (()=>{
     function delMany(keys){ if(!keys.length) return; try{ const tx=idb.transaction('imgs','readwrite'); const st=tx.objectStore('imgs'); keys.forEach(k=>st.delete(k)); }catch(e){} }
     // เปิดแอป: เติมรูปกลับเข้าหน่วยความจำ (ต้องเสร็จก่อนต่อ cloud ไม่งั้นป้ายจะถูกส่งขึ้น cloud แทนรูป)
     async function hydrate(D){
-      if(!(await open())) return {ok:false};
-      const all=await getAll(), used=new Set(); let miss=0;
+      const opened=await open();
+      const all=opened?await getAll():new Map(), used=new Set(); let miss=0;   // ⭐ v11.5 เปิด IndexedDB ไม่ได้ -> ป้ายต้องไม่หลุดไปเป็นรูป/ขึ้น cloud
       FIELDS.forEach(([t,f])=>(D[t]||[]).forEach(o=>{ const v=o&&o[f]; if(typeof v!=='string'||v.slice(0,4)!==PFX) return;
         const k=v.slice(4).split('|')[0], data=all.get(k);
         if(typeof data==='string'&&data){ o[f]=data; have.set(k,sig(data)); used.add(k); }
         else { o[f]=''; o._strip=1; o._uat=0; miss++; }      // รูปหาย (เบราว์เซอร์ล้าง IndexedDB) -> ห้ามส่งของเปล่าทับ cloud + ให้ cloud ชนะรอบ sync หน้า = รูปกลับมาเอง
       }));
-      delMany([...all.keys()].filter(k=>!used.has(k)));      // เก็บกวาดรูปที่ไม่มีใครอ้างถึงแล้ว
+      if(opened) delMany([...all.keys()].filter(k=>!used.has(k)));      // เก็บกวาดรูปที่ไม่มีใครอ้างถึงแล้ว
+      if(!opened) return {ok:false,miss};
       return {ok:true,n:used.size,miss};
     }
     // ตอนเซฟ: คืน JSON ที่รูปซึ่ง "อยู่ใน IndexedDB แน่นอนแล้ว" ถูกแทนด้วยป้าย · รูปใหม่ = เขียนลง IndexedDB ก่อน แล้วค่อยเซฟซ้ำ
@@ -3378,7 +3380,7 @@ const STORE = (()=>{
   // เซฟแบบรอให้รูปลง IndexedDB ครบก่อน (ใช้ตอนกู้คืนไฟล์สำรอง/ก่อนรีโหลด)
   async function saveAsync(){ save(); try{ await IMG.flushNow(); }catch(e){} return save(); }
   async function importRaw(data){ if(!data||typeof data!=='object'||!data.meta) throw new Error('bad backup'); DB=data; return await saveAsync(); }
-  async function hydrate(){ try{ const r=await IMG.hydrate(DB); if(r&&r.miss) console.warn('รูปในเครื่องหาย '+r.miss+' รูป — จะดึงจาก cloud ใหม่'); return r; }catch(e){ console.error('hydrate',e); return {ok:false}; } }
+  async function hydrate(){ try{ const r=await Promise.race([IMG.hydrate(DB),new Promise(res=>setTimeout(()=>res({ok:false,timeout:true}),6000))]); if(r&&r.miss) console.warn('รูปในเครื่องหาย '+r.miss+' รูป — จะดึงจาก cloud ใหม่'); return r; }catch(e){ console.error('hydrate',e); return {ok:false}; } }
   function load(){
     try{
       const raw=localStorage.getItem(KEY);
@@ -3594,7 +3596,8 @@ const AUTH = (()=>{
       const tmin=STORE.get().settings.sessionTimeoutMin||0;
       const maxAge=tmin>0?tmin*60000:7*24*3600000;   // 0=ไม่ล็อก (คงสภาพ 7 วัน)
       if(STORE.now()-ses.at > maxAge) return false;
-      const staff=STORE.find('staff',ses.id); if(!staff||!staff.active||staff.deletedAt) return false;   // ⭐ v11.2 พนักงานที่ถูกลบแล้วห้ามคืน session
+      const staff=STORE.find('staff',ses.id); if(!staff||!staff.active||staff.deletedAt) return false;
+      if(!staff.hq && (staff.branchId||'BR-001')!==STORE.bid()) return false;   // ⭐ v11.5 session ของสาขาอื่นห้ามคืนบนเครื่องนี้   // ⭐ v11.2 พนักงานที่ถูกลบแล้วห้ามคืน session
       current=staff; if(!isHQ() && staff.branchId) STORE.setBid(staff.branchId);
       saveSession();                             // ต่ออายุ session
       renderChip(); NAV.build(); NAV.go(can('pos')?'pos':'kds');
@@ -5597,7 +5600,7 @@ const REPORT = (()=>{
   function inBranch(o){ const bf=curBF(); return bf==='all'?true:(o.branchId||'BR-001')===bf; }
   function bfLabel(){ const bf=curBF(); if(bf==='all') return 'ทุกสาขารวม'; const b=(STORE.get().branches||[]).find(x=>x.id===bf); return b?b.name:bf; }
   function inPeriod(o){
-    const d=new Date(o.createdAt), now=new Date();
+    const d=new Date((isPaidOrder(o)&&o.paidAt)||o.createdAt), now=new Date();   // ⭐ v11.5 ใช้เวลารับเงินเหมือนกะ/สิ้นวัน
     if(period==='today') return d.toDateString()===now.toDateString();
     if(period==='week'){ const diff=(now-d)/86400000; return diff<=7; }
     if(period==='month') return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
@@ -5849,7 +5852,7 @@ const HISTORY = (()=>{
               :(o.payStatus==='open'?'<br><small style="color:var(--warn);font-weight:600">ค้างชำระ</small>':'');
     return '<span style="display:inline-block;padding:3px 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap;color:'+m[2]+';background:'+m[3]+'">'+m[0]+' '+m[1]+'</span>'+slip+wait;
   }
-  function inP(o){ const d=new Date(o.createdAt),n=new Date();
+  function inP(o){ const d=new Date((isPaidOrder(o)&&o.paidAt)||o.createdAt),n=new Date();
     if(period==='today')return d.toDateString()===n.toDateString();
     if(period==='week')return (n-d)/86400000<=7;
     if(period==='custom'){ if(!cFrom||!cTo) return true; const ts=o.createdAt, f=new Date(cFrom+'T00:00:00').getTime(), t=new Date(cTo+'T23:59:59.999').getTime(); return ts>=f&&ts<=t; }
@@ -6418,7 +6421,7 @@ const BO = (()=>{
           cv.getContext('2d').drawImage(img,0,0,w,h);
           let data; try{ data=cv.toDataURL('image/jpeg',0.8); }catch(err){ UI.toast('อ่านรูปไม่ได้','err'); return; }
           const p=STORE.find('products',id);
-          if(p){ p.img=data; p.updatedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',p); render(); UI.toast('อัปโหลดรูปแล้ว','ok'); }   // ⭐ ต้อง push ไม่งั้น sync รอบหน้าทับรูปหาย
+          if(p){ p.img=data; delete p._strip; p.updatedAt=STORE.now(); STORE.save(); CLOUD.pushItem('products',p); render(); UI.toast('อัปโหลดรูปแล้ว','ok'); }   // ⭐ ต้อง push ไม่งั้น sync รอบหน้าทับรูปหาย
         };
         img.onerror=()=>UI.toast('ไฟล์รูปไม่ถูกต้อง','err');
         img.src=e.target.result;
@@ -7668,7 +7671,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.4</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7899,7 +7902,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.4) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.5) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -7928,7 +7931,7 @@ const SETTINGS = (()=>{
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
     const _ok=STORE.save(); applyTheme();
     if(!_ok){ UI.toast('⚠️ บันทึกไม่ลง! พื้นที่เครื่องเต็ม — กดล้างพื้นที่ก่อน แล้วตั้งค่าใหม่','err'); try{ cleanup(); }catch(e){} return; }
-    try{ CLOUD.pushMeta(); }catch(e){}          // ⭐ ให้สาขาอื่น + Edge Function ใช้ค่าใหม่ทันที
+    try{ if(AUTH.isHQ()) CLOUD.pushMeta(); else UI.toast('บันทึกในเครื่องนี้แล้ว · ค่ากลางของร้าน (VAT/แต้ม/ของรางวัล) เปลี่ยนได้จากบัญชี HQ เท่านั้น','ok'); }catch(e){}   // ⭐ v11.5 เครื่องสาขาห้ามทับค่ากลาง (เดิม _rev ตามนาฬิกาเครื่อง ใครกดทีหลังชนะ)
     UI.toast('บันทึกการตั้งค่าแล้ว','ok');
   }
   // ลิงก์เปิดสาขา — เลือกสาขา แล้วได้ลิงก์ส่งให้สาขานั้นเปิดเครื่องได้เลย
@@ -8319,7 +8322,8 @@ const SETTINGS = (()=>{
   function applyCustomColor(){ const pr=$('#setColPrimary'),ac=$('#setColAccent'),bgv=$('#setColBg'); if(!pr||!ac) return; saveBranchColor({id:'custom',primary:pr.value,accent:ac.value,dark:shade(pr.value,-12),light:shade(ac.value,14),bg:bgv?bgv.value:undefined}); }
   function resetColor(){ if(!canColor()){ UI.toast('เฉพาะผู้ดูแล/เจ้าของ','err'); return; } const cb=STORE.curBranch(); if(cb){ delete cb.brandColors; STORE.save(); try{ CLOUD.pushItem('branches',cb); }catch(e){} } applyBrandColor(); render(); UI.toast('คืนสีเริ่มต้นแล้ว','ok'); }
   function backup(){
-    const blob=new Blob([JSON.stringify(STORE.get(),null,2)],{type:'application/json'});
+    const _bk=JSON.parse(JSON.stringify(STORE.get())); [['products','img'],['orders','slipImg'],['stockmoves','photo']].forEach(([t,f])=>(_bk[t]||[]).forEach(o=>{ if(o&&typeof o[f]==='string'&&o[f].slice(0,4)==='idb:') o[f]=''; }));   // ⭐ v11.5 กันป้ายรูปปนในไฟล์สำรอง
+    const blob=new Blob([JSON.stringify(_bk,null,2)],{type:'application/json'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='saocafe_backup_'+new Date().toISOString().slice(0,10)+'.json'; a.click();
     UI.toast('สำรองข้อมูลแล้ว','ok');
   }
@@ -8426,6 +8430,7 @@ const SPLIT = (()=>{
       subtotal:sh.subtotal,discount:sh.discount,vat:sh.vat,service:sh.service,total:sh.total,method,paid:sh.total,change:0,
       status:'preparing',payStatus:'paid',memberId:null,staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null };
     STORE.get().orders.push(order);
+    { const _m=POS.getMember(); if(_m&&_m.ext){ LOYAL.earn(order,_m); } else if(_m){ order.memberId=_m.id; MEMBER.earn(_m,order); } }   // ⭐ v11.5 บิลแยกก็ได้แต้ม (เดิมได้เฉพาะก้อนสุดท้าย)
     INV.deduct(order); SHIFT.recordSale(order); CLOUD.pushOrder(order); STORE.save();
     { const _d0=POS.getDiscount(); if(_d0&&_d0.type==='points'&&_d0.pts&&_d0.value>0&&sh.discount>0){ const _r=Math.min(1,sh.discount/_d0.value); try{ MEMBER.consume(order,_d0,_r); if(order.pointsRedeemed){ STORE.save(); CLOUD.pushOrder(order); } }catch(e){} _d0.pts=Math.max(0,_d0.pts-Math.round(_d0.pts*_r)); } }
     { const _d=POS.getDiscount();   // ⭐ v11.2 ส่วนลดแบบบาท/แต้ม: หักส่วนที่บิลแยกใช้ไปแล้วออก ไม่งั้นตะกร้าที่เหลือได้ลดเต็มก้อนซ้ำ
@@ -9441,7 +9446,7 @@ const CLOUD = (()=>{
         try{ window.addEventListener('online',()=>{ connect(true); });                 // เน็ตกลับมา -> เชื่อม+กวาดคิว
              window.addEventListener('offline',()=>{ status='ready'; refresh(); }); }catch(e){}
         setInterval(()=>{ if(status==='online') flushQ(); else if(client) connect(true); },15000);  // กวาดคิว/เชื่อมใหม่ทุก 15 วิ
-        setInterval(()=>{ pullOrdersLite(); },8000);                                                 // ตาข่ายนิรภัยออเดอร์ QR
+        if(!window._CUSTOMER_MODE) setInterval(()=>{ pullOrdersLite(); },8000);   // ⭐ v11.5 มือถือลูกค้าไม่ดึงออเดอร์ร้าน                                                 // ตาข่ายนิรภัยออเดอร์ QR
       }
     }catch(e){ status='error'; console.error('cloud init',e); } }
   let lastTok=null;
@@ -9533,8 +9538,11 @@ const CLOUD = (()=>{
     saveQ(out);
   }
   const _later=new Set();                              // บิล _strip ที่รอส่งเมื่อออนไลน์ (ไม่เข้าคิวปกติ เพราะแถวในคิวจะมี slipImg ว่าง)
+  const _laterItems=new Map();
   function enqueueLater(o){ _later.add(o.id); }
-  function retryLater(){ if(!_later.size||status!=='online'||!authUser) return; const ids=[..._later]; _later.clear(); ids.forEach(id=>{ const o=STORE.find('orders',id); if(o) pushOrder(o); }); }
+  function retryLater(){ if(status!=='online'||!authUser) return;
+    if(_later.size){ const ids=[..._later]; _later.clear(); ids.forEach(id=>{ const o=STORE.find('orders',id); if(o) pushOrder(o); }); }
+    if(_laterItems.size){ const its=[..._laterItems.values()]; _laterItems.clear(); its.forEach(x=>{ const key=TMAP[x.table]; const o=key&&STORE.find(key,x.id); if(o) pushItem(x.table,o); }); } }
   let _flushing=false, _qErr=null;
   function lastQError(){ return _qErr; }
   async function flushQ(){
@@ -9545,6 +9553,7 @@ const CLOUD = (()=>{
       const done=new Set(); let firstErr=null;
       const dead=[], failsBy={};
       for(const j of loadQ()){
+        if(!authUser && j.table!=='orders') continue;   // ⭐ v11.5 ยังไม่ล็อกอิน cloud: ตารางอื่นโดน RLS แน่ -> รอ ไม่นับว่าพลาด
         try{
           // ⭐ v11.2 ในเครื่องมีของใหม่กว่าและส่งตรงสำเร็จไปแล้ว -> แถวในคิวเป็นของเก่า ห้ามส่งทับ cloud
           { const _key=TMAP[j.table]; const _loc=_key&&j.row?STORE.find(_key,j.row.id):null;
@@ -9559,7 +9568,7 @@ const CLOUD = (()=>{
         }catch(e){ if(!firstErr) firstErr={table:j.table, code:'EXC', msg:String(e&&e.message||e)}; }
       }
       _qErr=firstErr;
-      if(dead.length){ try{ const d=JSON.parse(localStorage.getItem(DEADQ)||'[]').concat(dead.map(j=>({table:j.table,id:j.row&&j.row.id,at:Date.now(),row:(j.table==='orders'?j.row:undefined)}))).slice(-50); localStorage.setItem(DEADQ,JSON.stringify(d)); }catch(e){} }
+      if(dead.length){ try{ const d=JSON.parse(localStorage.getItem(DEADQ)||'[]').concat(dead.map(j=>({table:j.table,id:j.row&&j.row.id,at:Date.now(),row:j.row}))).slice(-50); localStorage.setItem(DEADQ,JSON.stringify(d)); }catch(e){} }
       { const cur=loadQ(); cur.forEach(j=>{ const f=failsBy[_qk(j)]; if(f) j.fails=f; });
         saveQ(cur.filter(j=>!done.has(_qk(j)))); }   // ลบเฉพาะแถว (id+เวลา) ที่ส่งสำเร็จ — แถวใหม่กว่าที่เข้าคิวระหว่างส่ง ไม่ถูกลบ
     } finally { _flushing=false; }
@@ -9594,10 +9603,17 @@ const CLOUD = (()=>{
   // ---- ส่งข้อมูล master (เมนู/สต็อก/พนักงาน...) ขึ้น cloud เมื่อมีการแก้ -> สาขาอื่นเห็นทันที ----
   async function pushItem(table,obj){
     if(!obj) return;
-    if(obj._strip){ console.warn('ข้ามการอัป: รายการนี้ถูกล้างรูปในเครื่อง (cloud ยังมีของจริง)'); return; }
+    // ⭐ v11.5 รายการที่รูปถูกล้างในเครื่อง (_strip): ส่งข้อมูลอื่นขึ้นได้ แต่ถอดช่องรูปออก (เดิมข้ามทั้งแถว -> แก้ราคาแล้วไม่ขึ้น cloud และโดนทับคืน)
+    const IMGF={products:'img',orders:'slipImg',stockmoves:'photo'}[table];
+    if(IMGF && typeof obj[IMGF]==='string' && obj[IMGF].slice(0,4)==='idb:'){ obj[IMGF]=''; obj._strip=1; }   // ป้ายรูปหลุดมา (IndexedDB เปิดไม่ได้) ห้ามขึ้น cloud
+    const _stripped=!!obj._strip;
     if(obj._seed){ return; }                       // ⭐ ข้อมูลตัวอย่างของเครื่องใหม่ ห้ามขึ้น cloud
     obj._uat=Date.now(); try{ STORE.save(); }catch(e){}   // ⭐ เซฟ _uat ลงเครื่อง กัน cloud ทับของที่เพิ่งแก้
     let row=rowOf(obj,obj._uat);
+    if(_stripped&&IMGF){ let _d=Object.assign({},obj); delete _d._strip; _d[IMGF]='';
+      if(status==='online'&&client&&authUser){ try{ const g=await client.from(table).select('data').eq('id',obj.id).limit(1); const old=g&&g.data&&g.data[0]&&g.data[0].data; if(old&&old[IMGF]) _d[IMGF]=old[IMGF]; }catch(e){} }   // ดึงรูปเดิมจาก cloud มาใส่คืน (jsonb ถูกแทนทั้งก้อน)
+      else if(!_d[IMGF]){ _laterItems.set(table+":"+obj.id,{table,id:obj.id}); return; }     // ยังถามรูปเดิมไม่ได้ -> รอรอบหน้า (retryLater) ห้ามส่งของเปล่าทับ
+      row=rowOf(_d,obj._uat); }
     if(status==='online'&&client){
       try{
         let r=await client.from(table).upsert(row);
@@ -9751,6 +9767,8 @@ const CLOUD = (()=>{
       if(!Array.isArray(it.mods)) it.mods=[];
     });
     if(o.slipImg && !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(String(o.slipImg))) o.slipImg='';
+    if(o.channel==='qr'){ delete o.loyal; delete o.merged; delete o.paidAt; }                 // ⭐ v11.5 บิล QR ไม่มีทางให้แต้ม/รวมบิลจากฝั่งลูกค้า
+    Object.keys(o).forEach(k=>{ if(k[0]==='_') delete o[k]; });                           // ธงภายใน (_arch/_strip/_uat) ห้ามรับจากภายนอก (ผู้เรียกตั้ง _uat เอง)
     return o;
   }
   const _qrNoticed=new Set();
@@ -9764,7 +9782,8 @@ const CLOUD = (()=>{
       try{ PENDING.alertNew(); }catch(e){}
       try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
       try{ if(o.payStatus==='paid') PAY.autoPrint(o);
-           else if(o.payStatus==='open'){ const _s=STORE.get().settings; if(_s.autoPrint && _s.kdsServeSlip) KDS.serveSlip(o); }   // ⭐ v11.3 โต๊ะ "จ่ายตอนกลับ": ของเข้าครัวเลย -> ใบครัวต้องออกทันที (เดิมพิมพ์เฉพาะบิลที่จ่ายแล้ว)
+           else if(o.payStatus==='open'){ const _s=STORE.get().settings; if(_s.autoPrint && _s.kdsServeSlip) KDS.serveSlip(o); }
+           if((o.payStatus==='paid'||o.payStatus==='open') && authUser && !window._CUSTOMER_MODE){ try{ INV.deduct(o); }catch(e){} }   // ⭐ v11.5 ตัดสต็อกทันทีที่ออเดอร์ถึงเครื่องร้าน (เดิมรอครัวกดเปลี่ยนสถานะ ร้านที่ดูใบครัวอย่างเดียวจะไม่เคยตัด)   // ⭐ v11.3 โต๊ะ "จ่ายตอนกลับ": ของเข้าครัวเลย -> ใบครัวต้องออกทันที (เดิมพิมพ์เฉพาะบิลที่จ่ายแล้ว)
       }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
       try{ pushOrder(o); }catch(e){}
     }
@@ -9933,7 +9952,7 @@ const CLOUD = (()=>{
       if(authUser){ try{
         let mr=await client.from('app_meta').select('data').eq('id',SID()).limit(1);
         if(mr&&!mr.error&&mr.data&&mr.data[0]) mergeMeta(D,mr.data[0].data);
-        if(metaDirty()) pushMeta(true);                     // มีตั้งค่าที่บันทึกตอนออฟไลน์ค้างอยู่ -> ส่งขึ้น
+        if(metaDirty()){ if(AUTH.isHQ()) pushMeta(true); else { try{ localStorage.removeItem(MDIRTY); }catch(e){} } }   // ⭐ v11.5 เฉพาะ HQ                     // มีตั้งค่าที่บันทึกตอนออฟไลน์ค้างอยู่ -> ส่งขึ้น
       }catch(e){} }
       try{ STORE.dropSeed(); }catch(e){}     // ⭐ ได้ข้อมูลจริงแล้ว -> ทิ้งเมนู/พนักงานตัวอย่างของเครื่องใหม่
       try{ STORE.ensureHQ(); }catch(e){}     // ⭐ ดึงรายชื่อจากส่วนกลางมาแล้ว -> ถอด HQ ชั่วคราวของเครื่องสาขาทิ้ง
@@ -10044,7 +10063,7 @@ const LOYAL = (()=>{
     if(!bid){ const man=(($('#loyBid')||{}).value||'').trim(); if(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(man)) bid=man; }
     saveCfg(Object.assign({},cfg(),{on:true,branchCode:bcode,branchId:bid||null,branchName:bname}));
     // ให้เครื่องอื่นของสาขานี้ไม่ต้องพิมพ์ URL/คีย์ซ้ำ (anon key เป็นคีย์สาธารณะ)
-    try{ const b=STORE.curBranch(); if(b){ b.loyal={url,key}; STORE.save(); CLOUD.pushItem('branches',b); } }catch(e){}
+    try{ const b=STORE.curBranch(); if(b&&b.loyal){ delete b.loyal; STORE.save(); CLOUD.pushItem('branches',b); } }catch(e){}   // ⭐ v11.5 ไม่เผยแพร่ URL/คีย์ไปที่ข้อมูลสาขา (branch_public อ่านได้จากภายนอก)
     UI.toast('เชื่อมระบบสมาชิกแล้ว ✅ สาขา '+(bname||bcode),'ok'); status();
     try{ if(NAV.cur()==='settings') SETTINGS.render(); }catch(e){}
   }
@@ -10111,10 +10130,15 @@ const LOYAL = (()=>{
       await send(order);
     }catch(e){ console.error('loyal earn',e); }
   }
+  const live=(o)=> (o&&STORE.find('orders',o.id))||o;   // ⭐ v11.5 ออเดอร์ใน STORE อาจถูก sync แทนที่ระหว่างรอ RPC -> เขียนผลลง object ตัวจริงเสมอ
   async function send(order){
-    const c=cfg(), L=order.loyal; if(!L) return false;
+    order=live(order); const c=cfg(); let L=order.loyal; if(!L) return false;
+    if(!isPaidOrder(order)||order.channel!=='pos'){ L.status='rejected'; L.err='บิลไม่ใช่บิลขายหน้าร้านที่จ่ายแล้ว'; STORE.save(); return false; }   // ⭐ v11.5 กันข้อมูลที่ถูกยัดมาทาง cloud
+    L.amount=Math.round(order.total||0)/100; L.points=ptsOf(order.total);
+    if(navigator.onLine===false){ L.status='queued'; STORE.save(); return false; }   // ⭐ v11.5 ไม่มีเน็ตแน่ ๆ = ยังไม่เคยส่ง -> ส่งเองตอนออนไลน์ได้ปลอดภัย
     L.status='sending'; L.tries=(L.tries||0)+1; STORE.save();
     const r=await rpc('branch_earn_points_by_phone',{p_phone:L.phone,p_branch_id:c.branchId||null,p_branch_code:c.branchCode,p_amount:L.amount},10000);
+    order=live(order); L=order.loyal||L; order.loyal=L;
     const d=r&&r.data;
     if(d&&d.success){ L.status='done'; L.points=Number(d.points_earned||L.points); L.name=d.customer_name||L.name; L.doneAt=STORE.now();
       UI.toast('🏅 '+L.name+' ได้รับ '+L.points+' แต้ม','ok'); }
@@ -10126,14 +10150,16 @@ const LOYAL = (()=>{
     return L.status==='done';
   }
   // รายการที่ต้องให้คนตรวจ: ไม่ทราบผล / ถูกปฏิเสธ / บิลถูกยกเลิกหลังให้แต้มแล้ว
-  function pending(){ return (STORE.scoped('orders')||[]).filter(o=>o.loyal&&(['unknown','rejected','sending'].includes(o.loyal.status)||o.loyal.needReverse)); }
+  function pending(){ return (STORE.scoped('orders')||[]).filter(o=>o.loyal&&(['unknown','rejected','sending','queued'].includes(o.loyal.status)||o.loyal.needReverse)); }
+  let _fq=false;
+  async function flushQueued(){ if(_fq||!on()||navigator.onLine===false) return; _fq=true; try{ for(const o of (STORE.scoped('orders')||[]).filter(o=>o.loyal&&o.loyal.status==='queued')) await send(o); }finally{ _fq=false; } }
   function review(){
     const list=pending().slice(-60).reverse();
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>📋 แต้มที่ต้องตรวจ (${list.length})</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">"ไม่ทราบผล" = ส่งไปแล้วแต่ไม่ได้คำตอบ → <b>เปิดหน้าแอดมินระบบแต้มดูก่อน</b> ว่าแต้มเข้าหรือยัง ถ้ายังค่อยกด "ส่งอีกครั้ง" (กดซ้ำทั้งที่เข้าแล้ว = ลูกค้าได้แต้มสองรอบ)</p>
-        ${list.length?list.map(o=>{ const L=o.loyal; const st=L.needReverse?'ยกเลิกบิลแล้ว — ต้องหักแต้มคืน '+L.points+' แต้ม (ทำที่หน้าแอดมิน)':({unknown:'ไม่ทราบผล',rejected:'ถูกปฏิเสธ: '+(L.err||''),sending:'ค้างส่ง'}[L.status]||L.status);
+        ${list.length?list.map(o=>{ const L=o.loyal; const st=L.needReverse?'ยกเลิกบิลแล้ว — ต้องหักแต้มคืน '+L.points+' แต้ม (ทำที่หน้าแอดมิน)':({unknown:'ไม่ทราบผล',rejected:'ถูกปฏิเสธ: '+(L.err||''),sending:'ค้างส่ง',queued:'รอเน็ต (ส่งเองเมื่อออนไลน์)'}[L.status]||L.status);
           return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:8px">
             <b>${esc(o.no||'')}</b> · ${STORE.baht(o.total)} · ${esc(L.name||'')} <small style="color:var(--muted)">${esc(mask(L.phone))} · ${new Date(L.at).toLocaleString('th-TH')}</small>
             <div style="font-size:13px;color:var(--warn);margin:4px 0">${esc(st)}</div>
@@ -10147,9 +10173,10 @@ const LOYAL = (()=>{
   async function resend(id){
     if(_resending) return; const o=STORE.find('orders',id); if(!o||!o.loyal||o.loyal.status==='done') return;
     UI.confirm2('ส่งให้แต้มอีกครั้ง?','ตรวจในหน้าแอดมินระบบแต้มแล้วใช่ไหม ว่าบิล '+(o.no||'')+' ('+STORE.baht(o.total)+') ยังไม่มีแต้มเข้า\n\nถ้าแต้มเข้าไปแล้ว การส่งอีกครั้งจะทำให้ลูกค้าได้แต้มซ้ำ',async()=>{
-      _resending=true; try{ await send(o); }finally{ _resending=false; } review(); },true);
+      o.loyal.resentBy=((AUTH.get&&AUTH.get())||{}).name||''; _resending=true; try{ await send(o); }finally{ _resending=false; } review(); },true);
   }
   function mark(id,st){ const o=STORE.find('orders',id); if(!o||!o.loyal) return;
+    o.loyal.by=((AUTH.get&&AUTH.get())||{}).name||''; o.loyal.byAt=STORE.now();   // ⭐ v11.5 จดว่าใครกด
     if(st==='reversed'){ o.loyal.needReverse=false; o.loyal.reversedAt=STORE.now(); } else o.loyal.status=st;
     STORE.save(); try{ CLOUD.pushOrder(o); }catch(e){} review(); }
   // ยกเลิกบิลที่ให้แต้มไปแล้ว: สาขาหักคืนเองไม่ได้ (ระบบแต้มให้เฉพาะแอดมิน) -> จดไว้ + แจ้งเตือน
@@ -10162,9 +10189,9 @@ const LOYAL = (()=>{
   // บรรทัดบนใบเสร็จ
   function rcptLine(order){
     const L=order&&order.loyal; if(!L||!L.points||L.status==='skip'||L.status==='rejected') return '';
-    return '<div style="text-align:center;border-top:1px dashed #000;margin-top:8px;padding-top:6px;font-size:12px">🏅 สมาชิก: <b>'+esc(L.name||'')+'</b> ('+esc(mask(L.phone))+')<br>บิลนี้ได้รับ <b>'+esc(L.points)+'</b> แต้ม</div>';
+    return '<div style="text-align:center;border-top:1px dashed #000;margin-top:8px;padding-top:6px;font-size:12px">🏅 สมาชิก: <b>'+esc(L.name||'')+'</b> ('+esc(mask(L.phone))+')<br>'+(L.status==='done'?'บิลนี้ได้รับ <b>'+esc(L.points)+'</b> แต้ม':'สะสม <b>'+esc(L.points)+'</b> แต้ม (กำลังบันทึก)')+'</div>';
   }
-  return {on,setup,status,connect,disconnect,label,open,find,use,earn,review,resend,mark,onVoid,rcptLine,pending,ptsOf};
+  return {on,setup,status,connect,disconnect,label,open,find,use,earn,review,resend,mark,onVoid,rcptLine,pending,ptsOf,flushQueued};
 })();
 
 /* ============================================================
@@ -10490,6 +10517,7 @@ const APP = (()=>{
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
     setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); },5000);
+    setInterval(()=>{ try{ LOYAL.flushQueued(); }catch(e){} },20000); window.addEventListener('online',()=>{ try{ LOYAL.flushQueued(); }catch(e){} });   // ⭐ v11.5 แต้มที่ค้างเพราะไม่มีเน็ต
     try{ PRINT.warmLogo(); }catch(e){}                    // ⭐ โหลดโลโก้ไว้ล่วงหน้า จะได้พิมพ์ติดตั้งแต่ใบแรก
     updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
     bindKeys();

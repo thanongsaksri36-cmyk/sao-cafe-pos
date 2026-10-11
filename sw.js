@@ -4,7 +4,7 @@
    - ไฟล์นิ่ง (ไอคอน/ฟอนต์/supabase-js): ใช้สำเนาก่อน แล้วอัปเดตเบื้องหลัง
    - คำสั่งไป Supabase / Telegram / AI: ไม่แตะเลย (ห้าม cache ข้อมูลร้าน)
    เปลี่ยน VER เมื่อแก้ไฟล์นี้ */
-const VER = 'sao-pos-sw-1';
+const VER = 'sao-pos-sw-2';
 const SHELL = ['./', 'manifest.json', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png'];
 const CDN_OK = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -19,6 +19,8 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+const isAppPage = (url) => url.pathname === '/' || url.pathname.endsWith('/index.html');
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
@@ -26,10 +28,16 @@ self.addEventListener('fetch', (e) => {
   const same = url.origin === self.location.origin;
 
   // หน้าแอป: network-first (ตัด query เช่น ?t=T1&shop=.. ออกจาก key — ทุกลิงก์คือไฟล์เดียวกัน)
-  if (same && (req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('/index.html'))) {
+  // v2: เก็บสำเนาเฉพาะเมื่อเป็นหน้า HTML ของแอปจริง ๆ และไม่ใช่ response ที่ถูก redirect
+  //     (เดิม navigate ไปไฟล์อื่น เช่น /manifest.json ก็ทับสำเนาหน้าแอป และ response แบบ redirect ใช้ตอนออฟไลน์ไม่ได้)
+  if (same && (req.mode === 'navigate' || isAppPage(url))) {
     e.respondWith(
       fetch(req).then((res) => {
-        if (res && res.ok) { const copy = res.clone(); caches.open(VER).then((c) => c.put('./', copy)); }
+        const ct = (res && res.headers.get('content-type')) || '';
+        if (res && res.ok && !res.redirected && isAppPage(new URL(res.url || req.url)) && ct.includes('text/html')) {
+          const copy = res.clone();
+          caches.open(VER).then((c) => c.put('./', copy));
+        }
         return res;
       }).catch(() => caches.match('./').then((r) => r || new Response('ออฟไลน์ และยังไม่เคยเปิดแอปบนเครื่องนี้', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } })))
     );
