@@ -6154,7 +6154,7 @@ const BO = (()=>{
       const prod={id:STORE.uuid(),sku:'',name:p.name,cat:catId(p.category),price:p.price||0,prices,cost:p.cost||0,emoji:p.emoji||'🍽️',img:p.img||'',options:(p.options||[]).map(n=>modByName[n]).filter(Boolean),recipe:_rec(p.recipe),
         // ⭐ แบบเมนู (ร้อน/เย็น/ปั่น) — แต่ละแบบมีสูตรของตัวเอง
         variants:(p.variants||[]).filter(v=>v&&String(v.name||'').trim()).map(v=>({id:STORE.uuid(),name:String(v.name).trim(),priceDelta:Number(v.priceDelta)||0,recipe:_rec(v.recipe)})),
-        available:true,sort:0,createdAt:STORE.now(),branchId:bid};
+        available:p.available!==false,sort:0,createdAt:STORE.now(),branchId:bid};   // ⭐ v11.6 นำเข้าเมนูแบบ "ปิดขายไว้ก่อน" ได้ (available:false)
       DB.products.push(prod); try{CLOUD.pushItem('products',prod);}catch(e){} nP++; });
     STORE.save(); render();
     UI.toast('นำเข้าแล้ว: +'+nP+' เมนู · +'+nC+' หมวด · +'+nM+' ตัวเลือก · +'+nI+' วัตถุดิบ'+(skip?(' · ข้ามซ้ำ '+skip):''),'ok');
@@ -6172,7 +6172,7 @@ const BO = (()=>{
         if(o.recipe&&o.recipe.length) q.recipe=o.recipe.map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient);
         if(o.sweetPct!=null) q.sweetPct=o.sweetPct; return q; })})),
       ingredients:igs.map(i=>({name:i.name,unit:i.unit||'',cost:i.cost||0,stock:i.stock||0,parLevel:i.parLevel||0,purchaseQty:i.purchaseQty||0,purchasePrice:(i.purchasePrice!=null?i.purchasePrice:null),sweet:!!i.sweet})),
-      products:prods.map(p=>({name:p.name,category:(cats.find(c=>c.id===p.cat)||{}).name||'',price:p.price||0,priceTake:(p.prices&&p.prices.takeaway!=null)?p.prices.takeaway:null,prices:p.prices||null,cost:p.cost||0,emoji:p.emoji||'',img:p.img||'',options:(p.options||[]).map(id=>modName[id]).filter(Boolean),recipe:(p.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient),
+      products:prods.map(p=>({available:p.available!==false,name:p.name,category:(cats.find(c=>c.id===p.cat)||{}).name||'',price:p.price||0,priceTake:(p.prices&&p.prices.takeaway!=null)?p.prices.takeaway:null,prices:p.prices||null,cost:p.cost||0,emoji:p.emoji||'',img:p.img||'',options:(p.options||[]).map(id=>modName[id]).filter(Boolean),recipe:(p.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient),
         // ⭐ แบบเมนู (ร้อน/เย็น/ปั่น) พร้อมสูตรของแต่ละแบบ
         variants:(p.variants||[]).filter(v=>v&&!v.deletedAt).map(v=>({name:v.name,priceDelta:v.priceDelta||0,recipe:(v.recipe||[]).map(r=>({ingredient:igName[r.ingredientId],qty:r.qty})).filter(r=>r.ingredient)}))}))};
     try{ const blob=new Blob([JSON.stringify(out)],{type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='เมนู_'+(out.shopName||'ร้าน')+'.json'; document.body.appendChild(a); a.click(); a.remove(); UI.toast('ส่งออกเมนูแล้ว ('+prods.length+' เมนู)','ok'); }catch(e){ UI.toast('ส่งออกไม่สำเร็จ','err'); }
@@ -7671,7 +7671,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.5</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.6</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7902,7 +7902,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.5) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.6) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
