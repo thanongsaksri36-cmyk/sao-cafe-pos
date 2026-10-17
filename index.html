@@ -3846,6 +3846,17 @@ const POS = (()=>{
                    :(low?`<div style="font-size:10px;font-weight:700;color:var(--warn)">ใกล้หมด</div>`:'');
       const _nm=esc(p.name||''), _len=(p.name||'').length;
       const _fs=_len>46?11:(_len>30?12:13.5);        // ชื่อยาว -> ย่อฟอนต์ ไม่ต้องตัดข้อความทิ้ง
+      // ⭐ v11.8 มีรูป -> การ์ดแบบรูปเต็มกรอบ (รูปสี่เหลี่ยมจัตุรัสเต็มความกว้าง + ชื่อ/ราคาใต้รูป)
+      if(p.img) return `<div onclick="${oos?'':`POS.tap('${p.id}')`}" title="${_nm}" style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);cursor:${oos?'default':'pointer'};display:flex;flex-direction:column;overflow:hidden;padding:0;${oos?'opacity:.5;':''}">
+        <div style="position:relative;width:100%;aspect-ratio:1/1;flex:none;background:var(--surface-2)">
+          <img src="${esc(p.img)}" alt="" loading="lazy" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block">
+          ${oos?`<div style="position:absolute;inset:auto 0 0 0;background:rgba(192,57,43,.88);color:#fff;font-size:12px;font-weight:700;padding:3px 0;text-align:center">หมด</div>`:(low?`<div style="position:absolute;inset:auto 0 0 0;background:rgba(200,120,0,.85);color:#fff;font-size:11px;font-weight:700;padding:2px 0;text-align:center">ใกล้หมด</div>`:'')}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:3px;padding:7px 7px 9px;flex:1;text-align:center">
+          <div style="font-size:${_fs}px;font-weight:600;line-height:1.3;color:var(--text);width:100%;overflow-wrap:anywhere;max-height:2.6em;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2">${_nm}</div>
+          <div style="font-size:15px;font-weight:800;color:var(--gold)">${STORE.baht(priceOf(p))}</div>
+        </div>
+      </div>`;
       return `<div onclick="${oos?'':`POS.tap('${p.id}')`}" title="${_nm}" style="background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);cursor:${oos?'default':'pointer'};display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;gap:7px;padding:14px 10px 12px;min-height:128px;${oos?'opacity:.5;':''}">
         ${icon}
         <div style="font-size:${_fs}px;font-weight:600;line-height:1.3;color:var(--text);width:100%;overflow-wrap:anywhere;height:3.9em;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center">${_nm}</div>
@@ -7673,7 +7684,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.7</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.8</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7904,7 +7915,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.7) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.8) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
