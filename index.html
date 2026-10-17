@@ -6146,7 +6146,7 @@ const BO = (()=>{
     inp.click();
   }
   function applyImport(d){
-    const bid=STORE.bid(), DB=STORE.get(); let nC=0,nM=0,nP=0,nI=0,skip=0,nImg=0;
+    const bid=STORE.bid(), DB=STORE.get(); let nC=0,nM=0,nP=0,nI=0,skip=0,nImg=0,nOpt=0;
     const catId=(name)=>{ name=name||'ทั่วไป'; let c=STORE.scoped('categories').find(x=>!x.deletedAt&&x.name===name); if(c) return c.id;
       const mx=Math.max(0,...STORE.scoped('categories').map(x=>x.sort||0)); const nc={id:STORE.uuid(),name,sort:mx+1,color:'#A67C3D',branchId:bid}; DB.categories.push(nc); try{CLOUD.pushItem('categories',nc);}catch(e){} nC++; return nc.id; };
     const ingByName={}; (d.ingredients||[]).forEach(g=>{ if(!g||!g.name) return; let ex=STORE.scoped('ingredients').find(x=>!x.deletedAt&&x.name===g.name); if(ex){ ingByName[g.name]=ex.id; return; }
@@ -6159,7 +6159,12 @@ const BO = (()=>{
     (d.products||[]).forEach(p=>{ if(!p.name) return;
       { const ex=STORE.scoped('products').find(x=>!x.deletedAt&&x.name===p.name);
         if(ex){ // ⭐ v11.7 เมนูชื่อซ้ำ: ไม่สร้างใหม่ แต่ถ้าเมนูเดิมยังไม่มีรูป และไฟล์มีรูป -> เติมรูปให้ (ใช้นำเข้ารูปทีหลังได้)
-          if(p.img && !ex.img){ ex.img=p.img; delete ex._strip; try{ CLOUD.pushItem('products',ex); }catch(e){} nImg++; } else skip++; return; } }
+          let _ch=false;
+          if(p.img && !ex.img){ ex.img=p.img; delete ex._strip; nImg++; _ch=true; }
+          // ⭐ v11.9 เมนูเดิมยังไม่มีกลุ่มตัวเลือก และไฟล์มี -> ผูกให้ (เช่น ความหวาน/เพิ่มช็อต/ท็อปปิ้ง) · เมนูที่ตั้งตัวเลือกไว้แล้วไม่แตะ
+          const _op=(p.options||[]).map(n=>modByName[n]).filter(Boolean);
+          if(_op.length && !(ex.options&&ex.options.length)){ ex.options=_op; nOpt++; _ch=true; }
+          if(_ch){ try{ CLOUD.pushItem('products',ex); }catch(e){} } else skip++; return; } }
       const prices={'dine-in':p.price||0}; if(p.priceTake!=null) prices['takeaway']=p.priceTake;
       // ⭐ ราคาแยกช่องทาง (grab/lineman/shopee) ถ้าไฟล์มีมาให้
       if(p.prices&&typeof p.prices==='object') Object.keys(p.prices).forEach(k=>{ const v=Number(p.prices[k]); if(!isNaN(v)) prices[k]=v; });
@@ -6170,7 +6175,7 @@ const BO = (()=>{
         available:p.available!==false,sort:0,createdAt:STORE.now(),branchId:bid};   // ⭐ v11.6 นำเข้าเมนูแบบ "ปิดขายไว้ก่อน" ได้ (available:false)
       DB.products.push(prod); try{CLOUD.pushItem('products',prod);}catch(e){} nP++; });
     STORE.save(); render();
-    UI.toast('นำเข้าแล้ว: +'+nP+' เมนู · +'+nC+' หมวด · +'+nM+' ตัวเลือก · +'+nI+' วัตถุดิบ'+(nImg?(' · เติมรูป '+nImg+' เมนู'):'')+(skip?(' · ข้ามซ้ำ '+skip):''),'ok');
+    UI.toast('นำเข้าแล้ว: +'+nP+' เมนู · +'+nC+' หมวด · +'+nM+' ตัวเลือก · +'+nI+' วัตถุดิบ'+(nImg?(' · เติมรูป '+nImg+' เมนู'):'')+(nOpt?(' · ผูกตัวเลือก '+nOpt+' เมนู'):'')+(skip?(' · ข้ามซ้ำ '+skip):''),'ok');
   }
   function exportMenu(){
     const cats=STORE.scoped('categories').filter(c=>!c.deletedAt);
@@ -7684,7 +7689,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.8</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.9</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7915,7 +7920,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.8) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.9) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
