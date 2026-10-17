@@ -6151,11 +6151,11 @@ const BO = (()=>{
       const mx=Math.max(0,...STORE.scoped('categories').map(x=>x.sort||0)); const nc={id:STORE.uuid(),name,sort:mx+1,color:'#A67C3D',branchId:bid}; DB.categories.push(nc); try{CLOUD.pushItem('categories',nc);}catch(e){} nC++; return nc.id; };
     const ingByName={}; (d.ingredients||[]).forEach(g=>{ if(!g||!g.name) return; let ex=STORE.scoped('ingredients').find(x=>!x.deletedAt&&x.name===g.name); if(ex){ ingByName[g.name]=ex.id; return; }
       const ni={id:STORE.uuid(),name:g.name,unit:g.unit||'',cost:g.cost||0,stock:g.stock||0,parLevel:g.parLevel||0,purchaseQty:g.purchaseQty||0,purchasePrice:(g.purchasePrice!=null?g.purchasePrice:null),sweet:!!g.sweet,branchId:bid}; DB.ingredients=DB.ingredients||[]; DB.ingredients.push(ni); try{CLOUD.pushItem('ingredients',ni);}catch(e){} nI++; ingByName[g.name]=ni.id; });
-    const modByName={}; (d.modifiers||[]).forEach(m=>{ if(!m||!m.name) return; let g=STORE.scoped('modifiers').find(x=>!x.deletedAt&&x.name===m.name);
+    const modByName={}, _newMod=new Set(); (d.modifiers||[]).forEach(m=>{ if(!m||!m.name) return; let g=STORE.scoped('modifiers').find(x=>!x.deletedAt&&x.name===m.name);
       if(g){ modByName[m.name]=g.id; return; }
       const ng={id:STORE.uuid(),name:m.name,type:m.type||'single',required:!!m.required,options:(m.options||[]).map(o=>{ const q={name:o.name,price:o.price||0};
         const rr=(o.recipe||[]).map(r=>({ingredientId:ingByName[r.ingredient],qty:Number(r.qty)||0})).filter(r=>r.ingredientId&&r.qty);
-        if(rr.length) q.recipe=rr; if(o.sweetPct!=null) q.sweetPct=Number(o.sweetPct); return q; }),branchId:bid}; DB.modifiers.push(ng); try{CLOUD.pushItem('modifiers',ng);}catch(e){} nM++; modByName[m.name]=ng.id; });
+        if(rr.length) q.recipe=rr; if(o.sweetPct!=null) q.sweetPct=Number(o.sweetPct); return q; }),branchId:bid}; DB.modifiers.push(ng); try{CLOUD.pushItem('modifiers',ng);}catch(e){} nM++; modByName[m.name]=ng.id; _newMod.add(ng.id); });
     (d.products||[]).forEach(p=>{ if(!p.name) return;
       { const ex=STORE.scoped('products').find(x=>!x.deletedAt&&x.name===p.name);
         if(ex){ // ⭐ v11.7 เมนูชื่อซ้ำ: ไม่สร้างใหม่ แต่ถ้าเมนูเดิมยังไม่มีรูป และไฟล์มีรูป -> เติมรูปให้ (ใช้นำเข้ารูปทีหลังได้)
@@ -6164,6 +6164,8 @@ const BO = (()=>{
           // ⭐ v11.9 เมนูเดิมยังไม่มีกลุ่มตัวเลือก และไฟล์มี -> ผูกให้ (เช่น ความหวาน/เพิ่มช็อต/ท็อปปิ้ง) · เมนูที่ตั้งตัวเลือกไว้แล้วไม่แตะ
           const _op=(p.options||[]).map(n=>modByName[n]).filter(Boolean);
           if(_op.length && !(ex.options&&ex.options.length)){ ex.options=_op; nOpt++; _ch=true; }
+          // ⭐ v11.10 กลุ่มตัวเลือกที่เพิ่งสร้างจากไฟล์นี้ (เช่น เย็น / ปั่น) -> เติมให้เมนูเดิมที่ตั้งตัวเลือกไว้แล้วด้วย เรียงตามไฟล์ · กลุ่มที่ร้านมีอยู่แล้วไม่ยัดกลับ
+          else if(_op.some(id=>_newMod.has(id)&&!ex.options.includes(id))){ const _has=ex.options; ex.options=_op.filter(id=>_has.includes(id)||_newMod.has(id)).concat(_has.filter(id=>!_op.includes(id))); nOpt++; _ch=true; }
           if(_ch){ try{ CLOUD.pushItem('products',ex); }catch(e){} } else skip++; return; } }
       const prices={'dine-in':p.price||0}; if(p.priceTake!=null) prices['takeaway']=p.priceTake;
       // ⭐ ราคาแยกช่องทาง (grab/lineman/shopee) ถ้าไฟล์มีมาให้
@@ -7689,7 +7691,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.9</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.10</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7920,7 +7922,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.9) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.10) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
