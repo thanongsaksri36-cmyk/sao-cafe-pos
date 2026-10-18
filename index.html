@@ -500,8 +500,11 @@ tr:hover td{background:var(--surface-2)}
 .fl-zones{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
 .fl-ztab{padding:8px 16px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:'Prompt';font-size:13.5px;font-weight:600;cursor:pointer}
 .fl-ztab.active{background:var(--green);border-color:var(--green);color:#fff}
-.fl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;border:1px solid var(--line);background:var(--surface-2)}
-.fl-canvas{--u:32px;position:relative;width:100%;min-width:600px;height:calc(var(--rows)*var(--u))}
+.fl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;border:1px solid var(--line);background:#F3F4F6}
+.fl-canvas{--u:32px;position:relative;width:100%;min-width:600px;max-width:1000px;margin:0 auto;height:calc(var(--rows)*var(--u))}
+.fl-t.st-free .fl-box,.fl-t.st-resv .fl-box{border-width:3px}
+.fl-t.st-free .fl-box{border-color:#D3D8DF;box-shadow:none}
+[data-theme="dark"] .fl-wrap{background:var(--surface-2)}
 .fl-canvas.editing{background-image:radial-gradient(circle,var(--line) 1.2px,transparent 1.3px);background-size:var(--u) var(--u)}
 .fl-it{position:absolute;left:calc(var(--x)*var(--u));top:calc(var(--y)*var(--u));width:calc(var(--w)*var(--u));height:calc(var(--h)*var(--u));font-size:clamp(10px,calc(var(--u)*.4),17px);-webkit-user-select:none;user-select:none}
 .fl-box{position:absolute;inset:calc(var(--u)*.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center;line-height:1.2;overflow:hidden;
@@ -510,7 +513,7 @@ tr:hover td{background:var(--surface-2)}
 .fl-t:active .fl-box{transform:scale(.97)}
 .fl-t.round .fl-box{border-radius:50%}
 .fl-chs{position:absolute;inset:calc(var(--u)*.28)}
-.fl-ch{position:absolute;width:calc(var(--u)*.62);height:calc(var(--u)*.34);border-radius:6px;background:#C5CAD3;transform:translate(-50%,-50%)}
+.fl-ch{position:absolute;width:calc(var(--u)*.62);height:calc(var(--u)*.38);border-radius:999px;background:#C5CAD3;transform:translate(-50%,-50%)}
 .fl-ch.v{width:calc(var(--u)*.34);height:calc(var(--u)*.62)}
 .fl-name{font-weight:800;font-size:1.25em;display:flex;align-items:center;gap:3px}
 .fl-qr{font-size:.75em}
@@ -5826,7 +5829,7 @@ const FLOOR = (()=>{
   function chairs(t,p){
     const n=Math.max(0,Math.min(12,t.seats!=null?(+t.seats||0):2)); if(!n) return '';
     const out=[];
-    if(t.shape==='round'){ for(let i=0;i<n;i++){ const a=(i/n)*2*Math.PI-Math.PI/2; out.push(`<i class="fl-ch" style="left:${(50+50*Math.cos(a)).toFixed(1)}%;top:${(50+50*Math.sin(a)).toFixed(1)}%"></i>`); } return out.join(''); }
+    if(t.shape==='round'){ const a0=(n===2)?0:-Math.PI/2; for(let i=0;i<n;i++){ const a=(i/n)*2*Math.PI+a0; out.push(`<i class="fl-ch" style="left:${(50+50*Math.cos(a)).toFixed(1)}%;top:${(50+50*Math.sin(a)).toFixed(1)}%"></i>`); } return out.join(''); }
     const a=Math.ceil(n/2), b=n-a, vert=p.h>p.w;
     const row=(k,fixed)=>{ for(let i=0;i<k;i++){ const f=((i+1)/(k+1)*100).toFixed(1);
       out.push(vert?`<i class="fl-ch v" style="left:${fixed}%;top:${f}%"></i>`:`<i class="fl-ch" style="left:${f}%;top:${fixed}%"></i>`); } };
@@ -5859,7 +5862,7 @@ const FLOOR = (()=>{
         ${edit?'<span class="fl-hint">โหมดจัดผัง · ลากเพื่อย้าย · แตะเพื่อเลือกแล้วปรับขนาด</span>'
           :`<div class="fl-legend"><span class="lg free">ว่าง <b>${cnt.free}</b></span><span class="lg busy">มีลูกค้า <b>${cnt.busy}</b></span><span class="lg wait">รอชำระ <b>${cnt.wait}</b></span><span class="lg resv">จองวันนี้ <b>${cnt.resv}</b></span></div>`}
         <div class="fl-tools">${edit
-          ?'<button class="btn btn-ghost" onclick="FLOOR.addTable()">+ โต๊ะ</button><button class="btn btn-ghost" onclick="FLOOR.addDeco()">+ ของตกแต่ง</button><button class="btn btn-gold" onclick="FLOOR.stopEdit()">✓ เสร็จ</button>'
+          ?'<button class="btn btn-ghost" onclick="FLOOR.presetAsk()">📐 ผังแบบร้าน</button><button class="btn btn-ghost" onclick="FLOOR.addTable()">+ โต๊ะ</button><button class="btn btn-ghost" onclick="FLOOR.addDeco()">+ ของตกแต่ง</button><button class="btn btn-gold" onclick="FLOOR.stopEdit()">✓ เสร็จ</button>'
           :`<button class="btn btn-ghost" onclick="FLOOR.book()">📅 จองโต๊ะ</button>${canEdit?'<button class="btn btn-ghost" onclick="FLOOR.startEdit()">✏️ จัดผัง</button>':''}`}</div></div>
       ${(zs.length>1||edit)?`<div class="fl-zones">${zs.map((k,i)=>`<button class="fl-ztab ${k===z?'active':''}" onclick="FLOOR.setZone(${i})">${esc(k)}</button>`).join('')}${edit?'<button class="fl-ztab" onclick="FLOOR.addZone()">+ โซน</button>':''}</div>`:''}
       ${edit?editBar():''}
@@ -6092,7 +6095,46 @@ const FLOOR = (()=>{
   function del(){ const t=selT(); if(!t) return;
     if(t.kind!=='deco'){ const o=ordersOf(t.name); if(o.open.length||o.wait.length){ UI.toast('โต๊ะนี้มีบิลค้างอยู่ — ลบไม่ได้','err'); return; } }
     UI.confirm2('ลบ',(t.kind==='deco'?'ลบของตกแต่งนี้?':'ลบโต๊ะ '+t.name+'? (QR ของโต๊ะนี้จะใช้สั่งไม่ได้)'),()=>{ t.deletedAt=now(); save(t); selId=null; UI.close('genOverlay'); render(); },true); }
-  return {render,setZone,tap,guests,seat,touchSeat,order,settle,clear,afterSettle,move,moveTo,book,arrive,pickFor,assignArrive,cancelResv,
+  // ⭐ v12.1 ผังสำเร็จรูปตามผังเดิมของร้าน (หน่วย = 1/24 ของความกว้างผัง) · t = ชื่อโต๊ะ, d = ของตกแต่ง
+  const PRESET=[
+    {t:'1',x:2,y:0,w:3,h:5,seats:4},{t:'2',x:6,y:0,w:3,h:5,seats:4},{d:'label',name:'WELCOME',x:11,y:0,w:5,h:3},{t:'23',x:17,y:0,w:3,h:5,seats:4},
+    {d:'plant',x:10,y:6,w:3,h:3},{t:'3',x:13,y:6,w:5,h:3,seats:4},{d:'plant',x:18,y:6,w:3,h:3},
+    {d:'label',name:'สั่งกลับบ้าน',x:0,y:9,w:3,h:3},{d:'label',name:'แคชเชียร์',x:3,y:9,w:3,h:3},
+    {t:'10',x:11,y:11,w:3,h:3,seats:2},{t:'4',x:16,y:11,w:4,h:3,seats:0},
+    {d:'counter',name:'เคาน์เตอร์',x:0,y:12,w:10,h:3},{d:'counter',name:'',x:7,y:15,w:3,h:12},
+    {t:'9',x:11,y:16,w:3,h:3,seats:2},{t:'5',x:17,y:16,w:3,h:3,seats:2},
+    {t:'8',x:11,y:20,w:3,h:4,seats:4},{t:'6',x:17,y:21,w:3,h:3,seats:2},
+    {d:'wc',x:12,y:26,w:3,h:3},{t:'12',x:17,y:26,w:3,h:3,seats:2,shape:'round'}];
+  function presetAsk(){
+    if(!edit) return;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>📐 ผังแบบร้าน</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><p style="font-size:13.5px;line-height:1.7;margin-bottom:6px">วางโต๊ะ <b>1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 23</b> พร้อมป้าย WELCOME ต้นไม้ เคาน์เตอร์ ห้องน้ำ ตามผังเดิมของร้าน ลงในโซน <b>${esc(curZone())}</b></p>
+      <p style="font-size:12.5px;color:var(--muted);line-height:1.6">• ของตกแต่งเดิมในโซนนี้จะถูกแทนที่ · โต๊ะที่ยังไม่มีจะสร้างให้ · โต๊ะเดิมที่ไม่อยู่ในผังจะวางไว้ด้านล่าง<br>• วางเสร็จแล้วยังลากปรับตำแหน่งต่อได้</p>
+      <div class="fl-btns col"><button class="btn btn-gold" onclick="UI.close('genOverlay');FLOOR.applyPreset(1)">ใช้ชื่อโต๊ะตามผัง (T1 → 1) · ต้องพิมพ์ QR โต๊ะใหม่</button>
+      <button class="btn btn-ghost" onclick="UI.close('genOverlay');FLOOR.applyPreset(0)">คงชื่อโต๊ะเดิม (T1, T2 …) · QR เดิมใช้ต่อได้</button></div></div>`;
+    UI.open('genOverlay');
+  }
+  function applyPreset(rename){
+    if(!edit) return;
+    const z=curZone(), B=STORE.bid(); let nNew=0, nRen=0;
+    all().filter(t=>t.kind==='deco'&&zoneOf(t)===z).forEach(t=>{ t.deletedAt=now(); save(t); });
+    const used=new Set();
+    PRESET.forEach(p=>{
+      if(p.d){ const o={id:STORE.uuid(),kind:'deco',deco:p.d,name:p.name||'',x:p.x,y:p.y,w:p.w,h:p.h,zone:z,active:true,branchId:B}; STORE.get().tables.push(o); save(o); return; }
+      const free=x=>!used.has(x.id);
+      let t=tables().find(x=>x.name===p.t&&free(x)) || tables().find(x=>x.name==='T'+p.t&&free(x));
+      if(!t){ t={id:STORE.uuid(),name:p.t,active:true,branchId:B}; STORE.get().tables.push(t); nNew++; }
+      else if(rename && t.name!==p.t){ const o=ordersOf(t.name); if(!o.open.length&&!o.wait.length&&!tables().some(x=>x.name===p.t)){ t.name=p.t; nRen++; } }
+      used.add(t.id);
+      Object.assign(t,{zone:z,x:p.x,y:p.y,w:p.w,h:p.h,seats:p.seats,shape:p.shape||'rect'}); save(t);
+    });
+    const rest=tables().filter(t=>zoneOf(t)===z&&!used.has(t.id)); let x=0, y=30;
+    rest.forEach(t=>{ t.x=x; t.y=y; t.w=3; t.h=3; save(t); x+=4; if(x>20){ x=0; y+=4; } });
+    selId=null; render();
+    UI.toast('จัดผังตามร้านแล้ว'+(nNew?' · เพิ่มโต๊ะ '+nNew:'')+(nRen?' · เปลี่ยนชื่อ '+nRen+' โต๊ะ (พิมพ์ QR ใหม่ที่หลังร้าน › โต๊ะ)':'')+(rest.length?' · โต๊ะที่ไม่อยู่ในผัง '+rest.length+' ตัว อยู่ด้านล่าง':''),'ok');
+  }
+  return {presetAsk,applyPreset,render,setZone,tap,guests,seat,touchSeat,order,settle,clear,afterSettle,move,moveTo,book,arrive,pickFor,assignArrive,cancelResv,
           startEdit,stopEdit,adj,shape,rename,moveZone,addZone,addTable,addDeco,addDecoOf,del};
 })();
 
@@ -8186,7 +8228,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.0</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.1</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8417,7 +8459,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.0) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.1) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
