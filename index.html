@@ -4186,10 +4186,11 @@ const POS = (()=>{
    MOD — modifier selector overlay
    ============================================================ */
 const MOD = (()=>{
-  let prod=null, sel={}, qty=1, vSel=null;
+  let prod=null, sel={}, qty=1, vSel=null, onAdd=null;   // ⭐ v12.2 onAdd = หน้าสั่งของลูกค้า (QR) ใช้กล่องเลือกตัวเลือกเดียวกัน
   // เมนูที่ไม่มี options ต้องไม่พัง (เดิม p.options.map จะ error ถ้า options ว่าง)
   function optsOf(p){ return (p&&Array.isArray(p.options)?p.options:[]).map(id=>STORE.find('modifiers',id)).filter(Boolean); }
-  function open(p){
+  function open(p,cb){
+    onAdd=(typeof cb==='function')?cb:null;
     prod=p; qty=1; sel={};
     const vs=INV.variantsOf(p);
     vSel = vs.length ? vs[0].id : null;                  // ⭐ ตั้งแบบแรกไว้ให้เลย กดเพิ่มได้ทันที
@@ -4243,7 +4244,7 @@ const MOD = (()=>{
   }
   function confirm(){
     const c=calcMods();
-    POS.addToCart(prod,qty,c.chosen,c.price,curVariant());
+    if(onAdd) onAdd(prod,qty,c.chosen,c.price,curVariant()); else POS.addToCart(prod,qty,c.chosen,c.price,curVariant());
     UI.close('modOverlay');
   }
   return {open,pick,q,confirm,pickVariant};
@@ -4570,7 +4571,7 @@ const PAY = (()=>{
     const docs=[c.outerHTML];
     const st=STORE.get().settings;
     if(st.kdsServeSlip && _lastOrd){                  // ⭐ เปิดสวิตช์ใบครัวไว้ = แนบมาด้วยเลย
-      try{ docs.push(KDS.serveSlipHtml(_lastOrd)); }catch(e){ console.error('kitchen',e); }
+      try{ docs.push(...KDS.serveSlipDocs(_lastOrd)); }catch(e){ console.error('kitchen',e); }
     }
     printDocs(docs,true);                             // กดเอง = พิมพ์เสมอ
   }
@@ -4697,10 +4698,10 @@ const PAY = (()=>{
     const st=STORE.get().settings; if(!st.autoPrint) return;
     const _kit=st.kdsServeSlip && !(opt&&opt.noKitchen);
     if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order);
-      if(_kit) setTimeout(()=>printDocs([KDS.serveSlipHtml(order)]),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
+      if(_kit) setTimeout(()=>printDocs(KDS.serveSlipDocs(order)),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
       return; }
     const docs=[rcptHtml(order)];                          // ใบเสร็จ (สร้างจากออเดอร์ตรง ๆ)
-    if(_kit) docs.push(KDS.serveSlipHtml(order));   // + ใบครัว
+    if(_kit) docs.push(...KDS.serveSlipDocs(order));   // + ใบครัว (แยกบาร์/ครัวถ้าเปิดไว้)
     setTimeout(()=>printDocs(docs),200);
   }
   return {open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
@@ -5112,27 +5113,38 @@ const KDS = (()=>{
     if(st==='ready') UI.toast(o.no+' พร้อมเสิร์ฟ','ok');
   }
   // ใบเสิร์ฟ: พิมพ์รายการในออเดอร์ ไว้ให้พนักงานเสิร์ฟ+ทวนลูกค้า (เปิด/ปิดได้ในตั้งค่า)
-  function serveSlipHtml(o){
+  // ⭐ v12.2 แยกใบครัวตามจุดทำ — หมวดหมู่กำหนดได้ (หลังร้าน › เมนู › จัดการหมวดหมู่) · ยังไม่กำหนด = เดาจากชื่อหมวด
+  const ST_LBL={bar:'🍹 บาร์ · เครื่องดื่ม/ของหวาน',kitchen:'🍳 ครัว · ของคาว'};
+  const _KIT=/ติ่มซำ|ข้าว|หมี่|ซุป|ไข่กระทะ|อาหาร|ของคาว|ทอด|นึ่ง|ก๋วยเตี๋ยว|เส้น|ผัด|แกง|ต้ม|ยำ|สเต็ก|พาสต้า|สลัด|แซนด์วิช|food|dim ?sum|rice|noodle/i;
+  function catStation(c){ if(!c) return 'kitchen'; if(c.station==='bar'||c.station==='kitchen') return c.station; return _KIT.test(c.name||'')?'kitchen':'bar'; }
+  function itemStation(it){ const p=STORE.find('products',it.productId); return catStation(p&&STORE.find('categories',p.cat)); }
+  function serveSlipDocs(o){
+    if(!(STORE.get().settings||{}).splitSlip) return [serveSlipHtml(o)];
+    const parts=['bar','kitchen'].map(k=>({k,items:(o.items||[]).filter(it=>itemStation(it)===k)})).filter(x=>x.items.length);
+    if(parts.length<2) return [serveSlipHtml(o,parts[0]?parts[0].k:null)];
+    return parts.map((x,i)=>serveSlipHtml(Object.assign({},o,{items:x.items}),x.k,(i+1)+'/'+parts.length));
+  }
+  function serveSlipHtml(o,station,part){
     const m=STORE.binfo();
     const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${esc(it.qty)}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
     const tp=otypeName(o.type);
     const where=o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp;
     // ⭐ ไม่ใส่โลโก้ — ประหยัดกระดาษ · เลขออเดอร์อยู่บนสุด ตัวใหญ่สุด เห็นชัดตอนเรียกคิว
     const head = `<div style="font-size:2.4em;font-weight:900;line-height:1.1;letter-spacing:.5px">${esc(o.no)}</div>`
-      + `<div style="font-size:1.05em;font-weight:700;margin-top:1px">🍽️ ใบครัว</div>`;
+      + `<div style="font-size:1.05em;font-weight:700;margin-top:1px">${station&&(STORE.get().settings||{}).splitSlip?ST_LBL[station]:'🍽️ ใบครัว'}${part?' (ใบ '+part+')':''}</div>`;
     return `<div class="receipt"><div class="rc">${head}</div>`+
       `<div class="rc" style="font-size:1.5em;font-weight:800;margin:3px 0 2px">${where}</div>`+
       `<div class="rc" style="font-size:.9em">${esc(m.branchName||'')}${m.branchName?' · ':''}${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div>`+
       `<div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
   }
-  function serveSlip(o,force){ PAY.printDocs([serveSlipHtml(o)],force); }
+  function serveSlip(o,force){ PAY.printDocs(serveSlipDocs(o),force); }
   function updateBadge(){
     const n=active().length, b=$('#kdsBdg');
     if(b){ b.textContent=n; b.classList.toggle('hidden',n===0); }
     try{ UI.updateHamBadge(); }catch(e){}
   }
   function tick(){ if(NAV.cur()==='kds') $$('.tmr').forEach(el=>{ const at=+el.dataset.at; el.textContent=mmss((STORE.now()-at)/60000); }); }
-  return {render,toggleItem,setStatus,updateBadge,tick,active,serveSlip,serveSlipHtml};
+  return {render,toggleItem,setStatus,updateBadge,tick,active,serveSlip,serveSlipHtml,serveSlipDocs,catStation};
 })();
 
 /* ============================================================
@@ -5159,7 +5171,7 @@ const QR = (()=>{
     const m=STORE.binfo();
     let all=STORE.scoped('products').filter(p=>p.available!==false&&!p.deletedAt&&!INV.outOfStock(p));
     all=all.filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i).filter((x,i,a)=>a.findIndex(y=>(y.name||'').trim()===(x.name||'').trim())===i);
-    function card(p){ const inCart=(qcart.find(c=>c.productId===p.id)||{}).qty||0;
+    function card(p){ const inCart=qcart.filter(c=>c.productId===p.id).reduce((t,c)=>t+c.qty,0);
       return `<div class="qcard" onclick="QR.add('${p.id}')">
         <div class="ph">${p.img?`<img src="${esc(p.img)}">`:`<div class="em">${esc(p.emoji||'☕')}</div>`}
           <span class="inc" id="qrcBadge_${p.id}" ${inCart?'':'style="display:none"'}>×${inCart}</span>
@@ -5227,13 +5239,25 @@ const QR = (()=>{
   }
   function cat(c){ qcat=c; idx=0; renderMenu(); }
   function add(id){
-    const p=STORE.find('products',id); const ex=qcart.find(c=>c.productId===id);
-    if(ex)ex.qty++; else qcart.push({productId:id,name:p.name,price:p.price,qty:1});
-    const q=(qcart.find(c=>c.productId===id)||{}).qty||0;
-    const badge=$('#qrcBadge_'+id);           // อัปเดตป้ายจำนวนเฉพาะใบนี้ ไม่ขยับ carousel
+    const p=STORE.find('products',id); if(!p) return;
+    // ⭐ v12.2 เมนูที่มีตัวเลือก/แบบ -> เปิดกล่องเลือกเหมือนหน้าร้าน (ความหวาน · เพิ่มช็อต · ท็อปปิ้ง · เย็น/ปั่น)
+    if(INV.variantsOf(p).length || (p.options||[]).some(mid=>STORE.find('modifiers',mid))){ MOD.open(p,addLine); return; }
+    addLine(p,1,[],0,null);
+  }
+  function addLine(p,qty,mods,modPrice,variant){
+    const vName=(variant&&variant.name)||'', vd=POS.vDeltaOf(variant,'dine-in');
+    const name=p.name+(vName?(' ('+vName+')'):'');
+    // ส่งเฉพาะชื่อ/ราคาตัวเลือก — สูตรตัดสต็อกให้เครื่องร้านเติมเองจากตัวเลือกจริง (กันมือถือแก้สูตรมาตัดสต็อกมั่ว)
+    const ms=(mods||[]).map(m=>{ const r={group:m.group,name:m.name,price:m.price||0}; if(m.sweetPct!=null) r.sweetPct=m.sweetPct; return r; });
+    let base=POS.priceOf(p,'dine-in'), mp=(modPrice||0)+vd; if(mp<0){ base+=mp; mp=0; }
+    const key=p.id+'|'+((variant&&variant.id)||'')+'|'+ms.map(m=>m.group+':'+m.name).join(',');
+    const ex=qcart.find(c=>c.key===key);
+    if(ex) ex.qty+=qty; else qcart.push({key,productId:p.id,name,price:base+mp,base,modPrice:mp,mods:ms,variantId:(variant&&variant.id)||null,variantName:vName,qty});
+    const q=qcart.filter(c=>c.productId===p.id).reduce((t,c)=>t+c.qty,0);
+    const badge=$('#qrcBadge_'+p.id);         // อัปเดตป้ายจำนวนเฉพาะใบนี้ ไม่ขยับ carousel
     if(badge){ badge.textContent='×'+q; badge.style.display=''; }
     renderBar();                              // อัปเดตแถบสั่งซื้อล่างจอ
-    UI.toast('เพิ่ม '+p.name,'ok');
+    UI.toast('เพิ่ม '+name+(qty>1?' ×'+qty:''),'ok');
   }
   function checkout(){ if(!qcart.length) return; stage='cart'; renderCartReview(); }
   function renderCartReview(){
@@ -5242,12 +5266,12 @@ const QR = (()=>{
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">ตะกร้าของคุณ</div><small>ตรวจรายการก่อนยืนยัน</small></div>
       <div style="flex:1;overflow-y:auto;padding:16px;max-width:520px;margin:0 auto;width:100%">
-        ${qcart.length?qcart.map(c=>`<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow)">
-          <div style="flex:1"><b style="font-size:15px">${esc(c.name)}</b><div style="color:var(--gold);font-weight:700;margin-top:2px">${STORE.baht(c.price*c.qty)}</div></div>
-          <button class="qbtn" onclick="QR.chQty('${c.productId}',-1)">−</button>
+        ${qcart.length?qcart.map((c,i)=>{ const mt=(c.mods||[]).map(m=>m.name).join(', '); return `<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow)">
+          <div style="flex:1;min-width:0"><b style="font-size:15px">${esc(c.name)}</b>${mt?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">+ ${esc(mt)}</div>`:''}<div style="color:var(--gold);font-weight:700;margin-top:2px">${STORE.baht(c.price*c.qty)}</div></div>
+          <button class="qbtn" onclick="QR.chQty(${i},-1)">−</button>
           <span style="min-width:24px;text-align:center;font-weight:700">${c.qty}</span>
-          <button class="qbtn" onclick="QR.chQty('${c.productId}',1)">＋</button>
-        </div>`).join(''):'<div class="empty"><div class="ic">🛒</div>ตะกร้าว่าง</div>'}
+          <button class="qbtn" onclick="QR.chQty(${i},1)">＋</button>
+        </div>`; }).join(''):'<div class="empty"><div class="ic">🛒</div>ตะกร้าว่าง</div>'}
         ${tables.length?`<div style="margin-top:18px"><div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:8px">🪑 เลือกโต๊ะ</div>
           <div class="opt-chips">${tables.map(t=>`<button class="opt-chip ${qtable===t.name?'sel':''}" onclick="QR.setTable('${t.name}')">${esc(t.name)}</button>`).join('')}</div></div>`:''}
       </div>
@@ -5259,7 +5283,7 @@ const QR = (()=>{
         </div>
       </div>`;
   }
-  function chQty(pid,d){ const c=qcart.find(x=>x.productId===pid); if(!c)return; c.qty+=d; if(c.qty<=0) qcart=qcart.filter(x=>x.productId!==pid); if(!qcart.length){ render(); return; } renderCartReview(); }
+  function chQty(i,d){ const c=qcart[i]; if(!c)return; c.qty+=d; if(c.qty<=0) qcart.splice(i,1); if(!qcart.length){ render(); return; } renderCartReview(); }
   function setTable(t){ qtable=t; renderCartReview(); }
   // ค่าตั้งค่าฝั่งลูกค้า — เก็บที่ "สาขา" เพื่อให้มือถือลูกค้าดึงผ่าน branch_public ได้
   // (settings ไม่ถูก sync ลงมือถือลูกค้า เพราะมี API key อยู่)
@@ -5335,7 +5359,7 @@ const QR = (()=>{
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
-      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
+      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:(c.base!=null?c.base:c.price),modPrice:c.modPrice||0,mods:c.mods||[],variantId:c.variantId||null,variantName:c.variantName||'',qty:c.qty,note:''})),
       subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method,paid:sub,change:0,
       status:'preparing',payStatus:'paid',slipVerified:true,slipRef:(info&&info.ref)||'',slipImg:slipImg||'',
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
@@ -5408,7 +5432,7 @@ const QR = (()=>{
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
-      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
+      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:(c.base!=null?c.base:c.price),modPrice:c.modPrice||0,mods:c.mods||[],variantId:c.variantId||null,variantName:c.variantName||'',qty:c.qty,note:''})),
       subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method:'unpaid',paid:0,change:0,
       status:'preparing',payStatus:'open',
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
@@ -5424,7 +5448,7 @@ const QR = (()=>{
     const order={
       id:STORE.uuid(),no:'#Q'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'),receiptNo:_rno, branchId:STORE.bid(),
       type:'dine-in',table:qtable||'',
-      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:c.price,modPrice:0,mods:[],qty:c.qty,note:''})),
+      items:qcart.map(c=>({line:STORE.uuid(),productId:c.productId,name:c.name,base:(c.base!=null?c.base:c.price),modPrice:c.modPrice||0,mods:c.mods||[],variantId:c.variantId||null,variantName:c.variantName||'',qty:c.qty,note:''})),
       subtotal:_t.sub,discount:0,vat:_t.vat,service:_t.service,total:_t.total,method,paid:0,change:0,
       status:'wait_payment',payStatus:method==='cash'?'wait_cash':'wait_verify',slipImg:_slip,
       memberId:null,staffId:null,staffName:'QR ลูกค้า',channel:'qr',createdAt:STORE.now(),closedAt:null
@@ -6835,6 +6859,7 @@ const BO = (()=>{
         <div style="display:flex;gap:8px;margin-bottom:14px"><input id="newCat" placeholder="ชื่อหมวดใหม่ เช่น สมูทตี้, เบเกอรี่" style="flex:1;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)"><button class="btn-gold" style="padding:0 16px;border-radius:10px" onclick="BO.addCat()">+ เพิ่ม</button></div>
         ${cats.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px dashed var(--line)">
           <span style="flex:1"><b>${esc(c.name)}</b> <small style="color:var(--muted)">(${STORE.scoped('products').filter(p=>p.cat===c.id&&!p.deletedAt).length} เมนู)</small></span>
+          <button class="sub-tab" title="ใบครัวไปจุดไหน" onclick="BO.catStation('${c.id}')" style="font-weight:600">${KDS.catStation(c)==='kitchen'?'🍳 ครัว':'🍹 บาร์'}</button>
           <button class="sub-tab" onclick="BO.moveCat('${c.id}',-1)">↑</button>
           <button class="sub-tab" onclick="BO.moveCat('${c.id}',1)">↓</button>
           <button class="sub-tab" onclick="BO.editCat('${c.id}')">แก้ไข</button>
@@ -6844,6 +6869,8 @@ const BO = (()=>{
       <div class="modal-f"><button class="btn-gold" onclick="UI.close('genOverlay')">เสร็จ</button></div>`;
     UI.open('genOverlay');
   }
+  function catStation(id){ const c=STORE.find('categories',id); if(!c) return;   // ⭐ v12.2 สลับจุดทำของหมวด (ใบครัวแยก)
+    c.station=KDS.catStation(c)==='kitchen'?'bar':'kitchen'; STORE.save(); CLOUD.pushItem('categories',c); manageCats(); }
   function addCat(){
     const v=(($('#newCat')||{}).value||'').trim(); if(!v){ UI.toast('ใส่ชื่อหมวด','err'); return; }
     const cats=STORE.scoped('categories'); const mx=Math.max(0,...cats.map(c=>c.sort||0));
@@ -7750,7 +7777,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
+  return {catStation,render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,variants,varEdit,varDel,modOptRecipe,modRecQty,modRecRemove,modRecAdd,modRecBack,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,dlvPrice,dlvSet,dlvApply,dlvClear,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -8228,7 +8255,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.1</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.2</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8381,6 +8408,7 @@ const SETTINGS = (()=>{
         <div class="field" id="thcpBox"><label>🔢 รหัสหน้าภาษาไทย <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะโหมดตัวอักษร)</small> <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.thaiTest()">🖨 พิมพ์ใบทดสอบ</button></label><input id="setThCP" type="number" min="0" max="255" value="${s.thaiCodePage==null?255:s.thaiCodePage}"></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="rawbt" ${s.printMethod==='rawbt'?'selected':''}>RawBT — Android พิมพ์เงียบ (ต้องลงแอป RawBT)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
+        <div class="field"><label>🍹🍳 แยกใบครัว 2 จุด: บาร์ (เครื่องดื่ม/ของหวาน) กับ ครัว (ของคาว)<br><small style="color:var(--muted);font-weight:400">ตั้งว่าหมวดไหนไปจุดไหนที่ หลังร้าน › เมนู › 🏷️ จัดการหมวดหมู่</small></label><select id="setSplitSlip"><option value="0" ${!s.splitSlip?'selected':''}>ปิด (ใบครัวใบเดียว)</option><option value="1" ${s.splitSlip?'selected':''}>เปิด (แยก 2 ใบ)</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้กับ Bluetooth ESC/POS และ RawBT<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select>
             <div style="margin-top:6px;font-size:12px;color:var(--muted)">${esc(PENDING.voiceInfo?PENDING.voiceInfo():'')} <button class="sub-tab" style="margin-left:8px" onclick="PENDING.testVoice()">🔊 ทดสอบเสียงเตือน</button></div></div>
@@ -8459,7 +8487,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.1) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.2) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -8482,7 +8510,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const gp=$('#setGapPct'); if(gp) s.rbGapPct=Math.max(60,Math.min(400,parseInt(gp.value)||138)); const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const _sp=$('#setSplitSlip'); if(_sp) s.splitSlip=_sp.value==='1'; } { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const gp=$('#setGapPct'); if(gp) s.rbGapPct=Math.max(60,Math.min(400,parseInt(gp.value)||138)); const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -10326,7 +10354,15 @@ const CLOUD = (()=>{
       if(!Array.isArray(it.mods)) it.mods=[];
     });
     if(o.slipImg && !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(String(o.slipImg))) o.slipImg='';
-    if(o.channel==='qr'){ delete o.loyal; if(o.status!=='void') delete o.merged; delete o.paidAt; }   // ⭐ v12.0 บิล QR ที่ร้านรวมเข้าบิลโต๊ะ (void+merged) ต้องไม่กลายเป็น "บิลยกเลิก" ในรายงาน                 // ⭐ v11.5 บิล QR ไม่มีทางให้แต้ม/รวมบิลจากฝั่งลูกค้า
+    if(o.channel==='qr'){ delete o.loyal; if(o.status!=='void') delete o.merged; delete o.paidAt;
+      const _s=(v,n)=>String(v==null?'':v).replace(/[<>"'`&\\]/g,'').slice(0,n);
+      o.items.forEach(it=>{ if(it.name!=null) it.name=_s(it.name,90); if(it.variantName!=null) it.variantName=_s(it.variantName,40);
+        it.mods=it.mods.filter(m=>m&&typeof m==='object').slice(0,30).map(m=>{ const r={group:_s(m.group,40),name:_s(m.name,40),price:Math.max(0,_num(m.price))};
+          // ⭐ v12.2 สูตร/ระดับหวานเอาจากตัวเลือกจริงในเครื่องร้าน ไม่เชื่อค่าที่มากับบิล
+          const g=(STORE.get().modifiers||[]).find(x=>x&&!x.deletedAt&&x.name===r.group), op=g&&(g.options||[]).find(x=>x.name===r.name);
+          if(op){ if(op.recipe&&op.recipe.length) r.recipe=op.recipe; if(op.sweetPct!=null) r.sweetPct=Number(op.sweetPct); }
+          return r; }); });
+    }   // ⭐ v12.0 บิล QR ที่ร้านรวมเข้าบิลโต๊ะ (void+merged) ต้องไม่กลายเป็น "บิลยกเลิก" ในรายงาน                 // ⭐ v11.5 บิล QR ไม่มีทางให้แต้ม/รวมบิลจากฝั่งลูกค้า
     Object.keys(o).forEach(k=>{ if(k[0]==='_') delete o[k]; });                           // ธงภายใน (_arch/_strip/_uat) ห้ามรับจากภายนอก (ผู้เรียกตั้ง _uat เอง)
     return o;
   }
@@ -10434,7 +10470,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
+  const LOCAL_KEYS=['splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
     // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
     'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbGapPct','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
   function mergeMeta(D,o){
