@@ -485,6 +485,90 @@ tr:hover td{background:var(--surface-2)}
   #printHost img,#printHost svg{max-width:100%}
   #printHost .pgbrk{page-break-before:always;break-before:page}
 }
+/* ===== ⭐ v12.0 ผังโต๊ะ ===== */
+.fl-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.fl-head h2{margin-right:auto}
+.fl-legend{display:flex;gap:6px;flex-wrap:wrap}
+.fl-legend .lg{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;font-size:12.5px;background:var(--surface);border:1px solid var(--line)}
+.fl-legend .lg::before{content:'';width:12px;height:12px;border-radius:4px;border:2px solid var(--line);background:var(--surface)}
+.fl-legend .lg.busy::before{background:var(--green);border-color:var(--green)}
+.fl-legend .lg.wait::before{background:#FFE7C2;border-color:var(--warn)}
+.fl-legend .lg.resv::before{background:#EEE6F8;border:2px dashed #7B5EA7}
+.fl-tools{display:flex;gap:8px;flex-wrap:wrap}
+.fl-tools .btn{padding:9px 14px;font-size:13.5px}
+.fl-hint{color:var(--gold);font-size:13px;font-weight:600}
+.fl-zones{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
+.fl-ztab{padding:8px 16px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:'Prompt';font-size:13.5px;font-weight:600;cursor:pointer}
+.fl-ztab.active{background:var(--green);border-color:var(--green);color:#fff}
+.fl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;border:1px solid var(--line);background:var(--surface-2)}
+.fl-canvas{--u:32px;position:relative;width:100%;min-width:600px;height:calc(var(--rows)*var(--u))}
+.fl-canvas.editing{background-image:radial-gradient(circle,var(--line) 1.2px,transparent 1.3px);background-size:var(--u) var(--u)}
+.fl-it{position:absolute;left:calc(var(--x)*var(--u));top:calc(var(--y)*var(--u));width:calc(var(--w)*var(--u));height:calc(var(--h)*var(--u));font-size:clamp(10px,calc(var(--u)*.4),17px);-webkit-user-select:none;user-select:none}
+.fl-box{position:absolute;inset:calc(var(--u)*.28);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center;line-height:1.2;overflow:hidden;
+  background:var(--surface);color:var(--text);border:2px solid var(--line);border-radius:10px;box-shadow:var(--shadow);transition:background .2s,border-color .2s}
+.fl-t{cursor:pointer}
+.fl-t:active .fl-box{transform:scale(.97)}
+.fl-t.round .fl-box{border-radius:50%}
+.fl-chs{position:absolute;inset:calc(var(--u)*.28)}
+.fl-ch{position:absolute;width:calc(var(--u)*.62);height:calc(var(--u)*.34);border-radius:6px;background:#C5CAD3;transform:translate(-50%,-50%)}
+.fl-ch.v{width:calc(var(--u)*.34);height:calc(var(--u)*.62)}
+.fl-name{font-weight:800;font-size:1.25em;display:flex;align-items:center;gap:3px}
+.fl-qr{font-size:.75em}
+.fl-sub{font-size:.78em;opacity:.92;padding:0 3px}
+.fl-amt{font-size:.85em;font-weight:700}
+.fl-t.st-busy .fl-box{background:var(--green);border-color:var(--green);color:#fff}
+.fl-t.st-busy .fl-ch{background:#3D5C50}
+.fl-t.st-wait .fl-box{background:#FFE7C2;border-color:var(--warn);color:#6E4300}
+.fl-t.st-resv .fl-box{background:#EEE6F8;border:2px dashed #7B5EA7;color:#4A3270}
+.fl-t.st-off .fl-box{opacity:.4;border-style:dashed}
+.fl-t.fresh .fl-box{animation:flPulse 1.1s ease-out infinite}
+@keyframes flPulse{0%{box-shadow:0 0 0 0 rgba(217,150,43,.75)}100%{box-shadow:0 0 0 calc(var(--u)*.45) rgba(217,150,43,0)}}
+.fl-deco .fl-box{background:#E4E7EC;border:none;box-shadow:none;color:#6B7280;font-weight:700;letter-spacing:.5px}
+.fl-deco.d-counter .fl-box{background:#D5DAE1;border-radius:6px}
+.fl-deco.d-plant .fl-box,.fl-deco.d-wc .fl-box{background:transparent}
+.fl-deco.d-plant .fl-box{background:radial-gradient(circle,#7CC36B 0,#4E9A3E 70%);border-radius:50%}
+.fl-deco .fl-ic{font-size:1.8em}
+.fl-canvas.editing .fl-it{cursor:grab;touch-action:none}
+.fl-canvas.editing .fl-it:active{cursor:grabbing}
+.fl-it.sel .fl-box{outline:3px solid var(--gold);outline-offset:2px}
+.fl-ebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:13.5px}
+.fl-ebar .fl-grp{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line)}
+.fl-ebar .fl-grp button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:17px;cursor:pointer}
+.fl-ebar .fl-b{padding:7px 12px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-family:'Prompt';font-size:13px;cursor:pointer}
+.fl-ebar .fl-b.danger{color:var(--danger)}
+.fl-st{display:inline-block;font-size:12px;padding:3px 10px;border-radius:12px;vertical-align:middle;margin-left:6px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
+.fl-st.st-busy{background:var(--green);color:#fff;border-color:var(--green)}
+.fl-st.st-wait{background:#FFE7C2;color:#6E4300;border-color:var(--warn)}
+.fl-st.st-resv{background:#EEE6F8;color:#4A3270;border-color:#7B5EA7}
+.fl-ord{padding:10px 12px;border:1px solid var(--line);border-radius:12px;margin-bottom:8px;background:var(--surface-2);font-size:13.5px}
+.fl-items{color:var(--muted);font-size:12.5px;margin-top:5px;line-height:1.5}
+.fl-resv{padding:10px 12px;border:2px dashed #7B5EA7;border-radius:12px;margin-bottom:8px;font-size:13.5px;line-height:1.6}
+.fl-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.fl-btns.col{flex-direction:column}
+.fl-btns.col .btn{min-height:50px;font-size:15px;width:100%}
+.fl-pax{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.fl-pax button{height:64px;border-radius:50%;max-width:72px;width:100%;justify-self:center;border:none;background:var(--surface-2);box-shadow:var(--shadow);font-size:24px;font-weight:700;color:var(--text);font-family:'Prompt';cursor:pointer}
+.fl-pax button.sel{background:var(--gold);color:#fff}
+.opt-chip.fl-mv small{opacity:.7;margin-left:4px}
+.opt-chip.fl-mv.st-busy,.opt-chip.fl-mv.st-wait{border-color:var(--warn)}
+.fl-rl{margin-top:18px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.fl-rl-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.fl-rl-h h3{font-size:15px}
+.fl-rrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0;border-top:1px dashed var(--line);font-size:13.5px;line-height:1.6}
+.fl-rrow.late{opacity:.75}
+.fl-rbtn{display:flex;gap:6px;flex-wrap:wrap}
+.tab-banner{display:flex;align-items:center;gap:6px;padding:9px 12px;margin-bottom:10px;border-radius:12px;background:rgba(27,58,47,.08);border:1.5px solid var(--green);font-size:13.5px;color:var(--text)}
+.tab-banner button{margin-left:auto;padding:5px 12px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:var(--danger);font-family:'Prompt';font-size:12.5px;cursor:pointer}
+.citem.tabline{opacity:.85}
+.citem .tabtag{font-size:11.5px;color:var(--success);font-weight:600;margin-right:auto;padding:2px 8px;border-radius:10px;background:rgba(62,124,79,.12)}
+.send-tab{width:100%;margin-top:10px;padding:11px;border:1.5px dashed var(--green);color:var(--green);font-weight:700}
+[data-theme="dark"] .fl-t.st-wait .fl-box,[data-theme="dark"] .fl-st.st-wait{background:#4A3510;color:#FFD9A0}
+[data-theme="dark"] .fl-t.st-resv .fl-box,[data-theme="dark"] .fl-st.st-resv{background:#2E2440;color:#D9C8F2}
+[data-theme="dark"] .fl-deco .fl-box{background:#2C3038;color:#A3A9B4}
+[data-theme="dark"] .fl-ch{background:#4A505B}
+[data-theme="dark"] .send-tab{color:var(--gold-light);border-color:var(--gold)}
+@media (max-width:640px){ .fl-tools .btn{padding:8px 10px;font-size:12.5px} .fl-legend .lg{font-size:11.5px;padding:4px 8px} }
+
 </style>
 </head>
 <body>
@@ -541,6 +625,10 @@ tr:hover td{background:var(--surface-2)}
   <!-- ===== KDS VIEW ===== -->
   <section class="view" id="v-kds">
     <div class="kds-wrap"><div class="kds-cols" id="kdsCols"></div></div>
+  </section>
+
+  <section class="view" id="v-floor">
+    <div class="panel" id="floorPanel"></div>
   </section>
 
   <section class="view" id="v-pending">
@@ -3731,6 +3819,7 @@ const UI = (()=>{
 const NAV = (()=>{
   const ALL=[
     {k:'pos',label:'ขาย',icon:'🛒',perm:'pos'},
+    {k:'floor',label:'ผังโต๊ะ',icon:'🗺️',perm:'pos'},
     {k:'kds',label:'จอครัว',icon:'👨‍🍳',perm:'kds'},
     {k:'pending',label:'รอชำระ',icon:'📥',perm:'pos'},
     {k:'qr',label:'QR ลูกค้า',icon:'📱',perm:'pos'},
@@ -3761,6 +3850,7 @@ const NAV = (()=>{
     if(k==='ai') AI.render();
     if(k==='history') HISTORY.render();
     if(k==='pending') PENDING.render();
+    if(k==='floor') FLOOR.render();
     if(k==='bo') BO.render();
     if(k==='shift') SHIFT.render();
     if(k==='settings') SETTINGS.render();
@@ -3772,7 +3862,7 @@ const NAV = (()=>{
    3-4. POS — menu, cart, modifiers, hold/resume, split, void
    ============================================================ */
 const POS = (()=>{
-  let cat='featured', cart=[], orderType='dine-in', discount=null, member=null, q='', orderNo=null, table=null;
+  let cat='featured', cart=[], orderType='dine-in', discount=null, member=null, q='', orderNo=null, table=null, tabCtx=null;   // ⭐ v12.0 tabCtx = กำลังปิดบิลโต๊ะ (รวมบิลค้างของโต๊ะ)
   const types=otypeList();
 
   function render(){
@@ -3781,8 +3871,8 @@ const POS = (()=>{
     if(!orderNo) newOrderNo();
   }
   // เซฟตะกร้าที่กำลังทำลง localStorage (กันรีเฟรช/ปิดพลาด แล้วของหาย)
-  function persistCart(){ try{ localStorage.setItem('saocafe_cart',JSON.stringify({cart,orderType,discount,member,table,orderNo})); }catch(e){} }
-  function restoreCart(){ if(cart.length) return; try{ const r=localStorage.getItem('saocafe_cart'); if(r){ const d=JSON.parse(r); if(d&&d.cart&&d.cart.length){ cart=d.cart; orderType=d.orderType||'dine-in'; discount=d.discount||null; member=d.member||null; table=d.table||null; orderNo=d.orderNo||null; } } }catch(e){} }
+  function persistCart(){ try{ localStorage.setItem('saocafe_cart',JSON.stringify({cart,orderType,discount,member,table,orderNo,tabCtx})); }catch(e){} }
+  function restoreCart(){ if(cart.length) return; try{ const r=localStorage.getItem('saocafe_cart'); if(r){ const d=JSON.parse(r); if(d&&d.cart&&d.cart.length){ cart=d.cart; orderType=d.orderType||'dine-in'; discount=d.discount||null; member=d.member||null; table=d.table||null; orderNo=d.orderNo||null; tabCtx=d.tabCtx||null; } } }catch(e){} }
   function hasCart(){ return cart.length>0; }
   function newOrderNo(){ orderNo='#'+STORE.deviceTag()+'-'+String(STORE.bcounter().orderNo).padStart(3,'0'); $('#orderNo').textContent=orderNo; }
   function renderTypes(){
@@ -3794,7 +3884,7 @@ const POS = (()=>{
   }
   function pickTable(){
     if(orderType!=='dine-in') return;
-    const tables=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt);
+    const tables=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco');
     if(!tables.length){ UI.toast('ยังไม่มีโต๊ะ (เพิ่มที่หลังร้าน › โต๊ะ)','err'); return; }
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🪑 เลือกโต๊ะ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
@@ -3803,15 +3893,15 @@ const POS = (()=>{
       <button class="tbl-pick skip" onclick="POS.setTable('')">ไม่ระบุ</button></div></div>`;
     UI.open('genOverlay');
   }
-  function setTable(t){ table=t||null; renderTypes(); UI.close('genOverlay'); }
+  function setTable(t){ if(tabCtx){ UI.toast('กำลังปิดบิลโต๊ะ '+tabCtx.table+' — เปลี่ยนโต๊ะไม่ได้','err'); UI.close('genOverlay'); return; } table=t||null; renderTypes(); UI.close('genOverlay'); }
   function getTable(){ return table; }
-  function setType(k){ orderType=k; renderTypes(); repriceCart(); renderGrid(); }
+  function setType(k){ if(tabCtx&&k!=='dine-in'){ UI.toast('กำลังปิดบิลโต๊ะ — เปลี่ยนประเภทไม่ได้','err'); return; } orderType=k; renderTypes(); repriceCart(); renderGrid(); }
   // ราคาตามประเภทออเดอร์: ใช้ราคาที่ตั้งเฉพาะ ถ้าไม่ตั้งให้ใช้ราคาหลัก (ทานที่ร้าน)
   function priceOf(p,type){ type=type||orderType; const pr=p.prices&&p.prices[type]; return (pr!=null&&pr!=='')?pr:p.price; }
   // ⭐ ส่วนต่างของแบบเมนู (ปั่น/เย็น) แยกตามช่องทางขายได้ — ไม่ตั้งไว้ = ใช้ค่าปกติ
   function vDeltaOf(v,type){ type=type||orderType; if(!v) return 0;
     const d=v.priceDeltas&&v.priceDeltas[type]; return (d!=null&&d!=='')?d:(v.priceDelta||0); }
-  function repriceCart(){ cart.forEach(c=>{ const p=STORE.find('products',c.productId); if(!p) return;
+  function repriceCart(){ cart.forEach(c=>{ const p=STORE.find('products',c.productId); if(!p||c.tab) return;
     c.base=priceOf(p); const v=INV.variantOf(p,c.variantId);
     const mp=(c.mp!=null)?c.mp:Math.max(0,(c.modPrice||0)-((v&&v.priceDelta)||0));  // บิลเก่าที่ยังไม่มี mp
     c.mp=mp; c.modPrice=mp+vDeltaOf(v); }); renderCart(); }
@@ -3881,7 +3971,7 @@ const POS = (()=>{
     const vDelta=vDeltaOf(variant);
     // รวมรายการเหมือนกัน (เมนู+แบบ+ตัวเลือก เดียวกัน) เป็นชิ้นเดียว
     const sig=p.id+'|'+((variant&&variant.id)||'')+'|'+mods.map(m=>m.group+':'+m.name).join(',');
-    const ex=cart.find(c=>c.sig===sig);
+    const ex=cart.find(c=>c.sig===sig&&!c.tab);   // ⭐ v12.0 ห้ามบวกเข้ารายการที่ส่งครัวไปแล้ว
     if(ex) ex.qty+=qty;
     else cart.push({line:STORE.uuid(),sig,productId:p.id,name:dispName,
       variantId:(variant&&variant.id)||null, variantName:vName,
@@ -3890,9 +3980,11 @@ const POS = (()=>{
   }
   function chQty(line,d){
     const c=cart.find(x=>x.line===line); if(!c) return;
+    if(c.tab){ UI.toast(TABMSG,'err'); return; }
     c.qty+=d; if(c.qty<=0) cart=cart.filter(x=>x.line!==line); renderCart();
   }
-  function rmItem(line){ cart=cart.filter(x=>x.line!==line); renderCart(); }
+  const TABMSG='รายการนี้ส่งครัวไปแล้ว แก้ในหน้าปิดบิลไม่ได้';
+  function rmItem(line){ const c=cart.find(x=>x.line===line); if(c&&c.tab){ UI.toast(TABMSG,'err'); return; } cart=cart.filter(x=>x.line!==line); renderCart(); }
   function lineTotal(c){ return (c.base+c.modPrice)*c.qty; }
   function calc(){
     const sub=cart.reduce((s,c)=>s+lineTotal(c),0);
@@ -3956,7 +4048,9 @@ const POS = (()=>{
     if(_ca2)_ca2.classList.remove('empty');
     $('#payBtn').disabled=false;
     $('#cartItems').innerHTML=cart.map(c=>{
-      const modTxt=c.mods.filter(m=>m.name!=='ปกติ').map(m=>m.name).join(', ');
+      const modTxt=(c.mods||[]).filter(m=>m.name!=='ปกติ').map(m=>m.name).join(', ');
+      if(c.tab) return `<div class="citem tabline"><div class="cnm"><b>${esc(c.name)}</b>${modTxt?`<div class="mods">${esc(modTxt)}</div>`:''}
+          <div class="cline"><span class="qv">${esc(c.qty)}×</span><span class="tabtag">🍽️ ส่งครัวแล้ว</span><span class="cpr">${STORE.baht(lineTotal(c))}</span></div></div></div>`;
       return `<div class="citem">
         <div class="cnm"><b>${esc(c.name)}</b>${modTxt?`<div class="mods">${esc(modTxt)}</div>`:''}
           <div class="cline">
@@ -3975,12 +4069,70 @@ const POS = (()=>{
     if(s.service>0) html+=`<div class="sr"><span>Service ${m.serviceCharge}%</span><span>${STORE.baht(s.service)}</span></div>`;
     if(s.vat>0) html+=`<div class="sr"><span>VAT ${m.vatRate}%${m.vatIncluded?' (รวมแล้ว)':''}</span><span>${STORE.baht(s.vat)}</span></div>`;
     html+=`<div class="sr tot"><span>สุทธิ</span><span>${STORE.baht(s.total)}</span></div>`;
-    $('#summary').innerHTML=bdayBanner()+html;
+    // ⭐ v12.0 แถบ "กำลังปิดบิลโต๊ะ" + ปุ่มส่งครัวแบบเก็บเงินทีหลัง (เฉพาะทานที่ร้านที่เลือกโต๊ะแล้ว)
+    const _tabTop=tabCtx?`<div class="tab-banner">🍽️ ปิดบิลโต๊ะ <b>${esc(tabCtx.table)}</b> · รวม ${tabCtx.ids.length} บิล<button onclick="POS.cancelTab()">ยกเลิก</button></div>`:'';
+    const _send=(!tabCtx&&orderType==='dine-in'&&table)?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">🍽️ ส่งครัว · เก็บเงินตอนลูกค้ากลับ</button>`:'';
+    $('#summary').innerHTML=_tabTop+bdayBanner()+html+_send;
+  }
+  // ===== ⭐ v12.0 โต๊ะ: ส่งครัวแล้วเก็บเงินทีหลัง · ปิดบิลโต๊ะผ่านหน้าชำระเงินปกติ (ส่วนลด/สมาชิก/แต้ม/ใบเสร็จครบ) =====
+  function getTabCtx(){ return tabCtx; }
+  function startTable(name){
+    const go=()=>{ orderType='dine-in'; table=name; UI.close('genOverlay'); NAV.go('pos'); repriceCart(); renderTypes(); };
+    if(tabCtx){ if(tabCtx.table===name){ UI.close('genOverlay'); NAV.go('pos'); return; }
+      UI.confirm2('กำลังปิดบิลโต๊ะ '+tabCtx.table,'ยกเลิกการปิดบิลโต๊ะนั้น แล้วไปโต๊ะ '+name+'?',()=>{ cancelTab(true); go(); }); return; }
+    if(cart.length && table && table!==name){ UI.confirm2('มีรายการค้างในตะกร้า','พักบิลปัจจุบัน (โต๊ะ '+table+') ไว้ก่อน แล้วเริ่มโต๊ะ '+name+'?',()=>{ hold(); go(); }); return; }
+    go();
+  }
+  function loadTab(name){
+    const src=PENDING.openTabs().filter(o=>o.table===name).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    if(!src.length){ UI.toast('โต๊ะนี้ไม่มีบิลค้างชำระ','err'); return; }
+    const go=()=>{
+      cart=[]; src.forEach(o=>(o.items||[]).forEach(it=>{ const c=JSON.parse(JSON.stringify(it)); c.tab=1; if(!c.line) c.line=STORE.uuid();
+        if(!Array.isArray(c.mods)) c.mods=[]; c.base=+c.base||0; c.modPrice=+c.modPrice||0; cart.push(c); }));
+      tabCtx={table:name,ids:src.map(o=>o.id),lines:cart.map(c=>c.line)};
+      orderType='dine-in'; table=name; discount=null; member=src.map(o=>o.tabMember).find(Boolean)||null; orderNo=null;
+      UI.close('genOverlay'); NAV.go('pos');
+      UI.toast('โหลดบิลโต๊ะ '+name+' ('+src.length+' บิล) · ใส่ส่วนลด/สมาชิกได้ แล้วกดชำระเงิน','ok');
+    };
+    if(tabCtx){ if(tabCtx.table===name){ go(); return; } cancelTab(true); }
+    if(cart.length){ UI.confirm2('มีรายการค้างในตะกร้า','พักบิลปัจจุบันไว้ก่อน แล้วปิดบิลโต๊ะ '+name+'?',()=>{ hold(); go(); }); return; }
+    go();
+  }
+  function cancelTab(silent){ if(!tabCtx) return; const n=tabCtx.table; tabCtx=null; cart=[]; discount=null; member=null; table=n; renderTypes(); renderCart();
+    if(!silent) UI.toast('ยกเลิกการปิดบิล — บิลโต๊ะ '+n+' ยังค้างอยู่เหมือนเดิม','ok'); }
+  let _tabBusy=false;
+  async function sendTab(){
+    if(_tabBusy) return;
+    if(tabCtx){ UI.toast('กำลังปิดบิลโต๊ะ — กดชำระเงิน หรือยกเลิกการปิดบิลก่อน','err'); return; }
+    if(!cart.length) return;
+    if(orderType!=='dine-in'||!table){ UI.toast('เลือกโต๊ะก่อน','err'); pickTable(); return; }
+    if(discount){ UI.toast('ส่วนลดให้ใส่ตอนปิดบิล — เอาส่วนลดออกก่อนส่งครัว','err'); return; }
+    if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะก่อนเริ่มขาย','err'); NAV.go('shift'); return; }
+    _tabBusy=true;
+    try{
+      const s=calc(), st=AUTH.get();
+      const _c=STORE.bcounter(), _lb=_c.orderNo; let n=await CLOUD.nextNo('order');
+      if(!(n>0)||n<_lb) n=_lb; if(_c.orderNo<=n) _c.orderNo=n+1;
+      const order={id:STORE.uuid(),no:'#'+STORE.deviceTag()+'-'+String(n).padStart(3,'0'),receiptNo:'',branchId:STORE.bid(),
+        type:'dine-in',table,items:JSON.parse(JSON.stringify(cart)),
+        subtotal:s.sub,discount:0,vat:s.vat,service:s.service,total:s.total,method:'unpaid',paid:0,change:0,
+        status:'preparing',payStatus:'open',memberId:null,tabMember:member||null,
+        staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null};
+      STORE.get().orders.push(order); INV.deduct(order); STORE.save(); CLOUD.pushOrder(order);
+      try{ FLOOR.touchSeat(table); }catch(e){}
+      try{ if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); }catch(e){ console.error('kitchen',e); }
+      const tn=table; cart=[]; discount=null; member=null; table=null; orderNo=null; newOrderNo(); renderTypes(); renderCart();
+      KDS.updateBadge(); PENDING.updateBadge();
+      UI.toast('ส่งครัวแล้ว · โต๊ะ '+tn+' (เก็บเงินตอนปิดบิล)','ok');
+      NAV.go('floor');
+    }catch(e){ console.error('sendTab',e); UI.toast('ส่งครัวไม่สำเร็จ ลองใหม่','err'); }
+    finally{ _tabBusy=false; }
   }
   // ---- พักบิล / เรียกคืน ----
   function hold(){
     if(!cart.length){ UI.toast('ไม่มีรายการให้พัก','err'); return; }
-    STORE.get().holds.push({id:STORE.uuid(),no:orderNo,cart:JSON.parse(JSON.stringify(cart)),orderType,discount,member,at:STORE.now(),branchId:STORE.bid()});
+    if(tabCtx){ UI.toast('กำลังปิดบิลโต๊ะ — กด "ยกเลิก" ที่แถบปิดบิลแทนการพักบิล','err'); return; }
+    STORE.get().holds.push({id:STORE.uuid(),no:orderNo,cart:JSON.parse(JSON.stringify(cart)),orderType,discount,member,table,at:STORE.now(),branchId:STORE.bid()});
     STORE.save(); cart=[]; discount=null; member=null; orderNo=null; newOrderNo(); renderCart();
     UI.toast('พักบิลแล้ว','ok');
   }
@@ -3994,13 +4146,13 @@ const POS = (()=>{
     else doResume(h);
   }
   function doResume(h){
-    cart=h.cart; orderType=h.orderType; discount=h.discount; member=h.member; orderNo=h.no;
+    cart=h.cart; orderType=h.orderType; discount=h.discount; member=h.member; orderNo=h.no; if(h.table) table=h.table;
     STORE.get().holds=STORE.get().holds.filter(x=>x.id!==h.id); STORE.save();
     $('#orderNo').textContent=orderNo; renderTypes(); renderCart(); UI.toast('เรียกบิล '+h.no,'ok');
   }
   // ---- แยกบิล (split) ----
   function getState(){ return {cart,orderType,discount,member,orderNo,calc}; }
-  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
+  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; tabCtx=null; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
   function setDiscount(d){ discount=d; renderCart(); }
   // แถบ 🎂 เตือนพนักงาน — โผล่ทันทีที่ผูกสมาชิกที่เข้าเงื่อนไข
   function bdayBanner(){
@@ -4023,7 +4175,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -4265,6 +4417,9 @@ const PAY = (()=>{
   async function _complete(){
     const s=POS.calc();
     if(method==='cash'&&cashIn<s.total){ UI.toast('รับเงินไม่พอ','err'); return; }
+    // ⭐ v12.0 ปิดบิลโต๊ะ: บิลค้างทุกใบต้องยังค้างอยู่จริง (กันอีกเครื่องปิด/ยกเลิกไปก่อน -> เก็บเงินซ้ำ)
+    const _tab=POS.getTabCtx(), _srcs=_tab?_tab.ids.map(id=>STORE.find('orders',id)):[];
+    if(_tab && _srcs.some(o=>!o||o.payStatus!=='open'||o.status==='void')){ UI.close('payOverlay'); POS.cancelTab(true); UI.toast('บิลโต๊ะนี้ถูกปิด/เปลี่ยนจากเครื่องอื่นแล้ว — เปิดผังโต๊ะแล้วกดปิดบิลใหม่','err'); return; }
     const st=AUTH.get();
     const cart=POS.getCart(), member=POS.getMember(), discount=POS.getDiscount();
     const _rno=await CLOUD.nextNo('receipt');   // เลขใบเสร็จ atomic ฝั่ง server (fallback local ออฟไลน์)
@@ -4280,14 +4435,23 @@ const PAY = (()=>{
     const order={
       id:STORE.uuid(), no:_no, receiptNo:_rno, branchId:STORE.bid(),
       type:POS.getType(), table:POS.getTable()||'',
-      items:JSON.parse(JSON.stringify(cart)),
+      items:JSON.parse(JSON.stringify(cart)).map(it=>{ delete it.tab; return it; }),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
       method, paid:method==='cash'?cashIn:s.total, change:method==='cash'?cashIn-s.total:0,
       status:'preparing', payStatus:'paid', memberId:(member&&!member.ext)?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
       channel:'pos', createdAt:STORE.now(), closedAt:null
     };
     STORE.get().orders.push(order);
-    INV.deduct(order);                 // ตัดสต็อกตามสูตร
+    let _fresh=null;
+    if(_tab){   // ⭐ v12.0 ของที่ส่งครัวแล้วตัดสต็อกไปแล้ว -> ตัดเฉพาะที่เพิ่มตอนปิดบิล แล้วรวมประวัติการตัดมาไว้บิลนี้ (ยกเลิกทีหลังคืนได้ครบ)
+      _srcs.forEach(o=>{ try{ INV.deduct(o); }catch(e){} });
+      _fresh={items:order.items.filter(it=>!_tab.lines.includes(it.line)),channel:'pos'};
+      if(_fresh.items.length) INV.deduct(_fresh);
+      const _u=Object.assign({},_fresh.stockUsed||{});
+      _srcs.forEach(o=>{ if(o.stockUsed&&typeof o.stockUsed==='object') Object.keys(o.stockUsed).forEach(k=>{ _u[k]=(_u[k]||0)+(+o.stockUsed[k]||0); }); });
+      order.stockUsed=_u; order.stockDeducted=true; order.tabOf=_tab.ids.slice();
+      if(!_fresh.items.length){ order.status='done'; order.closedAt=STORE.now(); }   // ของออกจากครัวไปแล้ว ไม่ต้องขึ้นจอครัวซ้ำ
+    } else INV.deduct(order);                 // ตัดสต็อกตามสูตร
     try{ MEMBER.consume(order,discount); }catch(e){ console.error('consume',e); }   // ⭐ v11.2 ตัดแต้มที่แลกตอนจ่ายจริง
     if(member&&member.ext){ LOYAL.earn(order,member); }   // ⭐ v11.4 ให้แต้มในระบบสมาชิก SAO (ทำงานเบื้องหลัง ไม่หน่วงการขาย)
     else if(member) MEMBER.earn(member,order); // สะสมแต้ม
@@ -4299,12 +4463,18 @@ const PAY = (()=>{
     else if(order.method==='promptpay') LINEN.send(LINEN.saleMsg(order),'payqr');
     else if(order.method==='transfer') LINEN.send(LINEN.saleMsg(order),'paytransfer');
     CLOUD.pushOrder(order);
+    if(_tab){   // บิลค้างของโต๊ะ -> ปิดเป็น "รวมบิล" (ไม่นับเป็นบิลยกเลิก · ไม่คืนสต็อก เพราะย้ายมาอยู่บิลนี้แล้ว)
+      _srcs.forEach(o=>{ o.status='void'; o.merged=true; o.stockReturned=true; o.mergedInto=order.id; o.voidReason='ปิดบิลรวมเป็น '+order.no; o.closedAt=STORE.now(); CLOUD.pushOrder(o); });
+      try{ FLOOR.afterSettle(order.table); }catch(e){} try{ PENDING.updateBadge(); }catch(e){}
+    }
     STORE.save();
     POS.clearAfterPay();               // ⭐ ล้างตะกร้า/ออกเลขใหม่ก่อน — พิมพ์พังต้องไม่ค้างที่บิลเดิม
     UI.close('payOverlay');
     try{ receipt(order); }catch(e){ console.error('receipt',e); }
     try{ if(order.method==='cash') PRINT.kickDrawer(); }catch(e){ console.error('drawer',e); }
-    try{ autoPrint(order); }catch(e){ console.error('autoPrint',e); }
+    try{ if(_tab){ autoPrint(order,{noKitchen:true});   // ใบครัวออกไปแล้วตอนสั่ง · พิมพ์ใบครัวเฉพาะของที่เพิ่มตอนปิดบิล
+        if(_fresh&&_fresh.items.length){ const _S=STORE.get().settings; if(_S.autoPrint&&_S.kdsServeSlip) setTimeout(()=>KDS.serveSlip(Object.assign({},order,{items:_fresh.items})),900); } }
+      else autoPrint(order); }catch(e){ console.error('autoPrint',e); }
     KDS.updateBadge();
     UI.toast('ขายสำเร็จ '+STORE.baht(s.total),'ok');
   }
@@ -5065,7 +5235,7 @@ const QR = (()=>{
   function checkout(){ if(!qcart.length) return; stage='cart'; renderCartReview(); }
   function renderCartReview(){
     const _t=qtot(), sub=_t.total;
-    const tables=fixedTable?[]:STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt);
+    const tables=fixedTable?[]:STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco');
     $('#qrRoot').innerHTML=`
       <div class="qrc-head"><div class="qn">ตะกร้าของคุณ</div><small>ตรวจรายการก่อนยืนยัน</small></div>
       <div style="flex:1;overflow-y:auto;padding:16px;max-width:520px;margin:0 auto;width:100%">
@@ -5545,6 +5715,7 @@ const PENDING = (()=>{
     SHIFT.recordSale(o);                                                                         // ⭐ เงินสดเข้าลิ้นชัก
     try{ INV.deduct(o); }catch(e){}                                                              // ⭐ v11.1 โต๊ะค้างชำระจาก QR ลูกค้า: ถ้ายังไม่เคยตัดสต็อก ตัดตอนปิดบิล
     STORE.save(); CLOUD.pushOrder(o); UI.close('genOverlay'); updateBadge(); render();
+    try{ FLOOR.afterSettle(o.table); }catch(e){}
     if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(o),'sale');
     UI.toast('ปิดบิลแล้ว '+(o.table?'โต๊ะ '+o.table:o.no)+' · '+STORE.baht(o.total),'ok');
     // ⭐ v11.3 ปิดบิลโต๊ะแล้วต้องมีใบเสร็จให้ลูกค้า (เดิมไม่แสดง/ไม่พิมพ์อะไรเลย) — ใบครัวไม่พิมพ์ซ้ำ
@@ -5566,7 +5737,7 @@ const PENDING = (()=>{
   }
   function moveTable(id){
     const o=STORE.find('orders',id); if(!o) return;
-    const tables=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.name!==o.table);
+    const tables=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco'&&t.name!==o.table);
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🔀 ย้ายโต๊ะ${o.table?' (จากโต๊ะ '+esc(o.table)+')':''}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><p style="color:var(--muted);font-size:13px;margin-bottom:10px">เลือกโต๊ะปลายทาง · ถ้าโต๊ะนั้นมีบิลค้างอยู่ ระบบจะถามรวมบิล</p>
@@ -5599,6 +5770,330 @@ const PENDING = (()=>{
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } if(waitList().length===0 && (unseen>0||sndTimer)) seen(); try{ UI.updateHamBadge(); }catch(e){} }
   return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
+})();
+
+/* ============================================================
+   FLOOR — ⭐ v12.0 ผังโต๊ะ: เห็นโต๊ะว่าง/มีลูกค้า/รอชำระ/จอง · เปิดโต๊ะ · สั่งเพิ่ม · ย้าย · ปิดบิล · จอง · จัดผัง
+   ตำแหน่งเก็บในโต๊ะ (x,y,w,h หน่วย = 1/24 ของความกว้างผัง) · ของตกแต่ง = แถวโต๊ะ kind:'deco'
+   การจองเก็บตาราง reservations แยก (คนนอก/ลูกค้าอ่านไม่ได้ — ตาราง tables_ ลูกค้าอ่านได้ ห้ามใส่ชื่อ/เบอร์)
+   ============================================================ */
+const FLOOR = (()=>{
+  const COLS=24, STALE=12*3600000;
+  let zone=null, edit=false, selId=null, drag=null;
+  const DECO={label:{t:'ป้ายข้อความ',ic:'🔤',w:4,h:2,txt:'WELCOME'},counter:{t:'เคาน์เตอร์',ic:'🧾',w:6,h:2,txt:'เคาน์เตอร์'},
+    plant:{t:'ต้นไม้',ic:'🌿',w:2,h:2},wc:{t:'ห้องน้ำ',ic:'🚻',w:3,h:2},door:{t:'ทางเข้า',ic:'🚪',w:3,h:1,txt:'ทางเข้า'}};
+  const now=()=>STORE.now();
+  const pad=n=>String(n).padStart(2,'0');
+  const all=()=>STORE.scoped('tables').filter(t=>!t.deletedAt);
+  const tables=()=>all().filter(t=>t.kind!=='deco');
+  const zoneOf=t=>t.zone||'ในร้าน';
+  const cleanName=v=>String(v==null?'':v).replace(/['"<>`\\]/g,'').trim().slice(0,30);
+  function zones(){ const z=[]; all().forEach(t=>{ const k=zoneOf(t); if(!z.includes(k)) z.push(k); }); if(zone&&edit&&!z.includes(zone)) z.push(zone); if(!z.length) z.push('ในร้าน'); return z; }
+  function curZone(){ const z=zones(); if(!zone||!z.includes(zone)) zone=z[0]; return zone; }
+  function hhmm(ms){ const d=new Date(ms); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+  const sameDay=(a,b)=>new Date(a).toDateString()===new Date(b).toDateString();
+  function save(t){ STORE.save(); try{ CLOUD.pushItem('tables_',t); }catch(e){} }
+  function saveR(r){ STORE.save(); try{ CLOUD.pushItem('reservations',r); }catch(e){} }
+  // ---- สถานะโต๊ะ ----
+  const resvAll=()=>STORE.scoped('reservations').filter(r=>!r.deletedAt);
+  function upcoming(){ const n=now(); return resvAll().filter(r=>r.status==='booked'&&(r.time||0)>n-2*3600000).sort((a,b)=>a.time-b.time); }
+  function resvOf(t){ const n=now(); return upcoming().find(r=>r.tableId===t.id&&sameDay(r.time,n)); }
+  function ordersOf(name){ const b=STORE.bid();
+    const os=STORE.get().orders.filter(o=>(o.branchId||'BR-001')===b&&o.table===name&&o.status!=='void');
+    return {open:os.filter(o=>o.payStatus==='open'), wait:os.filter(o=>o.status==='wait_payment')}; }
+  function seatOf(t){ return (t&&t.seat&&now()-(t.seat.at||0)<STALE)?t.seat:null; }   // นั่งค้างเกิน 12 ชม. = ลืมเคลียร์ ไม่นับ
+  function info(t){
+    const {open,wait}=ordersOf(t.name), seat=seatOf(t), r=resvOf(t), n=now(), both=open.concat(wait);
+    let st='free'; if(wait.length) st='wait'; else if(open.length||seat) st='busy'; else if(r) st='resv';
+    return {st,open,wait,seat,r,guests:(seat&&seat.guests)||0,
+      total:both.reduce((s,o)=>s+(o.total||0),0),
+      since:Math.min(n, seat?(seat.at||n):n, ...both.map(o=>o.createdAt||n)),
+      qr:both.some(o=>o.channel==='qr'), fresh:both.some(o=>o.channel==='qr'&&n-(o.createdAt||0)<180000)};
+  }
+  const mins=(f)=>{ const m=Math.max(0,Math.floor((now()-f.since)/60000)); return m<60?(m+' นาที'):(Math.floor(m/60)+' ชม. '+(m%60)+' น.'); };
+  // ---- ตำแหน่ง ----
+  function overlap(a,b){ return a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h; }
+  function freeSpot(used,w,h){
+    for(let y=0;y<300;y++) for(let x=0;x<=COLS-w;x++){ const p={x:x-1,y:y-1,w:w+2,h:h+2}; if(!used.some(u=>overlap(u,p))) return {x,y,w,h}; }   // เว้นช่องรอบโต๊ะ 1 ช่อง
+    return {x:0,y:0,w,h}; }
+  function dims(t){ const d=t.kind==='deco'?(DECO[t.deco]||DECO.label):null; return {w:+t.w||(d?d.w:3), h:+t.h||(d?d.h:3)}; }
+  function layout(items){
+    const pos={}, used=[];
+    items.forEach(t=>{ if(t.x!=null&&t.y!=null){ const d=dims(t); pos[t.id]={x:+t.x||0,y:+t.y||0,w:d.w,h:d.h}; used.push(pos[t.id]); } });
+    items.forEach(t=>{ if(pos[t.id]) return; const d=dims(t); const p=freeSpot(used,d.w,d.h); pos[t.id]=p; used.push(p); });   // ยังไม่เคยจัด -> เรียงให้อัตโนมัติ
+    return pos;
+  }
+  function chairs(t,p){
+    const n=Math.max(0,Math.min(12,t.seats!=null?(+t.seats||0):2)); if(!n) return '';
+    const out=[];
+    if(t.shape==='round'){ for(let i=0;i<n;i++){ const a=(i/n)*2*Math.PI-Math.PI/2; out.push(`<i class="fl-ch" style="left:${(50+50*Math.cos(a)).toFixed(1)}%;top:${(50+50*Math.sin(a)).toFixed(1)}%"></i>`); } return out.join(''); }
+    const a=Math.ceil(n/2), b=n-a, vert=p.h>p.w;
+    const row=(k,fixed)=>{ for(let i=0;i<k;i++){ const f=((i+1)/(k+1)*100).toFixed(1);
+      out.push(vert?`<i class="fl-ch v" style="left:${fixed}%;top:${f}%"></i>`:`<i class="fl-ch" style="left:${f}%;top:${fixed}%"></i>`); } };
+    row(a,0); row(b,100); return out.join('');
+  }
+  function itemHtml(t,p){
+    const sty=`--x:${p.x};--y:${p.y};--w:${p.w};--h:${p.h}`, sel=(edit&&selId===t.id)?' sel':'';
+    if(t.kind==='deco'){ const k=DECO[t.deco]?t.deco:'label', d=DECO[k];
+      const inner=(k==='plant'||k==='wc')?`<span class="fl-ic">${d.ic}</span>`:`<span>${esc(t.name||d.txt||d.t)}</span>`;
+      return `<div class="fl-it fl-deco d-${k}${sel}" data-id="${t.id}" style="${sty}"><div class="fl-box">${inner}</div></div>`; }
+    const off=t.active===false, f=info(t);
+    let sub='', amt='';
+    if(f.st==='busy'||f.st==='wait'){ sub=(f.st==='wait'?'รอชำระ · ':'')+(f.guests?'👤'+f.guests+' · ':'')+mins(f); if(f.total) amt=STORE.baht(f.total); }
+    else if(f.st==='resv') sub='📅 '+hhmm(f.r.time)+(f.r.guests?' · '+f.r.guests+' คน':'');
+    if(off) sub='ปิดใช้งาน';
+    return `<div class="fl-it fl-t st-${off?'off':f.st}${t.shape==='round'?' round':''}${f.fresh&&!edit?' fresh':''}${sel}" data-id="${t.id}" style="${sty}"${edit?'':` onclick="FLOOR.tap('${t.id}')"`}>
+      <div class="fl-chs">${chairs(t,p)}</div>
+      <div class="fl-box"><div class="fl-name">${esc(t.name)}${f.qr?'<span class="fl-qr" title="ลูกค้าสแกนสั่ง">📱</span>':''}${(f.r&&f.st!=='resv')?'<span title="มีจองวันนี้">📅</span>':''}</div>${sub?`<div class="fl-sub">${esc(sub)}</div>`:''}${amt?`<div class="fl-amt">${amt}</div>`:''}</div></div>`;
+  }
+  // ---- หน้าผัง ----
+  function render(auto){
+    const P=$('#floorPanel'); if(!P) return;
+    if(drag || (auto&&edit)) return;                       // กำลังลาก/จัดผัง ห้ามรีเฟรชทับ
+    const z=curZone(), items=all().filter(t=>zoneOf(t)===z), pos=layout(items);
+    const rows=Math.max(12,...items.map(t=>pos[t.id].y+pos[t.id].h+1));
+    const cnt={free:0,busy:0,wait:0,resv:0}; tables().filter(t=>t.active!==false).forEach(t=>{ cnt[info(t).st]++; });
+    const zs=zones(), canEdit=AUTH.can('bo_menu');
+    const sc=P.scrollTop;
+    P.innerHTML=`<div class="panel-head fl-head"><h2>🗺️ ผังโต๊ะ</h2>
+        ${edit?'<span class="fl-hint">โหมดจัดผัง · ลากเพื่อย้าย · แตะเพื่อเลือกแล้วปรับขนาด</span>'
+          :`<div class="fl-legend"><span class="lg free">ว่าง <b>${cnt.free}</b></span><span class="lg busy">มีลูกค้า <b>${cnt.busy}</b></span><span class="lg wait">รอชำระ <b>${cnt.wait}</b></span><span class="lg resv">จองวันนี้ <b>${cnt.resv}</b></span></div>`}
+        <div class="fl-tools">${edit
+          ?'<button class="btn btn-ghost" onclick="FLOOR.addTable()">+ โต๊ะ</button><button class="btn btn-ghost" onclick="FLOOR.addDeco()">+ ของตกแต่ง</button><button class="btn btn-gold" onclick="FLOOR.stopEdit()">✓ เสร็จ</button>'
+          :`<button class="btn btn-ghost" onclick="FLOOR.book()">📅 จองโต๊ะ</button>${canEdit?'<button class="btn btn-ghost" onclick="FLOOR.startEdit()">✏️ จัดผัง</button>':''}`}</div></div>
+      ${(zs.length>1||edit)?`<div class="fl-zones">${zs.map((k,i)=>`<button class="fl-ztab ${k===z?'active':''}" onclick="FLOOR.setZone(${i})">${esc(k)}</button>`).join('')}${edit?'<button class="fl-ztab" onclick="FLOOR.addZone()">+ โซน</button>':''}</div>`:''}
+      ${edit?editBar():''}
+      <div class="fl-wrap"><div class="fl-canvas${edit?' editing':''}" id="flCanvas" style="--rows:${rows}">${items.map(t=>itemHtml(t,pos[t.id])).join('')||'<div class="empty" style="padding:30px">ยังไม่มีโต๊ะในโซนนี้</div>'}</div></div>
+      ${edit?'':resvList()}`;
+    P.scrollTop=sc;
+    size();
+    const cv=$('#flCanvas'); if(cv&&edit) cv.onpointerdown=down;
+  }
+  function size(){ const cv=$('#flCanvas'); if(!cv) return; const u=cv.clientWidth/COLS; if(u>0) cv.style.setProperty('--u',u+'px'); }
+  try{ window.addEventListener('resize',()=>{ try{ if(NAV.cur()==='floor') size(); }catch(e){} }); }catch(e){}
+  function setZone(i){ const z=zones()[i]; if(z!=null){ zone=z; selId=null; render(); } }
+  // ---- แตะโต๊ะ ----
+  function tap(id){
+    const t=STORE.find('tables',id); if(!t||t.kind==='deco') return;
+    if(t.active===false){ UI.toast('โต๊ะนี้ปิดใช้งานอยู่ (เปิดได้ที่หลังร้าน › โต๊ะ)','err'); return; }
+    const f=info(t), B=STORE.baht, busy=(f.st==='busy'||f.st==='wait');
+    const head={free:'ว่าง',busy:'มีลูกค้า',wait:'รอชำระ',resv:'มีจอง'}[f.st];
+    const ords=f.open.concat(f.wait).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)).map(o=>`<div class="fl-ord">
+        <div><b>${esc(o.no)}</b> ${o.channel==='qr'?'<span class="pill ok">📱 ลูกค้าสแกนสั่ง</span>':'<span class="pill lo">พนักงาน</span>'} ${o.status==='wait_payment'?'<span class="pill no">รอชำระก่อนเข้าครัว</span>':''}<span style="float:right;font-weight:700">${B(o.total)}</span></div>
+        <div class="fl-items">${esc((o.items||[]).map(it=>it.qty+'× '+it.name).join(', '))}</div></div>`).join('');
+    const r=f.r;
+    const rbox=r?`<div class="fl-resv">📅 <b>จอง ${hhmm(r.time)}</b> · ${esc(r.name||'-')}${r.guests?' · '+esc(r.guests)+' คน':''}${r.phone?' · '+esc(r.phone):''}${r.note?'<br><small>'+esc(r.note)+'</small>':''}
+        <div class="fl-btns"><button class="btn btn-gold" onclick="FLOOR.arrive('${r.id}')">✅ ลูกค้ามาแล้ว</button><button class="btn btn-ghost" onclick="FLOOR.book('${r.id}')">✏️ แก้ไข</button><button class="btn btn-ghost" style="color:var(--danger)" onclick="FLOOR.cancelResv('${r.id}')">ยกเลิกจอง</button></div></div>`:'';
+    const openSum=f.open.reduce((s,o)=>s+(o.total||0),0);
+    const btns=busy
+      ? `<button class="btn btn-gold" onclick="FLOOR.order('${t.id}')">➕ สั่งเพิ่ม</button>
+         ${f.open.length?`<button class="btn btn-pay" onclick="FLOOR.settle('${t.id}')">💰 ปิดบิล · ${B(openSum)}</button>`:''}
+         ${f.wait.length?`<button class="btn btn-ghost" onclick="UI.close('genOverlay');NAV.go('pending')">📥 ไปหน้ารอชำระ</button>`:''}
+         <button class="btn btn-ghost" onclick="FLOOR.move('${t.id}')">🔀 ย้าย / รวมโต๊ะ</button>
+         <button class="btn btn-ghost" onclick="FLOOR.guests('${t.id}')">👤 แก้จำนวนลูกค้า</button>
+         ${(f.open.length||f.wait.length)?'':`<button class="btn btn-ghost" onclick="FLOOR.clear('${t.id}')">🧹 เคลียร์โต๊ะ (ลูกค้ากลับแล้ว)</button>`}`
+      : `<button class="btn btn-gold" onclick="FLOOR.guests('${t.id}',1)">🍽️ เปิดโต๊ะ</button>
+         <button class="btn btn-ghost" onclick="FLOOR.book(null,'${t.id}')">📅 จองโต๊ะนี้</button>
+         <button class="btn btn-ghost" onclick="UI.close('genOverlay');BO.tableQR('${t.id}')">🔗 QR สั่งอาหารของโต๊ะนี้</button>`;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🪑 โต๊ะ ${esc(t.name)} <span class="fl-st st-${f.st}">${head}</span></h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">${busy?`<div style="color:var(--muted);font-size:13px;margin-bottom:10px">${f.guests?'👤 '+f.guests+' คน · ':''}นั่งมาแล้ว ${mins(f)}${f.total?' · ยอดรวม <b style="color:var(--text)">'+B(f.total)+'</b>':''}</div>`:''}
+        ${ords}${rbox}<div class="fl-btns col">${btns}</div></div>`;
+    UI.open('genOverlay');
+  }
+  function guests(id,openAfter){
+    const t=STORE.find('tables',id); if(!t) return; const cur=(seatOf(t)||{}).guests||0;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>👤 ลูกค้ากี่คน · โต๊ะ ${esc(t.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><div class="fl-pax">${[1,2,3,4,5,6,7,8,9,10,11,12].map(n=>`<button class="${n===cur?'sel':''}" onclick="FLOOR.seat('${t.id}',${n},${openAfter?1:0})">${n}</button>`).join('')}</div>
+      <button class="btn btn-ghost" style="width:100%;margin-top:12px" onclick="FLOOR.seat('${t.id}',0,${openAfter?1:0})">ไม่ระบุจำนวน</button></div>`;
+    UI.open('genOverlay');
+  }
+  function seat(id,n,openAfter){
+    const t=STORE.find('tables',id); if(!t) return;
+    const s=seatOf(t); t.seat={at:s?(s.at||now()):now(),guests:+n||0}; save(t); render();
+    if(!openAfter){ UI.close('genOverlay'); UI.toast('โต๊ะ '+t.name+(n?(' · '+n+' คน'):''),'ok'); return; }
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🍽️ เปิดโต๊ะ ${esc(t.name)} แล้ว</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><div class="fl-btns col"><button class="btn btn-gold" onclick="FLOOR.order('${t.id}')">🛒 พนักงานรับออเดอร์</button>
+      <button class="btn btn-ghost" onclick="UI.close('genOverlay')">📱 ให้ลูกค้าสแกน QR สั่งเอง</button></div></div>`;
+    UI.open('genOverlay');
+  }
+  // เรียกจากหน้าขายตอนส่งครัว — โต๊ะที่ยังไม่ได้เปิด ให้ขึ้นว่ามีลูกค้า
+  function touchSeat(name){ const t=tables().find(x=>x.name===name); if(t&&!seatOf(t)){ t.seat={at:now(),guests:0}; save(t); } }
+  function order(id){ const t=STORE.find('tables',id); if(!t) return; UI.close('genOverlay'); POS.startTable(t.name); }
+  function settle(id){ const t=STORE.find('tables',id); if(!t) return; UI.close('genOverlay'); POS.loadTab(t.name); }
+  function clear(id){ const t=STORE.find('tables',id); if(!t) return; const o=ordersOf(t.name);
+    if(o.open.length||o.wait.length){ UI.toast('ยังมีบิลค้างอยู่ — ปิดบิลก่อน','err'); return; }
+    t.seat=null; save(t); UI.close('genOverlay'); render(); UI.toast('โต๊ะ '+t.name+' ว่างแล้ว','ok'); }
+  // ปิดบิลเสร็จ (หน้าขาย/หน้ารอชำระ) -> ไม่มีบิลค้างแล้วให้โต๊ะกลับเป็นว่าง
+  function afterSettle(name){ if(!name) return; const t=tables().find(x=>x.name===name); if(!t||!t.seat) return;
+    const o=ordersOf(name); if(!o.open.length&&!o.wait.length){ t.seat=null; save(t); } }
+  function move(id){
+    const t=STORE.find('tables',id); if(!t) return;
+    const others=tables().filter(x=>x.id!==t.id&&x.active!==false);
+    const lb={free:'ว่าง',busy:'มีลูกค้า',wait:'รอชำระ',resv:'มีจอง'};
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🔀 ย้ายโต๊ะ ${esc(t.name)} ไป…</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><p style="color:var(--muted);font-size:13px;margin-bottom:10px">บิลค้างทั้งหมดย้ายไปด้วย · เลือกโต๊ะที่มีลูกค้า = รวมโต๊ะ (ปิดบิลพร้อมกัน)</p>
+      <div class="opt-chips">${others.map(x=>{ const s=info(x).st; return `<button class="opt-chip fl-mv st-${s}" onclick="FLOOR.moveTo('${t.id}','${x.id}')">${esc(x.name)} <small>${lb[s]}</small></button>`; }).join('')||'<span style="color:var(--muted)">ไม่มีโต๊ะอื่น</span>'}</div></div>`;
+    UI.open('genOverlay');
+  }
+  function moveTo(fromId,toId){
+    const a=STORE.find('tables',fromId), b=STORE.find('tables',toId); if(!a||!b) return;
+    const go=()=>{
+      const o=ordersOf(a.name); o.open.concat(o.wait).forEach(x=>{ x.table=b.name; CLOUD.pushOrder(x); });
+      const sa=seatOf(a), sb=seatOf(b);
+      if(sa||o.open.length) b.seat={at:Math.min(sa?sa.at:now(), sb?sb.at:now()), guests:((sa&&sa.guests)||0)+((sb&&sb.guests)||0)};
+      a.seat=null; save(a); save(b); STORE.save();
+      try{ KDS.updateBadge(); PENDING.updateBadge(); }catch(e){}
+      UI.close('genOverlay'); render(); UI.toast('ย้ายโต๊ะ '+a.name+' → '+b.name,'ok'); };
+    const s=info(b).st; if(s==='busy'||s==='wait') UI.confirm2('รวมโต๊ะ?','โต๊ะ '+b.name+' มีลูกค้าอยู่แล้ว\nย้ายโต๊ะ '+a.name+' ไปรวม แล้วปิดบิลพร้อมกัน?',go); else go();
+  }
+  // ---- จองโต๊ะ ----
+  function book(rid,tid){
+    const r=rid?resvAll().find(x=>x.id===rid):null;
+    const ts=tables().filter(t=>t.active!==false);
+    const d=new Date(r?r.time:(now()+3600000));
+    const ymd=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()), hm=pad(d.getHours())+':'+pad(r?d.getMinutes():0);
+    $('#genModal').className='modal';
+    UI.ask(r?'✏️ แก้ไขการจอง':'📅 จองโต๊ะ',[
+      {key:'name',label:'ชื่อลูกค้า',value:r?r.name:''},
+      {key:'phone',label:'เบอร์โทร',type:'tel',value:r?(r.phone||''):''},
+      {key:'date',label:'วันที่',type:'date',value:ymd},
+      {key:'time',label:'เวลา',type:'time',value:hm},
+      {key:'guests',label:'จำนวนคน',type:'number',value:r?(r.guests||''):2},
+      {key:'table',label:'โต๊ะ',type:'select',value:r?(r.tableId||''):(tid||''),options:[{v:'',t:'— ยังไม่ระบุโต๊ะ —'}].concat(ts.map(t=>({v:t.id,t:'โต๊ะ '+t.name+' · '+zoneOf(t)})))},
+      {key:'note',label:'หมายเหตุ (เช่น วันเกิด, ขอโซนเงียบ)',value:r?(r.note||''):''}
+    ],(o)=>{
+      const name=String(o.name||'').trim().slice(0,60); if(!name){ UI.toast('ใส่ชื่อลูกค้า','err'); return; }
+      const tm=new Date((o.date||ymd)+'T'+(o.time||'12:00')).getTime(); if(!isFinite(tm)){ UI.toast('วันที่/เวลาไม่ถูกต้อง','err'); return; }
+      const t=o.table?STORE.find('tables',o.table):null;
+      const x=r||{id:STORE.uuid(),branchId:STORE.bid(),status:'booked',createdAt:now(),by:(AUTH.get()||{}).name||''};
+      Object.assign(x,{name,phone:String(o.phone||'').replace(/[^0-9+\- ]/g,'').slice(0,20),time:tm,guests:Math.max(0,Math.min(999,parseInt(o.guests)||0)),
+        tableId:t?t.id:'',tableName:t?t.name:'',note:String(o.note||'').slice(0,120)});
+      if(!r){ const D=STORE.get(); (D.reservations||(D.reservations=[])).push(x); }
+      saveR(x); render();
+      const clash=t&&upcoming().find(y=>y.id!==x.id&&y.tableId===t.id&&Math.abs(y.time-tm)<2*3600000);
+      if(clash) UI.toast('⚠️ บันทึกแล้ว แต่โต๊ะ '+t.name+' มีจองใกล้เวลานี้ ('+hhmm(clash.time)+' '+clash.name+')','err');
+      else UI.toast('บันทึกการจองแล้ว · '+hhmm(tm)+' '+name,'ok');
+    });
+  }
+  function arrive(rid){
+    const r=resvAll().find(x=>x.id===rid); if(!r) return;
+    const t=r.tableId&&STORE.find('tables',r.tableId);
+    if(!t||t.deletedAt){ pickFor(rid); return; }
+    r.status='arrived'; r.arrivedAt=now(); saveR(r);
+    const s=seatOf(t); t.seat={at:s?s.at:now(),guests:(s&&s.guests)||r.guests||0}; save(t);
+    UI.close('genOverlay'); render(); UI.toast('ลูกค้า '+r.name+' มาแล้ว · เปิดโต๊ะ '+t.name,'ok');
+  }
+  function pickFor(rid){
+    const r=resvAll().find(x=>x.id===rid); if(!r) return;
+    const free=tables().filter(t=>t.active!==false&&info(t).st!=='busy'&&info(t).st!=='wait');
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🪑 เลือกโต๊ะให้คุณ ${esc(r.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><div class="opt-chips">${free.map(t=>`<button class="opt-chip" onclick="FLOOR.assignArrive('${r.id}','${t.id}')">${esc(t.name)}</button>`).join('')||'<span style="color:var(--muted)">ไม่มีโต๊ะว่าง</span>'}</div></div>`;
+    UI.open('genOverlay');
+  }
+  function assignArrive(rid,tid){ const r=resvAll().find(x=>x.id===rid), t=STORE.find('tables',tid); if(!r||!t) return; r.tableId=t.id; r.tableName=t.name; arrive(rid); }
+  function cancelResv(rid){
+    const r=resvAll().find(x=>x.id===rid); if(!r) return;
+    UI.confirm2('ยกเลิกการจอง','ยกเลิกการจองของ '+r.name+' เวลา '+hhmm(r.time)+'?',()=>{ r.status='cancelled'; r.cancelledAt=now(); saveR(r); UI.close('genOverlay'); render(); UI.toast('ยกเลิกการจองแล้ว','ok'); },true);
+  }
+  function resvList(){
+    const n=now(), ls=upcoming().slice(0,40);
+    return `<div class="fl-rl"><div class="fl-rl-h"><h3>📅 การจองที่กำลังจะมาถึง</h3><button class="sub-tab" onclick="FLOOR.book()">+ จองโต๊ะ</button></div>${ls.length?ls.map(r=>{
+        const t=r.tableId&&STORE.find('tables',r.tableId), tn=(t&&!t.deletedAt)?t.name:'';
+        const late=r.time<n;
+        return `<div class="fl-rrow${late?' late':''}"><div><b>${sameDay(r.time,n)?'วันนี้':new Date(r.time).toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short'})} ${hhmm(r.time)}</b>${late?' <span class="pill no">เลยเวลา</span>':''} · ${esc(r.name)}${r.guests?' · '+esc(r.guests)+' คน':''} · <span style="color:var(--gold);font-weight:600">${tn?'โต๊ะ '+esc(tn):'ยังไม่ระบุโต๊ะ'}</span>${r.phone?' · '+esc(r.phone):''}${r.note?'<br><small style="color:var(--muted)">'+esc(r.note)+'</small>':''}</div>
+          <div class="fl-rbtn"><button class="sub-tab" onclick="FLOOR.arrive('${r.id}')">✅ มาแล้ว</button><button class="sub-tab" onclick="FLOOR.book('${r.id}')">แก้ไข</button><button class="sub-tab" style="color:var(--danger)" onclick="FLOOR.cancelResv('${r.id}')">ยกเลิก</button></div></div>`; }).join('')
+      :'<div class="empty" style="padding:14px">ยังไม่มีการจอง</div>'}</div>`;
+  }
+  // ---- จัดผัง (ผู้จัดการ) ----
+  function startEdit(){
+    if(!AUTH.can('bo_menu')){ UI.toast('ต้องเป็นผู้จัดการขึ้นไปถึงจัดผังได้','err'); return; }
+    edit=true; selId=null;
+    zones().forEach(z=>{ const items=all().filter(t=>zoneOf(t)===z), pos=layout(items);
+      items.forEach(t=>{ if(t.x==null||t.y==null||t.w==null||t.h==null){ const p=pos[t.id]; t.x=p.x; t.y=p.y; t.w=p.w; t.h=p.h; save(t); } }); });   // ล็อกตำแหน่งที่เรียงอัตโนมัติ ไม่ให้กระโดดตอนย้ายตัวอื่น
+    if(NAV.cur()!=='floor') NAV.go('floor'); else render();
+  }
+  function stopEdit(){ edit=false; selId=null; render(); UI.toast('บันทึกผังโต๊ะแล้ว','ok'); }
+  function editBar(){
+    const t=selId&&STORE.find('tables',selId);
+    if(!t||t.deletedAt) return '<div class="fl-ebar"><span style="color:var(--muted)">แตะโต๊ะหรือของตกแต่งเพื่อเลือก · ลากเพื่อย้ายตำแหน่ง</span></div>';
+    const isT=t.kind!=='deco', k=DECO[t.deco]?t.deco:'label';
+    return `<div class="fl-ebar"><b>${esc(isT?('โต๊ะ '+t.name):(DECO[k].t+(t.name?(' · '+t.name):'')))}</b>
+      <span class="fl-grp">กว้าง <button onclick="FLOOR.adj('w',-1)">−</button><button onclick="FLOOR.adj('w',1)">+</button></span>
+      <span class="fl-grp">ยาว <button onclick="FLOOR.adj('h',-1)">−</button><button onclick="FLOOR.adj('h',1)">+</button></span>
+      ${isT?`<span class="fl-grp">ที่นั่ง ${t.seats!=null?esc(t.seats):2} <button onclick="FLOOR.adj('seats',-1)">−</button><button onclick="FLOOR.adj('seats',1)">+</button></span>
+      <button class="fl-b" onclick="FLOOR.shape()">${t.shape==='round'?'⬜ เหลี่ยม':'⚪ กลม'}</button>`:''}
+      ${(isT||k==='label'||k==='counter'||k==='door')?'<button class="fl-b" onclick="FLOOR.rename()">✏️ ชื่อ</button>':''}
+      <button class="fl-b" onclick="FLOOR.moveZone()">🔀 ย้ายโซน</button>
+      <button class="fl-b danger" onclick="FLOOR.del()">🗑️ ลบ</button></div>`;
+  }
+  const unit=()=>{ const cv=$('#flCanvas'); return cv?cv.clientWidth/COLS:30; };
+  function down(e){
+    const el=e.target.closest('.fl-it');
+    if(!el){ if(selId){ selId=null; render(); } return; }
+    const t=STORE.find('tables',el.dataset.id); if(!t) return;
+    e.preventDefault();
+    if(selId!==t.id){ selId=t.id; $$('#flCanvas .fl-it.sel').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); const eb=$('.fl-ebar'); if(eb) eb.outerHTML=editBar(); }
+    drag={id:t.id,el,sx:e.clientX,sy:e.clientY,ox:+t.x||0,oy:+t.y||0,x:+t.x||0,y:+t.y||0,w:dims(t).w,moved:false};
+    try{ el.setPointerCapture(e.pointerId); }catch(_){}
+    el.onpointermove=move2; el.onpointerup=up; el.onpointercancel=up;
+  }
+  function move2(e){ if(!drag) return; const u=unit()||30;
+    const nx=Math.max(0,Math.min(COLS-drag.w, drag.ox+Math.round((e.clientX-drag.sx)/u)));
+    const ny=Math.max(0, drag.oy+Math.round((e.clientY-drag.sy)/u));
+    if(nx!==drag.x||ny!==drag.y){ drag.x=nx; drag.y=ny; drag.moved=true; drag.el.style.setProperty('--x',nx); drag.el.style.setProperty('--y',ny); } }
+  function up(){ const d=drag; drag=null; if(!d) return; d.el.onpointermove=d.el.onpointerup=d.el.onpointercancel=null;
+    if(d.moved){ const t=STORE.find('tables',d.id); if(t){ t.x=d.x; t.y=d.y; save(t); } render(); } }
+  const selT=()=>{ const t=selId&&STORE.find('tables',selId); return (t&&!t.deletedAt)?t:null; };
+  function adj(k,d){ const t=selT(); if(!t) return; const m=dims(t);
+    if(k==='w'){ t.w=Math.max(1,Math.min(COLS-(+t.x||0),m.w+d)); t.h=m.h; if(t.shape==='round') t.h=t.w; }
+    else if(k==='h'){ t.h=Math.max(1,Math.min(20,m.h+d)); t.w=m.w; if(t.shape==='round') t.w=Math.min(COLS-(+t.x||0),t.h); }
+    else if(k==='seats'){ t.seats=Math.max(0,Math.min(12,(t.seats!=null?+t.seats:2)+d)); }
+    save(t); render(); }
+  function shape(){ const t=selT(); if(!t) return; const m=dims(t);
+    if(t.shape==='round'){ t.shape='rect'; } else { t.shape='round'; const s=Math.max(m.w,m.h); t.w=Math.min(COLS-(+t.x||0),s); t.h=t.w; }
+    save(t); render(); }
+  function rename(){ const t=selT(); if(!t) return;
+    if(t.kind!=='deco'){ const o=ordersOf(t.name); if(o.open.length||o.wait.length){ UI.toast('โต๊ะนี้มีบิลค้างอยู่ — ปิดบิลก่อนเปลี่ยนชื่อ','err'); return; } }
+    UI.ask(t.kind==='deco'?'ข้อความบนป้าย':'ชื่อโต๊ะ',[{key:'name',label:t.kind==='deco'?'ข้อความ':'ชื่อโต๊ะ (QR เดิมของโต๊ะนี้จะใช้ไม่ได้ ต้องพิมพ์ใหม่)',value:t.name||''}],(o)=>{
+      const v=cleanName(o.name); if(!v&&t.kind!=='deco'){ UI.toast('ใส่ชื่อโต๊ะ','err'); return; }
+      if(t.kind!=='deco'&&tables().some(x=>x.id!==t.id&&x.name===v)){ UI.toast('มีโต๊ะชื่อนี้แล้ว','err'); return; }
+      t.name=v; save(t); render(); }); }
+  function moveZone(){ const t=selT(); if(!t) return;
+    UI.ask('ย้ายไปโซน',[{key:'z',label:'ชื่อโซน (พิมพ์ชื่อใหม่ = สร้างโซนใหม่)',value:zoneOf(t)}],(o)=>{
+      const z=cleanName(o.z)||'ในร้าน'; if(z===zoneOf(t)) return;
+      const used=all().filter(x=>zoneOf(x)===z&&x.id!==t.id).map(x=>{ const d=dims(x); return {x:+x.x||0,y:+x.y||0,w:d.w,h:d.h}; });
+      const d=dims(t), p=freeSpot(used,d.w,d.h); t.zone=z; t.x=p.x; t.y=p.y; save(t); zone=z; render(); }); }
+  function addZone(){ UI.ask('เพิ่มโซน',[{key:'z',label:'ชื่อโซน (เช่น ชั้น 2, ระเบียง, Zone2)',value:''}],(o)=>{ const z=cleanName(o.z); if(!z) return; zone=z; selId=null; render(); UI.toast('สร้างโซน '+z+' · กด "+ โต๊ะ" เพื่อเพิ่มโต๊ะในโซนนี้','ok'); }); }
+  function place(obj){ const z=curZone(); const used=all().filter(x=>zoneOf(x)===z).map(x=>{ const d=dims(x); return {x:+x.x||0,y:+x.y||0,w:d.w,h:d.h}; });
+    const p=freeSpot(used,obj.w,obj.h); obj.x=p.x; obj.y=p.y; obj.zone=z; obj.branchId=STORE.bid(); obj.active=true; obj.id=STORE.uuid();
+    STORE.get().tables.push(obj); selId=obj.id; save(obj); render(); }
+  function addTable(){
+    UI.ask('เพิ่มโต๊ะ',[{key:'name',label:'ชื่อโต๊ะ (เช่น 1, 12, T9)',value:''},{key:'seats',label:'จำนวนที่นั่ง',type:'number',value:2}],(o)=>{
+      const name=cleanName(o.name); if(!name){ UI.toast('ใส่ชื่อโต๊ะ','err'); return; }
+      if(tables().some(t=>t.name===name)){ UI.toast('มีโต๊ะชื่อ '+name+' แล้ว','err'); return; }
+      const seats=Math.max(0,Math.min(12,parseInt(o.seats)||2));
+      place({name,w:3,h:seats>4?5:3,seats,shape:'rect'}); });
+  }
+  function addDeco(){
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>+ ของตกแต่งในผัง</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><div class="opt-chips">${Object.keys(DECO).map(k=>`<button class="opt-chip" onclick="FLOOR.addDecoOf('${k}')">${DECO[k].ic} ${DECO[k].t}</button>`).join('')}</div>
+      <p style="color:var(--muted);font-size:12px;margin-top:10px">ของตกแต่งไว้ช่วยให้พนักงานดูผังง่ายขึ้น · ไม่ใช่โต๊ะ ลูกค้าเลือกไม่ได้</p></div>`;
+    UI.open('genOverlay');
+  }
+  function addDecoOf(k){ const d=DECO[k]; if(!d) return;
+    const mk=(txt)=>{ UI.close('genOverlay'); place({kind:'deco',deco:k,name:txt||'',w:d.w,h:d.h}); };
+    if(d.txt) UI.ask(d.t,[{key:'t',label:'ข้อความ',value:d.txt}],(o)=>mk(cleanName(o.t)||d.txt)); else mk(''); }
+  function del(){ const t=selT(); if(!t) return;
+    if(t.kind!=='deco'){ const o=ordersOf(t.name); if(o.open.length||o.wait.length){ UI.toast('โต๊ะนี้มีบิลค้างอยู่ — ลบไม่ได้','err'); return; } }
+    UI.confirm2('ลบ',(t.kind==='deco'?'ลบของตกแต่งนี้?':'ลบโต๊ะ '+t.name+'? (QR ของโต๊ะนี้จะใช้สั่งไม่ได้)'),()=>{ t.deletedAt=now(); save(t); selId=null; UI.close('genOverlay'); render(); },true); }
+  return {render,setZone,tap,guests,seat,touchSeat,order,settle,clear,afterSettle,move,moveTo,book,arrive,pickFor,assignArrive,cancelResv,
+          startEdit,stopEdit,adj,shape,rename,moveZone,addZone,addTable,addDeco,addDecoOf,del};
 })();
 
 /* ============================================================
@@ -6355,9 +6850,9 @@ const BO = (()=>{
     });
   }
   function renderTables(){
-    const tables=STORE.scoped('tables').filter(t=>!t.deletedAt);
+    const tables=STORE.scoped('tables').filter(t=>!t.deletedAt&&t.kind!=='deco');
     $('#boBody').innerHTML=`
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px"><button class="add-fab" onclick="BO.allTableQR()">🖨️ QR ทุกโต๊ะ</button><button class="add-fab" onclick="BO.editTable()">+ เพิ่มโต๊ะ</button></div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:12px"><button class="add-fab" onclick="FLOOR.startEdit()">🗺️ จัดผังโต๊ะ</button><button class="add-fab" onclick="BO.allTableQR()">🖨️ QR ทุกโต๊ะ</button><button class="add-fab" onclick="BO.editTable()">+ เพิ่มโต๊ะ</button></div>
       <table><thead><tr><th>โต๊ะ</th><th>โซน</th><th>สถานะ</th><th></th></tr></thead><tbody>
       ${tables.map(t=>`<tr><td><b>${esc(t.name)}</b></td><td>${esc(t.zone||'-')}</td>
         <td><span class="pill ${t.active?'ok':'no'}">${t.active?'ใช้งาน':'ปิด'}</span></td>
@@ -6379,7 +6874,7 @@ const BO = (()=>{
   }
   function allTableQR(){
     if(!(STORE.get().meta.orderBaseUrl||'')){ UI.toast('ยังไม่ได้ตั้งค่า URL หน้าลูกค้า (ตั้งค่า → URL หน้าสั่งอาหาร)','err'); return; }
-    const ts=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt);
+    const ts=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🖨️ QR ทุกโต๊ะ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div id="rcptPrint"><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;font-family:'Prompt'">
@@ -6490,7 +6985,7 @@ const BO = (()=>{
       const dedupe=(arr,tbl,keyFn,onDup)=>{ const grp={}; (arr||[]).filter(x=>inB(x)&&alive(x)).forEach(x=>{ const k=keyFn(x); (grp[k]=grp[k]||[]).push(x); });
         Object.values(grp).forEach(g2=>{ if(g2.length<2) return; g2.sort((a,b)=>(a.createdAt||0)-(b.createdAt||0)); const kp=g2[0]; touch(tbl,kp);
           g2.slice(1).forEach(x=>{ x.deletedAt=STORE.now(); touch(tbl,x); onDup&&onDup(x,kp); }); }); };
-      dedupe(D.tables,'tables_',t=>(t.name||'').trim(),()=>{nTab++;});
+      dedupe(D.tables,'tables_',t=>t.kind==='deco'?('deco:'+t.id):(t.name||'').trim(),()=>{nTab++;});
       dedupe(D.promos,'promos',p=>(p.code||'').trim(),()=>{nPromo++;});
       dedupe(D.suppliers,'suppliers',sp=>(sp.name||'').trim(),(dup,keep)=>{ (D.ingredients||[]).forEach(i=>{ if(i.supplierId===dup.id){ i.supplierId=keep.id; touch('ingredients',i); } }); nSup++; });
       // --- พนักงาน: เก็บตัวที่ใช้อยู่ (ตัวเอง > HQ > ทำงานอยู่ > มียอดขาย) · ห้ามลบตัวเอง/HQ ตัวจริง ---
@@ -7691,7 +8186,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v11.10</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.0</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -7922,7 +8417,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v11.10) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.0) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -8394,7 +8889,7 @@ function voidOrder(oid){
    SPLIT — แยกบิล / จ่ายแยกตามรายการ
    ============================================================ */
 const SPLIT = (()=>{
-  function open(){ if(!POS.getCart().length){ UI.toast('ยังไม่มีรายการ','err'); return; } if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะก่อนเริ่มขาย','err'); NAV.go('shift'); return; } render('cash'); }
+  function open(){ if(!POS.getCart().length){ UI.toast('ยังไม่มีรายการ','err'); return; } if(POS.getTabCtx()){ UI.toast('บิลโต๊ะที่ส่งครัวแล้วยังแยกจ่ายไม่ได้ — ชำระรวมทั้งโต๊ะ','err'); return; } if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะก่อนเริ่มขาย','err'); NAV.go('shift'); return; } render('cash'); }
   function render(method){
     const cart=POS.getCart();
     $('#genModal').className='modal wide';
@@ -9639,6 +10134,7 @@ const CLOUD = (()=>{
         let r=await client.from(table).upsert(row);
         if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; row=rowOf(obj,obj._uat); r=await client.from(table).upsert(row); }
         if(!r||!r.error) return; console.error('pushItem',table,r.error);
+        if(table==='reservations' && /does not exist|could not find the table|42P01|PGRST205/i.test(String(r.error.message||'')+' '+String(r.error.code||''))){ try{ UI.toast('บันทึกการจองในเครื่องนี้แล้ว · ยังไม่ซิงก์ข้ามเครื่อง (ต้องรัน SQL ไฟล์ 14)','err'); }catch(e){} return; }
       }catch(e){ console.error('pushItem',table,e); }
     }
     enqueue(table,row);
@@ -9739,7 +10235,8 @@ const CLOUD = (()=>{
   }
   // ---- Realtime: subscribe ทุกตารางหลัก + reconnect อัตโนมัติ ----
   const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','members','promos','suppliers','branches','shifts','cashlog','app_meta'];
-  const TMAP={orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',members:'members',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
+  let resvOK=false;
+  const TMAP={reservations:'reservations',orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',members:'members',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
   const rtChs={}, rtErr={};                       // channel แยกต่อตาราง -> ตารางเดียวมีปัญหา ตารางอื่นยังวิ่ง
   function subTable(t){
     if(!client||rtChs[t]) return;
@@ -9767,7 +10264,7 @@ const CLOUD = (()=>{
   }
   function rerender(){ const v=NAV.cur&&NAV.cur();
     KDS.updateBadge&&KDS.updateBadge(); PENDING.updateBadge&&PENDING.updateBadge();
-    if(v==='kds')KDS.render(); else if(v==='pending')PENDING.render(); else if(v==='history')HISTORY.render(); else if(v==='report')REPORT.render(); else if(v==='settings')SETTINGS.render(); else if(v==='bo'&&BO.render)BO.render(); else if(v==='pos'&&POS.render)POS.render();
+    if(v==='kds')KDS.render(); else if(v==='pending')PENDING.render(); else if(v==='floor')FLOOR.render(true); else if(v==='history')HISTORY.render(); else if(v==='report')REPORT.render(); else if(v==='settings')SETTINGS.render(); else if(v==='bo'&&BO.render)BO.render(); else if(v==='pos'&&POS.render)POS.render();
   }
   // ⭐ v11.1 กรองข้อมูลขาเข้าจาก cloud — ตาราง orders เปิดให้ลูกค้า (anon) insert ได้ จึงห้ามเชื่อค่าใด ๆ ก่อนเอาไปแสดงผล/ใส่ใน onclick
   const _badId=/['"<>\\`&\s]/;
@@ -9787,7 +10284,7 @@ const CLOUD = (()=>{
       if(!Array.isArray(it.mods)) it.mods=[];
     });
     if(o.slipImg && !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(String(o.slipImg))) o.slipImg='';
-    if(o.channel==='qr'){ delete o.loyal; delete o.merged; delete o.paidAt; }                 // ⭐ v11.5 บิล QR ไม่มีทางให้แต้ม/รวมบิลจากฝั่งลูกค้า
+    if(o.channel==='qr'){ delete o.loyal; if(o.status!=='void') delete o.merged; delete o.paidAt; }   // ⭐ v12.0 บิล QR ที่ร้านรวมเข้าบิลโต๊ะ (void+merged) ต้องไม่กลายเป็น "บิลยกเลิก" ในรายงาน                 // ⭐ v11.5 บิล QR ไม่มีทางให้แต้ม/รวมบิลจากฝั่งลูกค้า
     Object.keys(o).forEach(k=>{ if(k[0]==='_') delete o[k]; });                           // ธงภายใน (_arch/_strip/_uat) ห้ามรับจากภายนอก (ผู้เรียกตั้ง _uat เอง)
     return o;
   }
@@ -9938,7 +10435,7 @@ const CLOUD = (()=>{
     if(status!=='online'||!client||window._CUSTOMER_MODE) return;
     try{
       const D=STORE.get();
-      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
+      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['reservations','reservations'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
       // 🐞 เดิมใช้ STORE.purgedOrdersAt() (เวลาที่ล้างบิล) เป็นเส้นเริ่มดึง
       //    -> autoPurge ทำงานทุกชั่วโมง เลื่อนเส้นมาเรื่อย ๆ บิลของวันนี้เลยไม่ถูกดึง
       //    ตอนนี้ใช้ keepFrom() (ช่วงเก็บย้อนหลัง) อย่างเดียว ซึ่งคุมพื้นที่อยู่แล้ว
@@ -9947,7 +10444,7 @@ const CLOUD = (()=>{
       const _me=(typeof AUTH!=='undefined'&&AUTH.get)?AUTH.get():null;
       const _onlyMine = !!_me && !AUTH.isHQ();
       const _myB=STORE.bid();
-      const _BRSCOPE=new Set(['orders','products','categories','ingredients','modifiers','tables','promos','suppliers','stockmoves','shifts','cashlog']);
+      const _BRSCOPE=new Set(['orders','products','categories','ingredients','modifiers','tables','reservations','promos','suppliers','stockmoves','shifts','cashlog']);
       const _skip=(key,o)=>{
         if(!_onlyMine) return false;
         if(key==='staff') return !(o.hq===true || (o.branchId||'BR-001')===_myB);
@@ -9960,6 +10457,7 @@ const CLOUD = (()=>{
           : (t==='branches'&&!authUser)
             ? await selShopSoft('branch_public','data')                        // ⭐ v11.1 ยังไม่ล็อกอิน (เครื่องใหม่ใส่รหัสสาขา) -> อ่านรายชื่อสาขาจาก view ที่ตัดข้อมูลลับแล้ว
             : await selShop(t,'data,updated_at');
+        if(t==='reservations'){ resvOK=!error&&!!data; if(resvOK&&subbed) subTable('reservations'); }   // ⭐ v12.0 subscribe เฉพาะเมื่อมีตารางแล้ว (ยังไม่รัน SQL 14 = ไม่ต้องวนต่อใหม่)
         if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
         data.forEach(r=>{ const o=cleanIn(key,r.data); if(!o) return;
@@ -10536,7 +11034,7 @@ const APP = (()=>{
     setInterval(()=>KDS.tick(),1000);
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
-    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); },5000);
+    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); if(NAV.cur()==='floor') FLOOR.render(true); },5000);
     setInterval(()=>{ try{ LOYAL.flushQueued(); }catch(e){} },20000); window.addEventListener('online',()=>{ try{ LOYAL.flushQueued(); }catch(e){} });   // ⭐ v11.5 แต้มที่ค้างเพราะไม่มีเน็ต
     try{ PRINT.warmLogo(); }catch(e){}                    // ⭐ โหลดโลโก้ไว้ล่วงหน้า จะได้พิมพ์ติดตั้งแต่ใบแรก
     updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
