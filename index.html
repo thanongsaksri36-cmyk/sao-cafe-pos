@@ -615,6 +615,10 @@ tr:hover td{background:var(--surface-2)}
 @keyframes remPulse{0%,100%{box-shadow:0 10px 30px rgba(0,0,0,.28)}50%{box-shadow:0 10px 30px rgba(0,0,0,.28),0 0 0 6px rgba(183,121,31,.35)}}
 .rem-cfg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;margin-bottom:10px;font-size:13.5px}
 .rem-cfg input,.rem-cfg select{padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-family:'Prompt'}
+.cc-seg{display:flex;gap:6px;margin-bottom:12px;background:var(--surface-2);padding:4px;border-radius:12px;border:1px solid var(--line)}
+.cc-seg button{flex:1;padding:10px 8px;border:none;border-radius:9px;background:transparent;color:var(--muted);font-family:'Prompt';font-size:14px;font-weight:600;cursor:pointer}
+.cc-seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.cc-total{width:100%;margin-top:6px;padding:16px;border:2px solid var(--gold);border-radius:14px;background:var(--surface);color:var(--text);font-size:30px;font-weight:800;text-align:center;font-family:'Prompt'}
 </style>
 </head>
 <body>
@@ -8206,6 +8210,15 @@ const SHIFT = (()=>{
   const DLABEL={100000:'฿1,000',50000:'฿500',10000:'฿100',5000:'฿50',2000:'฿20',1000:'฿10',500:'฿5',200:'฿2',100:'฿1',50:'฿0.50',25:'฿0.25'};
   // ขั้นที่ 2: หน้าตรวจนับ ใส่จำนวนธนบัตร/เหรียญ คำนวณอัตโนมัติ เทียบ ตรง/ขาด/เกิน
   let _ccMode='check', _ccRevealed=false, _ccDenoms={}, _ccCounted=0;
+  // ⭐ v12.6 วิธีกรอก: 'denom' = นับแยกธนบัตร/เหรียญ · 'total' = พิมพ์ยอดรวมทีเดียว (จำไว้ต่อเครื่อง)
+  const ccIn=()=>((STORE.get().settings||{}).ccInput==='total'?'total':'denom');
+  function ccInput(m){
+    const st=STORE.get().settings; st.ccInput=(m==='total'?'total':'denom'); STORE.save();
+    const t=ccIn()==='total', a=$('#ccDen'), b=$('#ccTot'), sd=$('#ccSegD'), stt=$('#ccSegT');
+    if(a) a.style.display=t?'none':'grid'; if(b) b.style.display=t?'block':'none';
+    if(sd) sd.classList.toggle('on',!t); if(stt) stt.classList.toggle('on',t);
+    cashCalc(); if(t){ const i=$('#cc_total'); if(i) setTimeout(()=>i.focus(),50); }
+  }
   function cashCount(mode){
     _ccMode = (mode==='close'||mode==='open') ? mode : 'check'; _ccRevealed=false;
     const sh=active(); _ccExpected = (_ccMode==='open') ? -1 : (sh?expectedCash(sh):0);
@@ -8217,7 +8230,10 @@ const SHIFT = (()=>{
       <div class="modal-h"><h3>${_ccMode==='open'?'🔓 เปิดกะ — นับเงินตั้งต้น':(_ccMode==='close'?'🔒 ปิดกะ — นับเงินในลิ้นชัก':'🔍 ตรวจนับเงินในลิ้นชัก')}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <div style="font-size:13px;color:var(--muted);margin-bottom:10px">ผู้ตรวจ: <b>${esc(_ccBy?_ccBy.name:'-')}</b> (${AUTH.roleTh(_ccBy?_ccBy.role:'')}) · ${new Date().toLocaleString('th-TH')}</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;min-width:0">
+        <div class="cc-seg"><button id="ccSegD" class="${ccIn()==='denom'?'on':''}" onclick="SHIFT.ccInput('denom')">🔢 นับแยกธนบัตร/เหรียญ</button><button id="ccSegT" class="${ccIn()==='total'?'on':''}" onclick="SHIFT.ccInput('total')">✍️ ใส่ยอดรวมเลย</button></div>
+        <div id="ccTot" style="display:${ccIn()==='total'?'block':'none'}"><label style="font-size:13px;color:var(--muted)">จำนวนเงินทั้งหมดในลิ้นชัก (บาท)</label>
+          <input id="cc_total" type="number" min="0" step="0.25" inputmode="decimal" placeholder="เช่น 2500" oninput="SHIFT.cashCalc()" class="cc-total"></div>
+        <div id="ccDen" style="display:${ccIn()==='total'?'none':'grid'};grid-template-columns:1fr 1fr;gap:14px;min-width:0">
           <div style="min-width:0"><div style="font-weight:700;margin-bottom:4px;color:var(--coffee,#3b2417)">💵 ธนบัตร</div>${rowsOf(notes)}</div>
           <div style="min-width:0"><div style="font-weight:700;margin-bottom:4px;color:var(--coffee,#3b2417)">🪙 เหรียญ</div>${rowsOf(coins)}</div>
         </div>
@@ -8232,7 +8248,8 @@ const SHIFT = (()=>{
   }
   function cashCalc(){
     let tot=0;
-    DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); tot+=v*q; const lt=$('#cc_lt_'+v); if(lt) lt.textContent=q?STORE.baht(v*q):''; });
+    if(ccIn()==='total'){ const el=$('#cc_total'); tot=Math.max(0,STORE.toSatang(el&&el.value)||0); }
+    else DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); tot+=v*q; const lt=$('#cc_lt_'+v); if(lt) lt.textContent=q?STORE.baht(v*q):''; });
     const t=$('#ccTotal'); if(t) t.textContent=STORE.baht(tot);
     const d=$('#ccDiff');
     if(d && _ccMode==='open'){                              // เปิดกะ — ไม่มีของเทียบ โชว์แค่ยอดรวม
@@ -8253,7 +8270,7 @@ const SHIFT = (()=>{
     }
     return tot;
   }
-  function readDenoms(){ const r={}; DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); if(q>0) r[v]=q; }); return r; }
+  function readDenoms(){ const r={}; if(ccIn()==='total') return r; DENOMS.forEach(v=>{ const el=$('#cc_'+v); const q=Math.max(0,parseInt(el&&el.value)||0); if(q>0) r[v]=q; }); return r; }
   function countSlipHtml(c){
     const m=STORE.binfo();
     const rows=DENOMS.filter(v=>c.denoms&&c.denoms[v]).map(v=>`<tr><td>${DLABEL[v]}</td><td style="text-align:center">x${c.denoms[v]}</td><td style="text-align:right">${STORE.baht(v*c.denoms[v])}</td></tr>`).join('')||'<tr><td colspan="3" style="text-align:center">-</td></tr>';
@@ -8468,7 +8485,7 @@ const SHIFT = (()=>{
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
     LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
-  return {render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,openSlipHtml,kickSlipHtml,finishClose,finishOpen,pickReason,otherReason};
+  return {ccInput,render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,openSlipHtml,kickSlipHtml,finishClose,finishOpen,pickReason,otherReason};
 })();
 
 /* ============================================================
@@ -8518,7 +8535,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.5</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.6</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8750,7 +8767,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.5) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.6) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10766,7 +10783,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['midRemind','midCut','shotRemind','shotTime','splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
+  const LOCAL_KEYS=['ccInput','midRemind','midCut','shotRemind','shotTime','splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
     // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
     'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbGapPct','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
   function mergeMeta(D,o){
