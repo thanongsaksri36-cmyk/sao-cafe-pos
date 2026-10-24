@@ -572,6 +572,39 @@ tr:hover td{background:var(--surface-2)}
 [data-theme="dark"] .send-tab{color:var(--gold-light);border-color:var(--gold)}
 @media (max-width:640px){ .fl-tools .btn{padding:8px 10px;font-size:12.5px} .fl-legend .lg{font-size:11.5px;padding:4px 8px} }
 
+/* ===== ⭐ v12.3 เทสช็อต ===== */
+.shot-ok,.shot-warn{padding:10px 14px;border-radius:12px;font-size:14px;font-weight:600;margin-bottom:14px}
+.shot-ok{background:rgba(62,124,79,.12);color:var(--success);border:1px solid rgba(62,124,79,.3)}
+.shot-warn{background:rgba(217,150,43,.14);color:#8A5A00;border:1px solid var(--warn)}
+.shot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.shot-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow)}
+.shot-h{font-size:18px;font-weight:800;margin-bottom:2px}
+.shot-last{font-size:12px;color:var(--muted);margin-bottom:8px}
+.shot-row{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin:8px 0 12px}
+.shot-f label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:3px}
+.shot-in{display:flex;align-items:center;gap:6px}
+.shot-in input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:17px;font-weight:700;font-family:'Prompt'}
+.shot-in span{font-size:13px;color:var(--muted);white-space:nowrap}
+.shot-sub{font-size:13px;font-weight:700;margin:4px 0 4px}
+.shot-r{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px}
+.shot-r>span{min-width:118px}
+.shot-r input[type=range]{flex:1;accent-color:var(--gold);height:28px}
+.shot-r>b{min-width:28px;text-align:right;font-size:16px}
+.shot-step{display:flex;align-items:center;gap:10px;margin-left:auto}
+.shot-step button{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);color:var(--text);font-size:20px;cursor:pointer}
+.shot-step b{min-width:24px;text-align:center;font-size:18px}
+.shot-foot{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.shot-btns{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.shot-btns .btn{padding:12px 16px;font-size:14.5px}
+.shot-btns .btn-gold{flex:1 1 260px}
+.shot-hist{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:4px 16px}
+.shot-hrow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px dashed var(--line);font-size:13.5px}
+.shot-hrow:last-child{border-bottom:none}
+.shot-hsum{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.6}
+.shot-hbtn{display:flex;gap:6px}
+.shot-txt{width:100%;min-height:340px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Prompt';font-size:14px;line-height:1.55;resize:vertical}
+[data-theme="dark"] .shot-warn{color:#FFD9A0}
+@media (max-width:640px){ .shot-foot{grid-template-columns:1fr} .shot-r>span{min-width:100px} }
 </style>
 </head>
 <body>
@@ -628,6 +661,10 @@ tr:hover td{background:var(--surface-2)}
   <!-- ===== KDS VIEW ===== -->
   <section class="view" id="v-kds">
     <div class="kds-wrap"><div class="kds-cols" id="kdsCols"></div></div>
+  </section>
+
+  <section class="view" id="v-shot">
+    <div class="panel" id="shotPanel"></div>
   </section>
 
   <section class="view" id="v-floor">
@@ -3823,6 +3860,7 @@ const NAV = (()=>{
   const ALL=[
     {k:'pos',label:'ขาย',icon:'🛒',perm:'pos'},
     {k:'floor',label:'ผังโต๊ะ',icon:'🗺️',perm:'pos'},
+    {k:'shot',label:'เทสช็อต',icon:'☕',perm:'pos'},
     {k:'kds',label:'จอครัว',icon:'👨‍🍳',perm:'kds'},
     {k:'pending',label:'รอชำระ',icon:'📥',perm:'pos'},
     {k:'qr',label:'QR ลูกค้า',icon:'📱',perm:'pos'},
@@ -3854,6 +3892,7 @@ const NAV = (()=>{
     if(k==='history') HISTORY.render();
     if(k==='pending') PENDING.render();
     if(k==='floor') FLOOR.render();
+    if(k==='shot') SHOT.render();
     if(k==='bo') BO.render();
     if(k==='shift') SHIFT.render();
     if(k==='settings') SETTINGS.render();
@@ -6163,6 +6202,139 @@ const FLOOR = (()=>{
 })();
 
 /* ============================================================
+   SHOT — ⭐ v12.3 เทสช็อตกาแฟตอนเปิดร้าน: กรอก · บันทึกประวัติ · คัดลอกข้อความส่งไลน์กลุ่ม
+   เก็บตาราง shotlogs (เฉพาะพนักงานที่ล็อกอิน · ต้องรัน SQL ไฟล์ 15 ถึงจะซิงก์ข้ามเครื่อง)
+   ============================================================ */
+const SHOT = (()=>{
+  const DEF_BEANS=[{name:'คั่วเข้ม',ic:'🟤'},{name:'คั่วกลาง',ic:'🟠'}];
+  const TASTE=[['sweet','🍬','ความหวาน'],['sour','🍋‍🟩','ความเปรี้ยว'],['body','🌰','ความเข้ม'],['bitter','💊','ความขม']];
+  const LINE_SEP='———————————————';
+  let draft=null;
+  const pad=n=>String(n).padStart(2,'0');
+  const hhmm=ms=>{ const d=new Date(ms); return pad(d.getHours())+':'+pad(d.getMinutes()); };
+  const dayTxt=ms=>new Date(ms).toLocaleDateString('th-TH',{weekday:'short',day:'numeric',month:'short',year:'2-digit'});
+  const isToday=ms=>new Date(ms).toDateString()===new Date().toDateString();
+  const beans=()=>{ const b=(STORE.get().settings||{}).shotBeans; return (Array.isArray(b)&&b.length)?b:DEF_BEANS; };
+  const logs=()=>STORE.scoped('shotlogs').filter(x=>x&&!x.deletedAt).sort((a,b)=>(b.at||0)-(a.at||0));
+  function lastOf(name){ for(const l of logs()){ const b=(l.beans||[]).find(x=>x.name===name); if(b) return b; } return null; }
+  function newDraft(){
+    const me=(AUTH.get&&AUTH.get())||{};
+    draft={by:me.name||'',note:'',beans:beans().map(b=>{ const l=lastOf(b.name)||{};   // ปริมาณผง/เบอร์บด ตั้งต้นจากครั้งก่อน
+      return {name:b.name,ic:b.ic||'☕',dose:(l.dose!=null&&l.dose!=='')?l.dose:18,time:'',yld:'',grind:(l.grind!=null)?l.grind:'',sweet:0,sour:0,body:0,bitter:0,waste:0}; })};
+  }
+  const v=x=>(x===''||x==null)?'-':String(x);
+  function text(r){
+    const m=STORE.binfo();
+    const head='เทสซอตกาแฟ ☕️ '+dayTxt(r.at)+' '+hhmm(r.at)+' น.'+(m.branchName?('\n🏠 '+m.branchName):'');
+    const parts=(r.beans||[]).map(b=>[
+      `${b.ic||''}${b.name} ${v(b.dose)}g`,
+      `⏰ระยะเวลาการไหล = ${v(b.time)}วิ`,
+      `⌛️ปริมาณน้ำกาแฟ = ${v(b.yld)}มล.`,
+      `⏲️เบอร์บด = ${v(b.grind)}`,
+      `📝รสชาติ คะแนน 1-5`,
+      ...TASTE.map(([k,ic,t])=>`      ${ic}${t} = ${v(b[k])}`),
+      ``,
+      `🗑️จำนวนซอตที่เสีย = ${b.waste||0}`].join('\n'));
+    return head+'\n\n'+parts.join('\n\n'+LINE_SEP+'\n\n')+'\n\nผู้เทสซอต: '+(r.by||'-')+(r.note?('\n📝 '+r.note):'');
+  }
+  // ---- หน้าจอ ----
+  function beanCard(b,i){
+    const l=lastOf(b.name);
+    const num=(k,label,unit,step)=>`<div class="shot-f"><label>${label}</label><div class="shot-in"><input type="number" inputmode="decimal" step="${step}" min="0" value="${esc(b[k])}" oninput="SHOT.set(${i},'${k}',this.value)">${unit?`<span>${unit}</span>`:''}</div></div>`;
+    return `<div class="shot-card">
+      <div class="shot-h">${esc(b.ic)} ${esc(b.name)}</div>
+      ${l?`<div class="shot-last">ครั้งก่อน: ${esc(v(l.time))} วิ · ${esc(v(l.yld))} มล. · เบอร์บด ${esc(v(l.grind))}</div>`:''}
+      <div class="shot-row">${num('dose','⚖️ ปริมาณผง','g',0.1)}${num('time','⏰ ระยะเวลาการไหล','วิ',1)}${num('yld','⌛️ ปริมาณน้ำกาแฟ','มล.',0.1)}${num('grind','⏲️ เบอร์บด','',0.1)}</div>
+      <div class="shot-sub">📝 รสชาติ (คะแนน 0-5)</div>
+      ${TASTE.map(([k,ic,t])=>`<div class="shot-r"><span>${ic} ${t}</span><input type="range" min="0" max="5" step="0.5" value="${+b[k]||0}" oninput="SHOT.set(${i},'${k}',this.value);this.nextElementSibling.textContent=this.value"><b>${+b[k]||0}</b></div>`).join('')}
+      <div class="shot-r"><span>🗑️ ช็อตที่เสีย</span><div class="shot-step"><button onclick="SHOT.step(${i},-1)">−</button><b id="shotW${i}">${b.waste||0}</b><button onclick="SHOT.step(${i},1)">+</button></div></div>
+    </div>`;
+  }
+  function histRow(r){
+    const sum=(r.beans||[]).map(b=>`${esc(b.ic||'')}${esc(b.name)} ${esc(v(b.time))}วิ · ${esc(v(b.yld))}มล. · เบอร์ ${esc(v(b.grind))}${b.waste?` · <span style="color:var(--danger)">เสีย ${esc(b.waste)}</span>`:''}`).join('<br>');
+    return `<div class="shot-hrow"><div><b>${dayTxt(r.at)} ${hhmm(r.at)}</b> · ${esc(r.by||'-')}<div class="shot-hsum">${sum}</div></div>
+      <div class="shot-hbtn"><button class="sub-tab" onclick="SHOT.preview('${r.id}')">📋 ข้อความ</button>${AUTH.can('bo_menu')?`<button class="sub-tab" style="color:var(--danger)" onclick="SHOT.del('${r.id}')">ลบ</button>`:''}</div></div>`;
+  }
+  function render(){
+    const P=$('#shotPanel'); if(!P) return; if(!draft) newDraft();
+    const ls=logs(), today=ls.filter(l=>isToday(l.at));
+    P.innerHTML=`<div class="panel-head"><h2>☕ เทสช็อตกาแฟ</h2><span style="color:var(--muted);font-size:13px">${dayTxt(Date.now())}</span></div>
+      ${today.length?`<div class="shot-ok">✅ วันนี้เทสแล้ว ${today.length} ครั้ง · ล่าสุด ${hhmm(today[0].at)} น. โดย ${esc(today[0].by||'-')}</div>`
+        :'<div class="shot-warn">⏰ วันนี้ยังไม่ได้เทสช็อต — เทสก่อนเปิดขายนะ</div>'}
+      <div class="shot-grid">${draft.beans.map(beanCard).join('')}</div>
+      <div class="shot-foot">
+        <div class="field"><label>👤 ผู้เทสช็อต</label><input value="${esc(draft.by)}" oninput="SHOT.setBy(this.value)" placeholder="ชื่อเล่น"></div>
+        <div class="field"><label>📝 หมายเหตุ (ถ้ามี)</label><input value="${esc(draft.note)}" oninput="SHOT.setNote(this.value)" placeholder="เช่น ปรับเบอร์บดละเอียดขึ้น"></div>
+        <div class="shot-btns"><button class="btn btn-gold" onclick="SHOT.save()">💾 บันทึก + คัดลอกข้อความ</button>
+          <button class="btn btn-ghost" onclick="SHOT.preview()">👀 ดูข้อความก่อน</button>
+          <button class="btn btn-ghost" onclick="SHOT.beansCfg()">⚙️ ชนิดเมล็ด</button></div>
+      </div>
+      <h3 style="font-size:15px;margin:22px 0 8px">📜 ประวัติการเทส</h3>
+      <div class="shot-hist">${ls.slice(0,30).map(histRow).join('')||'<div class="empty" style="padding:16px">ยังไม่มีประวัติ</div>'}</div>`;
+  }
+  function set(i,k,val){ const b=draft&&draft.beans[i]; if(!b) return; b[k]=val; }
+  function setBy(x){ if(draft) draft.by=String(x||'').slice(0,40); }
+  function setNote(x){ if(draft) draft.note=String(x||'').slice(0,200); }
+  function step(i,d){ const b=draft&&draft.beans[i]; if(!b) return; b.waste=Math.max(0,Math.min(99,(+b.waste||0)+d)); const el=$('#shotW'+i); if(el) el.textContent=b.waste; }
+  const numOr=(x)=>{ if(x===''||x==null) return ''; const n=parseFloat(x); return isFinite(n)?Math.round(n*10)/10:''; };
+  function build(){
+    const bs=draft.beans.filter(b=>b.time!==''||b.yld!==''||b.grind!=='').map(b=>({name:b.name,ic:b.ic,dose:numOr(b.dose),time:numOr(b.time),yld:numOr(b.yld),grind:numOr(b.grind),
+      sweet:+b.sweet||0,sour:+b.sour||0,body:+b.body||0,bitter:+b.bitter||0,waste:+b.waste||0}));
+    return {id:STORE.uuid(),branchId:STORE.bid(),at:Date.now(),by:(draft.by||'').trim(),note:(draft.note||'').trim(),beans:bs};
+  }
+  function save(){
+    if(!draft) return; const r=build();
+    if(!r.beans.length){ UI.toast('กรอกเวลาไหล / ปริมาณน้ำกาแฟ อย่างน้อย 1 เมล็ด','err'); return; }
+    if(!r.by){ UI.toast('ใส่ชื่อผู้เทสช็อต','err'); return; }
+    const D=STORE.get(); (D.shotlogs||(D.shotlogs=[])).push(r); STORE.save();
+    try{ CLOUD.pushItem('shotlogs',r); }catch(e){}
+    newDraft(); render(); updateBadge();
+    showText(text(r),true);
+  }
+  function preview(id){
+    const r=id?logs().find(x=>x.id===id):build();
+    if(!r||!(r.beans||[]).length){ UI.toast('ยังไม่มีข้อมูลให้ดู — กรอกอย่างน้อย 1 เมล็ด','err'); return; }
+    showText(text(r),false);
+  }
+  async function copy(t){
+    try{ await navigator.clipboard.writeText(t); UI.toast('คัดลอกแล้ว — ไปกดวางในไลน์กลุ่มได้เลย','ok'); return true; }catch(e){}
+    try{ const ta=$('#shotTxt'); if(ta){ ta.focus(); ta.select(); if(document.execCommand('copy')){ UI.toast('คัดลอกแล้ว — ไปกดวางในไลน์กลุ่มได้เลย','ok'); return true; } } }catch(e){}
+    UI.toast('คัดลอกอัตโนมัติไม่ได้ — กดค้างที่ข้อความแล้วเลือก "คัดลอก"','err'); return false;
+  }
+  let _last='';
+  function showText(t,autoCopy){
+    _last=t;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>${autoCopy?'✅ บันทึกแล้ว':'👀 ข้อความเทสช็อต'}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b"><textarea id="shotTxt" readonly class="shot-txt">${esc(t)}</textarea></div>
+      <div class="modal-f"><button class="btn-ghost" onclick="SHOT.line()">💬 แชร์เข้า LINE</button><button class="btn-gold" onclick="SHOT.copyLast()">📋 คัดลอกข้อความ</button></div>`;
+    UI.open('genOverlay');
+    if(autoCopy) copy(t);
+  }
+  function copyLast(){ if(_last) copy(_last); }
+  function line(){ if(!_last) return; try{ window.open('https://line.me/R/share?text='+encodeURIComponent(_last),'_blank'); }catch(e){ copy(_last); } }
+  function del(id){ const r=logs().find(x=>x.id===id); if(!r) return;
+    UI.confirm2('ลบประวัติเทสช็อต','ลบบันทึก '+dayTxt(r.at)+' '+hhmm(r.at)+' ของ '+(r.by||'-')+'?',()=>{ r.deletedAt=Date.now(); STORE.save(); try{ CLOUD.pushItem('shotlogs',r); }catch(e){} UI.close('genOverlay'); render(); updateBadge(); },true); }
+  function beansCfg(){
+    const cur=beans().map(b=>(b.ic?b.ic+' ':'')+b.name).join(', ');
+    UI.ask('⚙️ ชนิดเมล็ดที่ต้องเทส',[{key:'b',label:'คั่นด้วยจุลภาค · ใส่อีโมจินำหน้าได้ เช่น 🟤 คั่วเข้ม, 🟠 คั่วกลาง, 🔵 Colombia',value:cur}],(o)=>{
+      const list=String(o.b||'').split(',').map(x=>x.trim()).filter(Boolean).slice(0,6).map(x=>{
+        const m=x.match(/^(\S+)\s+(.+)$/); const isIc=m&&/\p{Extended_Pictographic}|\p{Emoji_Presentation}/u.test(m[1]);
+        return isIc?{ic:m[1],name:m[2].slice(0,30)}:{ic:'☕',name:x.slice(0,30)}; });
+      if(!list.length){ UI.toast('ใส่อย่างน้อย 1 ชนิด','err'); return; }
+      STORE.get().settings.shotBeans=list; STORE.save(); newDraft(); render(); UI.toast('บันทึกชนิดเมล็ดแล้ว','ok'); });
+  }
+  // จุดแดงที่เมนูซ้าย = วันนี้ยังไม่ได้เทส
+  function updateBadge(){
+    const btn=document.querySelector('.nav-btn[data-k="shot"]'); if(!btn) return;
+    let b=btn.querySelector('.bdg'); if(!b){ b=document.createElement('span'); b.className='bdg'; btn.appendChild(b); }
+    const need=!logs().some(l=>isToday(l.at)) && new Date().getHours()>=6;
+    b.textContent='!'; b.classList.toggle('hidden',!need);
+  }
+  return {render,set,setBy,setNote,step,save,preview,copyLast,line,del,beansCfg,updateBadge,text};
+})();
+
+/* ============================================================
    9. REPORT — daily sales, top items, gross profit, X/Z, export
    ============================================================ */
 const REPORT = (()=>{
@@ -8255,7 +8427,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.2</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.3</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8487,7 +8659,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.2) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.3) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10204,7 +10376,7 @@ const CLOUD = (()=>{
         let r=await client.from(table).upsert(row);
         if(r&&r.error&&noCol(r.error)&&shopCol){ shopCol=false; row=rowOf(obj,obj._uat); r=await client.from(table).upsert(row); }
         if(!r||!r.error) return; console.error('pushItem',table,r.error);
-        if(table==='reservations' && /does not exist|could not find the table|42P01|PGRST205/i.test(String(r.error.message||'')+' '+String(r.error.code||''))){ try{ UI.toast('บันทึกการจองในเครื่องนี้แล้ว · ยังไม่ซิงก์ข้ามเครื่อง (ต้องรัน SQL ไฟล์ 14)','err'); }catch(e){} return; }
+        if((table in OPT) && /does not exist|could not find the table|42P01|PGRST205/i.test(String(r.error.message||'')+' '+String(r.error.code||''))){ try{ UI.toast('บันทึกในเครื่องนี้แล้ว · ยังไม่ซิงก์ข้ามเครื่อง (ต้องรัน SQL ไฟล์ '+(table==='shotlogs'?'15':'14')+')','err'); }catch(e){} return; }
       }catch(e){ console.error('pushItem',table,e); }
     }
     enqueue(table,row);
@@ -10305,8 +10477,8 @@ const CLOUD = (()=>{
   }
   // ---- Realtime: subscribe ทุกตารางหลัก + reconnect อัตโนมัติ ----
   const RT_TABLES=['orders','products','categories','ingredients','modifiers','tables_','staff','members','promos','suppliers','branches','shifts','cashlog','app_meta'];
-  let resvOK=false;
-  const TMAP={reservations:'reservations',orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',members:'members',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
+  const OPT={reservations:false,shotlogs:false};   // ⭐ ตารางเสริม: true เมื่อดึงได้ (รัน SQL แล้ว) ค่อย subscribe
+  const TMAP={reservations:'reservations',shotlogs:'shotlogs',orders:'orders',products:'products',categories:'categories',ingredients:'ingredients',modifiers:'modifiers',tables_:'tables',staff:'staff',members:'members',promos:'promos',suppliers:'suppliers',stockmoves:'stockmoves',branches:'branches',shifts:'shifts',cashlog:'cashlog'};
   const rtChs={}, rtErr={};                       // channel แยกต่อตาราง -> ตารางเดียวมีปัญหา ตารางอื่นยังวิ่ง
   function subTable(t){
     if(!client||rtChs[t]) return;
@@ -10513,7 +10685,7 @@ const CLOUD = (()=>{
     if(status!=='online'||!client||window._CUSTOMER_MODE) return;
     try{
       const D=STORE.get();
-      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['reservations','reservations'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
+      const ent=[['orders','orders'],['products','products'],['categories','categories'],['ingredients','ingredients'],['modifiers','modifiers'],['tables_','tables'],['reservations','reservations'],['shotlogs','shotlogs'],['staff','staff'],['members','members'],['promos','promos'],['suppliers','suppliers'],['stockmoves','stockmoves'],['branches','branches'],['shifts','shifts'],['cashlog','cashlog']];
       // 🐞 เดิมใช้ STORE.purgedOrdersAt() (เวลาที่ล้างบิล) เป็นเส้นเริ่มดึง
       //    -> autoPurge ทำงานทุกชั่วโมง เลื่อนเส้นมาเรื่อย ๆ บิลของวันนี้เลยไม่ถูกดึง
       //    ตอนนี้ใช้ keepFrom() (ช่วงเก็บย้อนหลัง) อย่างเดียว ซึ่งคุมพื้นที่อยู่แล้ว
@@ -10522,7 +10694,7 @@ const CLOUD = (()=>{
       const _me=(typeof AUTH!=='undefined'&&AUTH.get)?AUTH.get():null;
       const _onlyMine = !!_me && !AUTH.isHQ();
       const _myB=STORE.bid();
-      const _BRSCOPE=new Set(['orders','products','categories','ingredients','modifiers','tables','reservations','promos','suppliers','stockmoves','shifts','cashlog']);
+      const _BRSCOPE=new Set(['orders','products','categories','ingredients','modifiers','tables','reservations','shotlogs','promos','suppliers','stockmoves','shifts','cashlog']);
       const _skip=(key,o)=>{
         if(!_onlyMine) return false;
         if(key==='staff') return !(o.hq===true || (o.branchId||'BR-001')===_myB);
@@ -10535,7 +10707,7 @@ const CLOUD = (()=>{
           : (t==='branches'&&!authUser)
             ? await selShopSoft('branch_public','data')                        // ⭐ v11.1 ยังไม่ล็อกอิน (เครื่องใหม่ใส่รหัสสาขา) -> อ่านรายชื่อสาขาจาก view ที่ตัดข้อมูลลับแล้ว
             : await selShop(t,'data,updated_at');
-        if(t==='reservations'){ resvOK=!error&&!!data; if(resvOK&&subbed) subTable('reservations'); }   // ⭐ v12.0 subscribe เฉพาะเมื่อมีตารางแล้ว (ยังไม่รัน SQL 14 = ไม่ต้องวนต่อใหม่)
+        if(t in OPT){ OPT[t]=!error&&!!data; if(OPT[t]&&subbed) subTable(t); }   // ⭐ v12.0 subscribe เฉพาะเมื่อมีตารางแล้ว (ยังไม่รัน SQL 14 = ไม่ต้องวนต่อใหม่)
         if(error||!data) continue;
         const arr=D[key]||(D[key]=[]);
         data.forEach(r=>{ const o=cleanIn(key,r.data); if(!o) return;
@@ -11112,7 +11284,7 @@ const APP = (()=>{
     setInterval(()=>KDS.tick(),1000);
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
-    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); if(NAV.cur()==='floor') FLOOR.render(true); },5000);
+    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); if(NAV.cur()==='floor') FLOOR.render(true); try{ SHOT.updateBadge(); }catch(e){} },5000);
     setInterval(()=>{ try{ LOYAL.flushQueued(); }catch(e){} },20000); window.addEventListener('online',()=>{ try{ LOYAL.flushQueued(); }catch(e){} });   // ⭐ v11.5 แต้มที่ค้างเพราะไม่มีเน็ต
     try{ PRINT.warmLogo(); }catch(e){}                    // ⭐ โหลดโลโก้ไว้ล่วงหน้า จะได้พิมพ์ติดตั้งแต่ใบแรก
     updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
