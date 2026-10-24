@@ -605,6 +605,16 @@ tr:hover td{background:var(--surface-2)}
 .shot-txt{width:100%;min-height:340px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Prompt';font-size:14px;line-height:1.55;resize:vertical}
 [data-theme="dark"] .shot-warn{color:#FFD9A0}
 @media (max-width:640px){ .shot-foot{grid-template-columns:1fr} .shot-r>span{min-width:100px} }
+/* ===== ⭐ v12.5 แถบเตือน ===== */
+#remBar{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:8px;width:min(560px,calc(100vw - 24px))}
+.rem-row{background:#B7791F;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.28);animation:remPulse 1.4s ease-in-out infinite}
+.rem-t{font-size:17px;font-weight:800;margin-bottom:8px}
+.rem-b{display:flex;gap:6px;flex-wrap:wrap}
+.rem-b button{padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;font-family:'Prompt';font-size:13.5px;font-weight:600;cursor:pointer}
+.rem-b .rem-go{background:#fff;color:#8A5A00;border-color:#fff;flex:1 1 160px}
+@keyframes remPulse{0%,100%{box-shadow:0 10px 30px rgba(0,0,0,.28)}50%{box-shadow:0 10px 30px rgba(0,0,0,.28),0 0 0 6px rgba(183,121,31,.35)}}
+.rem-cfg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;margin-bottom:10px;font-size:13.5px}
+.rem-cfg input,.rem-cfg select{padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-family:'Prompt'}
 </style>
 </head>
 <body>
@@ -6268,6 +6278,7 @@ const SHOT = (()=>{
         <div class="shot-btns"><button class="btn btn-gold" onclick="SHOT.save()">💾 บันทึก + คัดลอกข้อความ</button>
           <button class="btn btn-ghost" onclick="SHOT.preview()">👀 ดูข้อความก่อน</button>
           <button class="btn btn-ghost" onclick="SHOT.beansCfg()">⚙️ ชนิดเมล็ด</button></div>
+        <div style="grid-column:1/-1">${REMIND.cfgHtml('shot')}</div>
       </div>
       <h3 style="font-size:15px;margin:22px 0 8px">📜 ประวัติการเทส</h3>
       <div class="shot-hist">${ls.slice(0,30).map(histRow).join('')||'<div class="empty" style="padding:16px">ยังไม่มีประวัติ</div>'}</div>`;
@@ -6288,7 +6299,7 @@ const SHOT = (()=>{
     if(!r.by){ UI.toast('ใส่ชื่อผู้เทสช็อต','err'); return; }
     const D=STORE.get(); (D.shotlogs||(D.shotlogs=[])).push(r); STORE.save();
     try{ CLOUD.pushItem('shotlogs',r); }catch(e){}
-    newDraft(); render(); updateBadge();
+    newDraft(); render(); updateBadge(); try{ REMIND.mark('shot'); }catch(e){}
     showText(text(r),true);
   }
   function preview(id){
@@ -6331,7 +6342,86 @@ const SHOT = (()=>{
     const need=!logs().some(l=>isToday(l.at)) && new Date().getHours()>=6;
     b.textContent='!'; b.classList.toggle('hidden',!need);
   }
-  return {render,set,setBy,setNote,step,save,preview,copyLast,line,del,beansCfg,updateBadge,text};
+  function doneToday(){ return logs().some(l=>isToday(l.at)); }
+  return {render,set,setBy,setNote,step,save,preview,copyLast,line,del,beansCfg,updateBadge,text,doneToday};
+})();
+
+/* ============================================================
+   REMIND — ⭐ v12.5 เสียงเตือนตามเวลา (สรุปยอดบ่าย 2 · เทสช็อตตอนเช้า)
+   ดังเฉพาะเครื่องที่เปิดแอปค้างไว้ · ซ้ำทุก 5 นาทีจนกว่าจะทำ / กดเลื่อน · เลยเวลาเกิน 3 ชม. เลิกเตือน
+   ============================================================ */
+const REMIND = (()=>{
+  const KEY='saocafe_rem_', pad=n=>String(n).padStart(2,'0');
+  const today=()=>new Date().toDateString();
+  const nowHm=()=>{ const d=new Date(); return pad(d.getHours())+':'+pad(d.getMinutes()); };
+  const ITEMS=[
+    {k:'mid', on:s=>s.midRemind!==false, at:s=>s.midCut||'14:00', title:'⏰ ถึงเวลาสรุปยอดส่งเจ้าของแล้ว', say:'ถึงเวลาสรุปยอดส่งเจ้าของแล้วครับ',
+     btn:'☀️ เปิดสรุปยอด', go:()=>DAYEND.mid(), done:()=>false},
+    {k:'shot', on:s=>!!s.shotRemind, at:s=>s.shotTime||'08:00', title:'☕ ถึงเวลาเทสช็อตกาแฟแล้ว', say:'ถึงเวลาเทสช็อตกาแฟแล้วครับ',
+     btn:'☕ ไปหน้าเทสช็อต', go:()=>NAV.go('shot'), done:()=>{ try{ return SHOT.doneToday(); }catch(e){ return false; } }}
+  ];
+  const next={};                                    // k -> เวลาที่จะเตือนรอบถัดไป
+  function isDone(it){ try{ if(localStorage.getItem(KEY+it.k)===today()) return true; }catch(e){} return !!it.done(); }
+  function mark(k){ try{ localStorage.setItem(KEY+k,today()); }catch(e){} hide(k); }
+  let ac=null;
+  function tone(){
+    try{ ac=ac||new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume();
+      const t0=ac.currentTime;
+      [[784,0],[988,.22],[1175,.44],[988,.8],[1175,1.02],[1568,1.24]].forEach(([f,dt])=>{
+        const o=ac.createOscillator(), g=ac.createGain(); o.type='triangle'; o.frequency.value=f; o.connect(g); g.connect(ac.destination);
+        g.gain.setValueAtTime(.0001,t0+dt); g.gain.exponentialRampToValueAtTime(.7,t0+dt+.02); g.gain.exponentialRampToValueAtTime(.0001,t0+dt+.2);
+        o.start(t0+dt); o.stop(t0+dt+.22); }); }catch(e){}
+  }
+  function say(t){
+    try{ if(!window.speechSynthesis||!window.SpeechSynthesisUtterance) return;
+      const vs=window.speechSynthesis.getVoices()||[], v=vs.find(x=>(x.lang||'').toLowerCase().replace('_','-').startsWith('th'));
+      window.speechSynthesis.cancel();
+      setTimeout(()=>{ try{ const u=new window.SpeechSynthesisUtterance(t); u.lang=(v&&v.lang)||'th-TH'; if(v) u.voice=v; window.speechSynthesis.speak(u); }catch(e){} },150);
+    }catch(e){}
+  }
+  function ring(it){ tone(); setTimeout(()=>say(it.say),1500); }
+  function bar(){ let b=document.getElementById('remBar'); if(!b){ b=document.createElement('div'); b.id='remBar'; document.body.appendChild(b); } return b; }
+  function show(it){
+    const b=bar(); let row=b.querySelector('[data-k="'+it.k+'"]');
+    if(!row){ row=document.createElement('div'); row.className='rem-row'; row.dataset.k=it.k; b.appendChild(row); }
+    row.innerHTML=`<div class="rem-t">${it.title}</div><div class="rem-b">
+      <button class="rem-go" onclick="REMIND.go('${it.k}')">${it.btn}</button>
+      <button onclick="REMIND.later('${it.k}')">⏳ เตือนอีก 10 นาที</button>
+      <button onclick="REMIND.mark('${it.k}')">✓ ทำแล้ว</button></div>`;
+    ring(it);
+  }
+  function hide(k){ const r=document.querySelector('#remBar [data-k="'+k+'"]'); if(r) r.remove(); }
+  function check(){
+    if(window._CUSTOMER_MODE) return;
+    const me=(AUTH.get&&AUTH.get()); if(!me) return;
+    const st=STORE.get().settings||{}, now=Date.now(), h=nowHm();
+    ITEMS.forEach(it=>{
+      if(!it.on(st)){ hide(it.k); return; }
+      const at=it.at(st); if(h<at) return;
+      const [H,M]=at.split(':').map(x=>parseInt(x)||0), t0=new Date(); t0.setHours(H,M,0,0);
+      if(now-t0.getTime()>3*3600000){ hide(it.k); return; }
+      if(isDone(it)){ hide(it.k); return; }
+      if((next[it.k]||0)>now) return;
+      next[it.k]=now+5*60000; show(it);
+    });
+  }
+  function go(k){ const it=ITEMS.find(x=>x.k===k); if(!it) return; hide(k); next[k]=Date.now()+10*60000; try{ it.go(); }catch(e){} }
+  function later(k){ hide(k); next[k]=Date.now()+10*60000; UI.toast('จะเตือนอีกครั้งใน 10 นาที','ok'); }
+  function test(k){ const it=ITEMS.find(x=>x.k===k); if(it) ring(it); }
+  // ตั้งค่าต่อเครื่อง
+  function cfgHtml(k){
+    const st=STORE.get().settings||{}, it=ITEMS.find(x=>x.k===k); if(!it) return '';
+    return `<div class="rem-cfg"><span>🔔 เสียงเตือนทุกวัน เวลา</span><input type="time" value="${it.at(st)}" onchange="REMIND.setCfg('${k}',null,this.value)">
+      <select onchange="REMIND.setCfg('${k}',this.value==='1',null)"><option value="1" ${it.on(st)?'selected':''}>เปิด</option><option value="0" ${it.on(st)?'':'selected'}>ปิด</option></select>
+      <button class="sub-tab" onclick="REMIND.test('${k}')">🔊 ทดสอบ</button></div>`;
+  }
+  function setCfg(k,on,time){
+    const st=STORE.get().settings;
+    if(k==='mid'){ if(on!=null) st.midRemind=on; if(time) st.midCut=time; }
+    if(k==='shot'){ if(on!=null) st.shotRemind=on; if(time) st.shotTime=time; }
+    delete next[k]; STORE.save(); UI.toast('บันทึกการเตือนแล้ว (เฉพาะเครื่องนี้)','ok');
+  }
+  return {check,mark,go,later,test,cfgHtml,setCfg};
 })();
 
 /* ============================================================
@@ -7974,7 +8064,7 @@ const SHIFT = (()=>{
           <p style="color:var(--muted);margin-bottom:20px">เปิดกะเพื่อเริ่มบันทึกเงินสดในลิ้นชัก</p>
           <button class="btn-gold" style="padding:13px 30px;border-radius:12px" onclick="SHIFT.openShift()">🔓 เปิดกะ</button>
           ${AUTH.can('cashcount')?'<div style="margin-top:14px"><button class="btn-ghost" onclick="SHIFT.cashCountPIN()">🔍 ตรวจนับเงิน (ไม่ต้องเปิดกะ)</button></div>':''}
-          <div style="margin-top:10px"><button class="btn-ghost" onclick="DAYEND.open()">🌙 ปิดสิ้นวัน / ดูสรุปยอดวันนี้</button></div>
+          <div style="margin-top:10px"><button class="btn-ghost" onclick="DAYEND.mid()">☀️ สรุปยอดบ่าย 2</button> <button class="btn-ghost" onclick="DAYEND.open()">🌙 ปิดสิ้นวัน / ดูสรุปยอดวันนี้</button></div>
         </div>`;
       return;
     }
@@ -7990,6 +8080,7 @@ const SHIFT = (()=>{
           <button class="add-fab" style="background:var(--warn)" onclick="SHIFT.cashMove('out')">💸 เบิก/เงินออก</button>
           ${AUTH.can('cashcount')?'<button class="add-fab" style="background:var(--gold)" onclick="SHIFT.cashCountPIN()">🔍 ตรวจนับเงิน</button>':''}
           <button class="add-fab" style="background:var(--danger)" onclick="SHIFT.closeShift()">🔒 ปิดกะ</button>
+          <button class="add-fab" style="background:#B7791F" onclick="DAYEND.mid()">☀️ สรุปยอดบ่าย 2</button>
           <button class="add-fab" style="background:#3d2b56" onclick="DAYEND.open()">🌙 ปิดสิ้นวัน</button>
         </div>
       </div>
@@ -8427,7 +8518,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.3</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.5</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8659,7 +8750,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.3) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.5) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9485,10 +9576,11 @@ const DAYEND = (()=>{
       .sort((a,b)=>a.openedAt-b.openedAt);
   }
   // ---- รวมตัวเลขของวันที่กำหนด (ค่าเริ่มต้น = วันนี้) เฉพาะสาขาปัจจุบัน ----
-  function data(ts){
+  function data(ts,rng){   // ⭐ v12.4 rng={from,to} = สรุประหว่างวัน (เช่น เปิดร้าน → 14:00)
     const ref=new Date(ts||STORE.now()).toDateString();
     const bid=STORE.bid();
-    const all=(STORE.get().orders||[]).filter(o=>(o.branchId||'BR-001')===bid && new Date((isPaidOrder(o)&&o.paidAt)||o.createdAt).toDateString()===ref);
+    const inR=(o)=>{ const t=(isPaidOrder(o)&&o.paidAt)||o.createdAt; return rng ? (t>=rng.from&&t<=rng.to) : new Date(t).toDateString()===ref; };
+    const all=(STORE.get().orders||[]).filter(o=>(o.branchId||'BR-001')===bid && inR(o));
     const voided=all.filter(o=>o.status==='void'&&!o.merged);
     const ok=all.filter(isPaidOrder);
     const openTab=all.filter(o=>o.payStatus==='open'&&o.status!=='void');
@@ -9507,14 +9599,14 @@ const DAYEND = (()=>{
     let shift=null;
     try{
       const sh=SHIFT.active();
-      if(sh){
-        const log=(STORE.get().cashlog||[]).filter(c=>c.shiftId===sh.id);
+      if(sh && (!rng || (sh.openedAt||0)<=rng.to)){
+        const log=(STORE.get().cashlog||[]).filter(c=>c.shiftId===sh.id && (!rng || (c.at||0)<=rng.to));   // ช่วงเวลา -> นับเงินถึงเวลาที่ตัด
         const g=t=>log.filter(c=>c.type===t).reduce((a,b)=>a+b.amount,0);
-        shift={open:sh.openCash||0,sale:g('sale'),cin:g('in'),cout:g('out'),expect:SHIFT.expectedCash(sh)};
+        shift={open:sh.openCash||0,sale:g('sale'),cin:g('in'),cout:g('out'),expect:rng?((sh.openCash||0)+g('sale')+g('in')-g('out')):SHIFT.expectedCash(sh)};
       }
     }catch(e){}
     return {
-      date:ts||STORE.now(), bills:ok.length, units,
+      date:ts||STORE.now(), rng:rng||null, bills:ok.length, units,
       total, subtotal:sum(ok,o=>o.subtotal), discount:sum(ok,o=>o.discount),
       vat:sum(ok,o=>o.vat), service:sum(ok,o=>o.service),
       avg: ok.length?Math.round(total/ok.length):0,
@@ -9530,15 +9622,18 @@ const DAYEND = (()=>{
   }
 
   // ---- ข้อความสำหรับคัดลอกส่ง LINE ----
-  function text(ts){
-    const d=data(ts), m=STORE.binfo(), L=[];
-    L.push('📊 สรุปยอดขายสิ้นวัน');
+  function text(ts,rng){
+    const d=data(ts,rng), m=STORE.binfo(), L=[];
+    L.push(rng?'☀️ สรุปยอดระหว่างวัน (ถึง '+hhmm(rng.to)+' น.)':'📊 สรุปยอดขายสิ้นวัน');
     L.push('━━━━━━━━━━━━━━');
     L.push('🏪 '+(m.shopName||'')+(m.branchName?' · '+m.branchName:''));
     L.push('📅 '+dmy(d.date));
-    if(d.first) L.push('⏰ '+hhmm(d.first)+' → '+hhmm(d.last));
+    if(rng) L.push('⏰ เปิดร้าน → '+hhmm(rng.to)+(d.first?' (บิลแรก '+hhmm(d.first)+' · บิลล่าสุด '+hhmm(d.last)+')':''));
+    else if(d.first) L.push('⏰ '+hhmm(d.first)+' → '+hhmm(d.last));
     L.push('');
     L.push('💰 ยอดขายสุทธิ  '+B(d.total));
+    if(rng){ try{ const y=data(rng.from-86400000,{from:rng.from-86400000,to:rng.to-86400000});   // เทียบเมื่อวานช่วงเวลาเดียวกัน
+      if(y.bills){ const pc=y.total?Math.round((d.total-y.total)*100/y.total):0; L.push('📉 เมื่อวานช่วงเดียวกัน '+B(y.total)+'  ('+(pc>=0?'▲ +':'▼ ')+pc+'%)'); } }catch(e){} }
     L.push('📦 จำนวนบิล     '+d.bills+' บิล');
     L.push('🥤 จำนวนแก้ว/ชิ้น '+d.units);
     if(d.bills) L.push('📈 เฉลี่ย/บิล    '+B(d.avg));
@@ -9565,7 +9660,7 @@ const DAYEND = (()=>{
       L.push('💵 ขายเงินสด    '+B(d.shift.sale));
       if(d.shift.cin>0)  L.push('➕ เงินเข้า     '+B(d.shift.cin));
       if(d.shift.cout>0) L.push('➖ เบิกออก      '+B(d.shift.cout));
-      L.push('🔢 ควรมีในลิ้นชัก '+B(d.shift.expect));
+      L.push('🔢 ควรมีในลิ้นชัก '+B(d.shift.expect)+(rng?' (ณ '+hhmm(rng.to)+')':''));
     }
     L.push('');
     L.push('🏆 เมนูขายดี');
@@ -9573,17 +9668,17 @@ const DAYEND = (()=>{
     else L.push('  - ไม่มีข้อมูล');
     L.push('');
     L.push('━━━━━━━━━━━━━━');
-    L.push('👤 ปิดโดย: '+(((typeof AUTH!=='undefined'&&AUTH.get())||{}).name||'-'));
+    L.push((rng?'👤 สรุปโดย: ':'👤 ปิดโดย: ')+(((typeof AUTH!=='undefined'&&AUTH.get())||{}).name||'-'));
     L.push('🕐 '+dmy(STORE.now())+' '+hhmm(STORE.now()));
     return L.join('\n');
   }
 
   // ---- ใบสรุปสำหรับพิมพ์ (80/58mm) ----
-  function slipHtml(ts){
-    const d=data(ts), m=STORE.binfo();
+  function slipHtml(ts,rng){
+    const d=data(ts,rng), m=STORE.binfo();
     const r=(l,v,bold)=>`<tr${bold?' class="rtot"':''}><td>${esc(l)}</td><td style="text-align:right">${esc(v)}</td></tr>`;
     let h=`<div class="receipt">
-      <div class="rc"><h3>สรุปยอดขายสิ้นวัน</h3><div>${esc(m.shopName||'')}</div><div>${esc(m.branchName||'')}</div>
+      <div class="rc"><h3>${rng?'สรุปยอดระหว่างวัน (ถึง '+hhmm(rng.to)+')':'สรุปยอดขายสิ้นวัน'}</h3><div>${esc(m.shopName||'')}</div><div>${esc(m.branchName||'')}</div>
       <div>${dmy(d.date)}${d.first?' · '+hhmm(d.first)+'-'+hhmm(d.last):''}</div></div>
       <div class="rdiv"></div>
       <table><tbody>
@@ -9629,8 +9724,8 @@ const DAYEND = (()=>{
   }
 
   // ---- คัดลอกข้อความ (รองรับ iPad/Safari) ----
-  function copy(){
-    const t=text();
+  function copy(tx){
+    const t=(typeof tx==='string')?tx:text();
     const done=()=>{ try{ UI.toast('คัดลอกแล้ว ✅ ไปวางใน LINE ได้เลย','ok'); }catch(e){} };
     try{
       if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -9737,7 +9832,36 @@ const DAYEND = (()=>{
       </div>`;
     UI.open('genOverlay');
   }
-  return {open,copy,printSlip,sendLine,text,slipHtml,data};
+  // ===== ⭐ v12.4 สรุปยอดระหว่างวัน (ค่าเริ่ม เปิดร้าน → 14:00) ให้น้องคัดลอกส่งไลน์กลุ่ม =====
+  let _mid=null;
+  function midRange(hm){
+    const now=new Date(), t0=new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime();
+    const [h,mi]=String(hm||'14:00').split(':').map(x=>parseInt(x)||0);
+    return {from:t0,to:Math.min(now.getTime(),t0+(h*60+mi)*60000+59999)};    // ยังไม่ถึงเวลาตัด = ถึงตอนนี้
+  }
+  function mid(){
+    const cut=(STORE.get().settings||{}).midCut||'14:00';
+    const now=new Date(), nowHm=pad(now.getHours())+':'+pad(now.getMinutes());
+    const hm=nowHm<cut?nowHm:cut;
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>☀️ สรุปยอดระหว่างวัน</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        ${REMIND.cfgHtml('mid')}
+        <div class="field"><label>สรุปตั้งแต่เปิดร้าน ถึงเวลา</label><input id="midTo" type="time" value="${hm}" onchange="DAYEND.midRefresh()"></div>
+        <textarea id="midTxt" readonly style="width:100%;min-height:46vh;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Prompt';font-size:13.5px;line-height:1.55"></textarea>
+      </div>
+      <div class="modal-f" style="flex-wrap:wrap;gap:8px">
+        <button class="btn-ghost" onclick="DAYEND.midPrint()">🖨️ พิมพ์</button>
+        <button class="btn-ghost" onclick="DAYEND.midLine()">💬 แชร์เข้า LINE</button>
+        <button class="btn-gold" style="flex:1 1 100%;min-height:56px;font-size:17px;font-weight:800" onclick="DAYEND.midCopy()">📋 คัดลอกส่ง LINE</button>
+      </div>`;
+    UI.open('genOverlay'); midRefresh();
+  }
+  function midRefresh(){ const el=$('#midTo'); _mid=midRange(el?el.value:'14:00'); const ta=$('#midTxt'); if(ta) ta.value=text(_mid.to,_mid); }
+  function midCopy(){ if(!_mid) midRefresh(); try{ REMIND.mark('mid'); }catch(e){} copy(text(_mid.to,_mid)); }
+  function midLine(){ if(!_mid) midRefresh(); try{ REMIND.mark('mid'); }catch(e){} try{ window.open('https://line.me/R/share?text='+encodeURIComponent(text(_mid.to,_mid)),'_blank'); }catch(e){ midCopy(); } }
+  function midPrint(){ if(!_mid) midRefresh(); try{ REMIND.mark('mid'); }catch(e){} try{ PAY.printDocs([slipHtml(_mid.to,_mid)],true); }catch(e){ UI.toast('พิมพ์ไม่สำเร็จ','err'); } }
+  return {open,copy,printSlip,sendLine,text,slipHtml,data,mid,midRefresh,midCopy,midLine,midPrint};
 })();
 
 /* ============================================================
@@ -10642,7 +10766,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
+  const LOCAL_KEYS=['midRemind','midCut','shotRemind','shotTime','splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
     // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
     'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbGapPct','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
   function mergeMeta(D,o){
@@ -11284,7 +11408,7 @@ const APP = (()=>{
     setInterval(()=>KDS.tick(),1000);
     setInterval(()=>{ try{ LINEN.slowScan(); }catch(e){} },60000);   // แจ้งเตือนออเดอร์ค้างครัว
     setInterval(()=>{ if(NAV.cur()==='kds') KDS.render(); },15000);
-    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); if(NAV.cur()==='floor') FLOOR.render(true); try{ SHOT.updateBadge(); }catch(e){} },5000);
+    setInterval(()=>{ PENDING.updateBadge(); if(NAV.cur()==='pending') PENDING.render(); if(NAV.cur()==='floor') FLOOR.render(true); try{ SHOT.updateBadge(); }catch(e){} try{ REMIND.check(); }catch(e){} },5000);
     setInterval(()=>{ try{ LOYAL.flushQueued(); }catch(e){} },20000); window.addEventListener('online',()=>{ try{ LOYAL.flushQueued(); }catch(e){} });   // ⭐ v11.5 แต้มที่ค้างเพราะไม่มีเน็ต
     try{ PRINT.warmLogo(); }catch(e){}                    // ⭐ โหลดโลโก้ไว้ล่วงหน้า จะได้พิมพ์ติดตั้งแต่ใบแรก
     updateSyncChip(); setInterval(updateSyncChip,3000);   // ป้ายสถานะซิงค์
