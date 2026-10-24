@@ -5212,6 +5212,9 @@ const QR = (()=>{
   function qtot(){ const s0=qcart.reduce((s,c)=>s+c.price*c.qty,0); const b=STORE.curBranch()||{};
     const cfg=b.taxCfg || (window._CUSTOMER_MODE ? {vatRate:0,vatIncluded:true,serviceCharge:0} : null);   // มือถือลูกค้า + ร้านยังไม่เคยกดบันทึกตั้งค่า -> เหมือนเดิม (ไม่เดา)
     return POS.totals(s0,0,cfg); }
+  // ⭐ v12.8 รูปเมนูมาถึงทีหลัง -> เติมในการ์ดที่แสดงอยู่ (ไม่วาดหน้าใหม่ ลูกค้าเลื่อนอยู่ไม่สะดุด)
+  function setImg(id,src){ const el=document.getElementById('qph_'+id); if(!el) return; const em=el.querySelector('.em'); if(!em) return;
+    const im=document.createElement('img'); im.decoding='async'; im.src=src; em.replaceWith(im); }
   function startCustomer(table){ fixedTable=!!table; qtable=table||null; stage='menu'; qcart=[]; idx=0; renderMenu(); }
   function curItems(){
     let it=STORE.scoped('products').filter(p=>p.available!==false&&!p.deletedAt&&!INV.outOfStock(p));
@@ -5227,7 +5230,7 @@ const QR = (()=>{
     all=all.filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i).filter((x,i,a)=>a.findIndex(y=>(y.name||'').trim()===(x.name||'').trim())===i);
     function card(p){ const inCart=qcart.filter(c=>c.productId===p.id).reduce((t,c)=>t+c.qty,0);
       return `<div class="qcard" onclick="QR.add('${p.id}')">
-        <div class="ph">${p.img?`<img src="${esc(p.img)}">`:`<div class="em">${esc(p.emoji||'☕')}</div>`}
+        <div class="ph" id="qph_${p.id}">${p.img?`<img src="${esc(p.img)}" loading="lazy" decoding="async">`:`<div class="em">${esc(p.emoji||'☕')}</div>`}
           <span class="inc" id="qrcBadge_${p.id}" ${inCart?'':'style="display:none"'}>×${inCart}</span>
           <span class="plus">＋</span></div>
         <div class="meta"><div class="nm" title="${esc(p.name)}">${esc(p.name)}</div><div class="pr">${STORE.baht(p.price)}</div></div>
@@ -5575,7 +5578,7 @@ const QR = (()=>{
       <button class="qrc-checkout" style="max-width:240px;margin:0 auto" onclick="QR.render()">สั่งเพิ่ม</button>
     </div>`;
   }
-  return {render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,stopTrack,saveQR,uploadSlip,attachManual,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
+  return {setImg,render,cat,add,checkout,next,prev,goTo,chQty,setTable,toPay,payBy,stopTrack,saveQR,uploadSlip,attachManual,submitVerified,submitOrder,confirmOrder,submitOpenTab,startCustomer};
 })();
 
 /* ============================================================
@@ -8547,7 +8550,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.7</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.8</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8779,7 +8782,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.7) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.8) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10593,26 +10596,57 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลจาก cloud มาแทนที่ในเครื่อง (เครื่องใหม่) ----
   // ดึงเฉพาะเมนู/หมวด/ตัวเลือก/โต๊ะ/ตั้งค่า (สำหรับหน้าลูกค้า) ไม่ยุ่งกับออเดอร์
+  let _imgNeed=[];                                      // ⭐ v12.8 รูปเมนูที่ต้องโหลดตามหลัง (เรียงตามหมวด)
   async function pullMenu(){
-    if(status!=='online'||!client) return false;
+    if(!client) return false;
+    if(status!=='online' && !window._CUSTOMER_MODE) return false;   // มือถือลูกค้า: ไม่ต้องรอเช็คการเชื่อมต่อก่อน (ประหยัด ~0.5-1 วิ)
     try{
       const D=STORE.get();
       // เมนูลูกค้า: อ่านจาก view สาธารณะที่ "ตัดต้นทุน/สูตร" ออกแล้ว (menu_public) — ถ้าไม่มี view ค่อย fallback ตาราง products
       // ⭐ v11.2 มือถือลูกค้า: ดึงเฉพาะของ "สาขาที่สแกน" (เดิมดึงเมนู+รูปของทุกสาขา -> ช้า ~10 วิ และเต็มพื้นที่มือถือลูกค้า)
       const _bid=STORE.bid(), _okBid=/^[A-Za-z0-9-]{3,24}$/.test(_bid);
       const byBranch=(window._CUSTOMER_MODE&&_okBid) ? (q=>q.or(_bid==='BR-001' ? 'data->>branchId.eq.BR-001,data->>branchId.is.null' : 'data->>branchId.eq.'+_bid)) : null;
-      let prod=null;
-      try{ const r=await selShopSoft('menu_public','data',byBranch); if(!r.error&&r.data) prod=r.data; }catch(e){}
-      if(!prod){ const r=await selShop('products','data',byBranch); if(!r.error&&r.data) prod=r.data; }
-      if(prod) D.products=prod.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i);
-      // หมวด/ตัวเลือก/โต๊ะ = อ่านตรง (ไม่ใช่ข้อมูลลับ)
+      const uniq=(x,i,a)=>a.findIndex(y=>y.id===x.id)===i;
+      const prev={}; (D.products||[]).forEach(p=>{ if(p&&p.id) prev[p.id]=p; });
+      // ⭐ v12.8 เมนูแบบ "ไม่มีรูป" (view รุ่นใหม่ มี img_sig) -> ข้อมูลเล็กลง ~20 เท่า · ยังไม่รัน SQL 16 = ถอยไปแบบเดิม
+      const getProd=async()=>{
+        try{ const r=await selShopSoft('menu_public','data,img_sig',byBranch); if(!r.error&&r.data) return {rows:r.data,lite:true}; }catch(e){}
+        try{ const r=await selShopSoft('menu_public','data',byBranch); if(!r.error&&r.data) return {rows:r.data}; }catch(e){}
+        try{ const r=await selShop('products','data',byBranch); if(!r.error&&r.data) return {rows:r.data}; }catch(e){}
+        return null; };
+      // หมวด/ตัวเลือก/โต๊ะ = อ่านตรง (ไม่ใช่ข้อมูลลับ) · ข้อมูลร้าน/PromptPay จาก branch_public (ตัดข้อมูลลับแล้ว) — ⭐ v12.8 ยิงพร้อมกันทั้งหมด (เดิมทีละตัว)
       const ent=[['categories','categories'],['modifiers','modifiers'],['tables_','tables']];
-      for(const [t,key] of ent){ const {data,error}=await selShop(t,'data',byBranch); if(!error&&data) D[key]=data.map(r=>r.data).filter((x,i,a)=>a.findIndex(y=>y.id===x.id)===i); }
-      // ข้อมูลร้าน/PromptPay สำหรับลูกค้า: อ่านจาก branch_public (ตัดข้อมูลลับ เช่น geminiKey) ถ้ามี
-      try{ const {data:bp}=await selShopSoft('branch_public','data'); if(bp&&bp.length){ D.branches=bp.map(r=>r.data); } }catch(e){}
+      const res=await Promise.all([getProd(), ...ent.map(([t])=>selShop(t,'data',byBranch).catch(()=>null)), selShopSoft('branch_public','data').catch(()=>null)]);
+      const pr=res[0];
+      ent.forEach(([t,key],i)=>{ const r=res[i+1]; if(r&&!r.error&&r.data) D[key]=r.data.map(x=>x.data).filter(uniq); });
+      const bp=res[ent.length+1]; if(bp&&!bp.error&&bp.data&&bp.data.length) D.branches=bp.data.map(x=>x.data);
+      if(pr){ _imgNeed=[];
+        const okImg=v=>typeof v==='string'&&(/^data:image\/(png|jpe?g|webp);base64,/.test(v)||/^https:\/\//.test(v));
+        D.products=pr.rows.map(r=>{ const d=r.data; if(!d) return null;
+          if(pr.lite){ const sig=r.img_sig||''; d._isig=sig; const old=prev[d.id];
+            if(sig && old && old._isig===sig && okImg(old.img)) d.img=old.img;     // รูปเดิมในเครื่อง (สแกนครั้งก่อน) ใช้ต่อได้เลย
+            else { d.img=''; if(sig) _imgNeed.push(d.id); } }
+          return d; }).filter(Boolean).filter(uniq);
+        if(_imgNeed.length){ const cs={}, pc={}; (D.categories||[]).forEach(c=>{ cs[c.id]=c.sort||0; }); D.products.forEach(p=>{ pc[p.id]=p.cat; });
+          _imgNeed.sort((a,b)=>(cs[pc[a]]||0)-(cs[pc[b]]||0)); }   // โหลดรูปหมวดแรก ๆ ก่อน
+      }
       // ไม่ดึง ingredients (กันรั่วต้นทุน) และไม่ดึง app_meta/settings (กันรั่ว key) สำหรับโหมดลูกค้า
       STORE.save(); return true;
     }catch(e){ console.error('pullMenu',e); return false; }
+  }
+  // ⭐ v12.8 โหลดรูปเมนูตามหลัง ทีละ 20 รูป 3 สายพร้อมกัน -> เมนูขึ้นก่อน รูปค่อยทยอยโผล่
+  async function pullMenuImages(onImg){
+    if(!client||!_imgNeed.length) return;
+    const byId={}; (STORE.get().products||[]).forEach(p=>{ byId[p.id]=p; });
+    const ids=_imgNeed.slice(); _imgNeed=[];
+    const chunks=[]; for(let i=0;i<ids.length;i+=20) chunks.push(ids.slice(i,i+20));
+    const okImg=v=>typeof v==='string'&&(/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(v)||/^https:\/\/[^\s"'<>]+$/.test(v));
+    let k=0;
+    const worker=async()=>{ while(k<chunks.length){ const c=chunks[k++];
+      try{ let q=client.from('menu_img_public').select('id,img').in('id',c); if(shopCol) q=q.eq('shop_id',SID());
+        const r=await q; (r&&r.data||[]).forEach(x=>{ const p=byId[x.id]; if(p&&okImg(x.img)){ p.img=x.img; try{ onImg&&onImg(p.id,x.img); }catch(e){} } }); }catch(e){} } };
+    await Promise.all([worker(),worker(),worker()]);
+    try{ STORE.save(); }catch(e){}                       // เก็บไว้ในเครื่อง สแกนครั้งหน้าไม่ต้องโหลดรูปซ้ำ
   }
   function pullAll(){
     if(status!=='online'){ UI.toast('ยังไม่ออนไลน์ — กดทดสอบเชื่อมต่อก่อน','err'); return; }
@@ -10887,7 +10921,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
@@ -11126,8 +11160,8 @@ const CUSTOMER = (()=>{
     document.querySelector('#v-qr').classList.add('active');
     document.querySelector('#qrRoot').innerHTML='<div class="empty" style="margin:auto"><div class="ic">☕</div>กำลังโหลดเมนู...</div>';
     if(CLOUD.getStatus()==='off') CLOUD.init();     // ⭐ v11.2 APP.init ต่อ cloud ให้แล้ว — ไม่สร้าง client ซ้ำ
-    // รอเชื่อม cloud + ดึงเมนูล่าสุด (กันเมนูไม่ตรง)
-    let tries=0; while(CLOUD.getStatus()!=='online'&&tries<20){ await new Promise(r=>setTimeout(r,300)); tries++; }
+    // ดึงเมนูล่าสุดทันทีที่มี client (⭐ v12.8 ไม่ต้องรอเช็คการเชื่อมต่อให้เสร็จก่อน)
+    let tries=0; while(!CLOUD.getClient()&&tries<20){ await new Promise(r=>setTimeout(r,150)); tries++; }
     const _gotMenu=await CLOUD.pullMenu();                             // ต้องได้ข้อมูลสาขาก่อนเช็คสิทธิ์
     if(!FEAT.on('qrOrder')){                                           // ⭐ สาขานี้ยังไม่ได้เปิดบริการสั่งผ่าน QR
       const b=STORE.curBranch()||{};
@@ -11140,8 +11174,9 @@ const CUSTOMER = (()=>{
         +'</div>';
       return;
     }
-    if(!_gotMenu && CLOUD.getStatus()==='online'){ await CLOUD.pullMenu(); }   // ⭐ v11.2 ดึงซ้ำเฉพาะเมื่อรอบแรกพลาด (เดิมดึง 2 รอบเสมอ = ช้าเท่าตัว)
+    if(!_gotMenu){ await new Promise(r=>setTimeout(r,800)); await CLOUD.pullMenu(); }   // ⭐ v11.2 ดึงซ้ำเฉพาะเมื่อรอบแรกพลาด
     QR.startCustomer(table);
+    try{ CLOUD.pullMenuImages((id,src)=>QR.setImg(id,src)); }catch(e){}   // ⭐ v12.8 รูปทยอยตามมา
   }
   return {start};
 })();
