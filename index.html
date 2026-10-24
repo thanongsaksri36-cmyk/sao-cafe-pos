@@ -4016,6 +4016,7 @@ const POS = (()=>{
   function tap(id){
     const p=STORE.find('products',id);
     if(!p) return;
+    if(!SHIFT.gate()) return;                            // ⭐ v12.7 บังคับเปิดกะ: กันตั้งแต่กดเมนู ไม่ต้องรอถึงตอนชำระ
     // ⭐ มี "แบบ" (ร้อน/เย็น/ปั่น) หรือมีตัวเลือก -> เปิดกล่องให้เลือกก่อน
     if(INV.variantsOf(p).length || (p.options&&p.options.length)) MOD.open(p);
     else addToCart(p,1,[],0,null);
@@ -4163,7 +4164,7 @@ const POS = (()=>{
     if(!cart.length) return;
     if(orderType!=='dine-in'||!table){ UI.toast('เลือกโต๊ะก่อน','err'); pickTable(); return; }
     if(discount){ UI.toast('ส่วนลดให้ใส่ตอนปิดบิล — เอาส่วนลดออกก่อนส่งครัว','err'); return; }
-    if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะก่อนเริ่มขาย','err'); NAV.go('shift'); return; }
+    if(!SHIFT.gate()) return;
     _tabBusy=true;
     try{
       const s=calc(), st=AUTH.get();
@@ -4417,7 +4418,7 @@ const PAY = (()=>{
         }
       }
     }catch(e){}
-    if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะ + นับเงินเข้าก่อนเริ่มขาย','err'); NAV.go('shift'); return; }
+    if(!SHIFT.gate()) return;
     method='cash'; cashIn=0;
     const total=POS.calc().total;
     $('#payModal').innerHTML=`
@@ -5755,6 +5756,7 @@ const PENDING = (()=>{
   }
   function confirm(id){
     const o=STORE.find('orders',id); if(!o) return;
+    if(!SHIFT.gate()) return;                            // ⭐ v12.7 รับเงินบิล QR ก็ต้องเปิดกะ (เงินสดต้องเข้ากะ)
     if(o.status!=='wait_payment'){ UI.toast('บิลนี้ถูกยืนยันไปแล้ว','err'); render(); return; }   // กันกดซ้ำ/หลายเครื่องพร้อมกัน
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now();   // ⭐ v11.2 เวลา "รับเงินจริง" — ยอดกะ/สิ้นวันใช้ตัวนี้
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
@@ -5766,6 +5768,7 @@ const PENDING = (()=>{
   }
   function settle(id){
     const o=STORE.find('orders',id); if(!o) return;
+    if(!SHIFT.gate()) return;
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>ปิดบิล ${o.table?'โต๊ะ '+esc(o.table):esc(o.no)} · ${STORE.baht(o.total)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><p style="color:var(--muted);font-size:13px;margin-bottom:12px">เลือกวิธีรับชำระ</p>
@@ -8054,6 +8057,15 @@ const BO = (()=>{
 const SHIFT = (()=>{
   let cur=null;
   function active(){ cur=STORE.get().shifts.find(s=>!s.closedAt&&(s.branchId||'BR-001')===STORE.bid())||null; return cur; }
+  // ⭐ v12.7 กะที่เปิดค้างจากวันก่อน (ลืมปิด) ไม่นับเป็น "เปิดกะแล้ว" — เดิมกะเก่าค้างอยู่ ทำให้ขายได้ทั้งที่วันนี้ยังไม่ได้เปิดกะ
+  function stale(sh){ if(!sh) return false; const d=new Date(sh.openedAt||0), n=new Date(); return d.toDateString()!==n.toDateString() && n.getHours()>=5; }
+  function gate(){
+    if(!(STORE.get().settings||{}).requireShift) return true;
+    const sh=active();
+    if(!sh){ UI.toast('⚠️ ต้องเปิดกะ + นับเงินตั้งต้นก่อนขาย','err'); NAV.go('shift'); return false; }
+    if(stale(sh)){ UI.toast('⚠️ มีกะค้างตั้งแต่ '+new Date(sh.openedAt).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' ยังไม่ได้ปิด — ปิดกะเก่า แล้วเปิดกะวันนี้ก่อนขาย','err'); NAV.go('shift'); return false; }
+    return true;
+  }
   function recordSale(order){
     const sh=active(); if(!sh) return;
     if(order.method==='cash'){ const _cl={id:STORE.uuid(),type:'sale',amount:order.total,note:order.no,staffId:order.staffId,at:STORE.now(),shiftId:sh.id,branchId:STORE.bid()}; STORE.get().cashlog.push(_cl); CLOUD.pushItem('cashlog',_cl); }
@@ -8078,7 +8090,7 @@ const SHIFT = (()=>{
     const cashOut=log.filter(c=>c.type==='out').reduce((s,c)=>s+c.amount,0);
     const expected=sh.openCash+cashSales+cashIn-cashOut;
     $('#shiftPanel').innerHTML=`
-      <div class="panel-head"><h2>💰 กะปัจจุบัน</h2>
+      <div class="panel-head"><h2>💰 กะปัจจุบัน${stale(sh)?' <span style="font-size:13px;background:#fdeaea;color:#C0392B;padding:4px 10px;border-radius:10px;vertical-align:middle">⚠️ กะค้างจาก '+new Date(sh.openedAt).toLocaleDateString('th-TH',{day:'numeric',month:'short'})+' — ปิดกะก่อน</span>':''}</h2>
         <div class="sub-tabs">
           <button class="add-fab" onclick="SHIFT.cashMove('in')">+ เงินเข้า</button>
           <button class="add-fab" style="background:var(--warn)" onclick="SHIFT.cashMove('out')">💸 เบิก/เงินออก</button>
@@ -8485,7 +8497,7 @@ const SHIFT = (()=>{
     UI.confirm2('บันทึกผลตรวจแล้ว',`นับได้ ${STORE.baht(counted)}\nควรมี ${STORE.baht(_ccExpected)}\nผล: ${diff===0?'ตรงพอดี ✓':(diff>0?'เกิน ':'ขาด ')+STORE.baht(Math.abs(diff))}`,()=>{ render(); });
     LINEN.send('🔍 ตรวจนับเงิน\n'+LINEN.SEP+'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)+'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ เกิน ':'⚠️ ขาด ')+STORE.baht(Math.abs(diff)))+'\n👤 พนักงาน: '+_ccName+'\n🕐 '+LINEN.thDT(Date.now()),'count');
   }
-  return {ccInput,render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,openSlipHtml,kickSlipHtml,finishClose,finishOpen,pickReason,otherReason};
+  return {gate,stale,ccInput,render,active,openShift,cashMove,closeShift,recordSale,cashCountPIN,cashCount,cashCalc,saveCashCount,expectedCash,countSlipHtml,readDenoms,data,tol,blind,reveal,shiftSlipHtml,openSlipHtml,kickSlipHtml,finishClose,finishOpen,pickReason,otherReason};
 })();
 
 /* ============================================================
@@ -8535,7 +8547,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.6</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.7</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8767,7 +8779,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.6) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.7) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9239,7 +9251,7 @@ function voidOrder(oid){
    SPLIT — แยกบิล / จ่ายแยกตามรายการ
    ============================================================ */
 const SPLIT = (()=>{
-  function open(){ if(!POS.getCart().length){ UI.toast('ยังไม่มีรายการ','err'); return; } if(POS.getTabCtx()){ UI.toast('บิลโต๊ะที่ส่งครัวแล้วยังแยกจ่ายไม่ได้ — ชำระรวมทั้งโต๊ะ','err'); return; } if(STORE.get().settings.requireShift && !SHIFT.active()){ UI.toast('⚠️ ต้องเปิดกะก่อนเริ่มขาย','err'); NAV.go('shift'); return; } render('cash'); }
+  function open(){ if(!POS.getCart().length){ UI.toast('ยังไม่มีรายการ','err'); return; } if(POS.getTabCtx()){ UI.toast('บิลโต๊ะที่ส่งครัวแล้วยังแยกจ่ายไม่ได้ — ชำระรวมทั้งโต๊ะ','err'); return; } if(!SHIFT.gate()) return; render('cash'); }
   function render(method){
     const cart=POS.getCart();
     $('#genModal').className='modal wide';
