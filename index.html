@@ -3171,6 +3171,9 @@ const otypeShort=(k)=> (otype(k)||{}).s || k || '';          // ชื่อส�
 const otypeList=()=> ORDER_TYPES.filter(t=>!t.legacy);       // ที่ให้เลือกตอนขาย
 const isDelivery=(k)=> ['grab','lineman','shopee','delivery'].includes(k);
 // บิลนี้ "รับเงินจริงแล้ว" หรือยัง — ใช้ร่วมกันทุกรายงาน (กันนับบิลรอชำระเป็นยอดขาย)
+// ⭐ v12.16 ชื่อช่องทางชำระ (ใบเสร็จ/รายงาน)
+const PAYNAMES={cash:'เงินสด',promptpay:'พร้อมเพย์',transfer:'โอน',card:'บัตรเครดิต',thaichuay:'ไทยช่วยไทย 60/40'};
+const payLabel=m=>PAYNAMES[m]||m||'-';
 const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
   && o.payStatus!=='open' && o.payStatus!=='wait_cash' && o.payStatus!=='wait_verify'
   && !!o.method && o.method!=='unpaid';
@@ -4540,6 +4543,8 @@ const PAY = (()=>{
           <button class="opt-chip sel" data-m="cash" onclick="PAY.setMethod('cash')">💵 เงินสด</button>
           <button class="opt-chip" data-m="promptpay" onclick="PAY.setMethod('promptpay')">📱 PromptPay</button>
           <button class="opt-chip" data-m="transfer" onclick="PAY.setMethod('transfer')">🏦 โอน</button>
+          <button class="opt-chip" data-m="card" onclick="PAY.setMethod('card')">💳 บัตรเครดิต</button>
+          <button class="opt-chip" data-m="thaichuay" onclick="PAY.setMethod('thaichuay')">🤝 ไทยช่วยไทย 60/40</button>
         </div>
         <div id="payBody"></div>
       </div>
@@ -4562,11 +4567,24 @@ const PAY = (()=>{
         <div class="qr-box">${promptpayQR(total)}</div>
         <p style="margin-top:12px;font-size:14px">สแกนจ่าย <b>${STORE.baht(total)}</b><br><small style="color:var(--muted)">PromptPay: ${esc(ppid)}</small></p>
       </div>`;
+    } else if(method==='card'){              // ⭐ v12.16 บัตรเครดิต (รูด/แตะที่เครื่อง EDC)
+      $('#payBody').innerHTML=`<div style="text-align:center;padding:6px 0 10px"><div style="font-size:44px">💳</div>
+        <p style="margin:4px 0 0">รูด / แตะบัตร ที่เครื่อง EDC<br><b style="font-size:22px">${STORE.baht(total)}</b><br><small style="color:var(--muted)">ได้สลิปจากเครื่องบัตรแล้ว กดยืนยัน</small></p></div>
+        <div class="field"><label>เลขอ้างอิง / 4 ตัวท้ายบัตร (ไม่บังคับ)</label><input id="payRef" maxlength="30" placeholder="เช่น 1234 หรือเลข Approval"></div>`;
+    } else if(method==='thaichuay'){         // ⭐ v12.16 ไทยช่วยไทย 60/40 — รัฐช่วย 60% ลูกค้าจ่าย 40% (ร้านได้เต็มยอด)
+      const gov=Math.floor(total*0.6), cust=total-gov;
+      $('#payBody').innerHTML=`<div style="text-align:center;padding:4px 0 8px"><div style="font-size:40px">🤝</div><b style="font-size:17px">ไทยช่วยไทย 60/40</b>
+        <p style="color:var(--muted);font-size:13px;margin:4px 0 0">ให้ลูกค้าสแกนจ่ายผ่านแอปเป๋าตัง · รัฐช่วย 60% · ลูกค้าจ่าย 40%</p></div>
+        <div class="sr"><span>ยอดบิล</span><b>${STORE.baht(total)}</b></div>
+        <div class="field"><label>รัฐช่วย (บาท) — แก้ได้ ถ้าลูกค้าใช้สิทธิ์เกินวงเงินต่อวัน</label><input id="tcGov" type="number" inputmode="decimal" step="0.01" min="0" value="${gov/100}" oninput="PAY.tcCalc()"></div>
+        <div class="sr tot"><span>ลูกค้าจ่ายเอง</span><b id="tcCust">${STORE.baht(cust)}</b></div>`;
     } else {
       $('#payBody').innerHTML=`<p style="text-align:center;padding:20px;color:var(--muted)">รับโอนเข้าบัญชีร้าน<br><b style="color:var(--text);font-size:18px">${STORE.baht(total)}</b><br>กดยืนยันเมื่อได้รับเงิน</p>`;
     }
   }
   function cash(v){ cashIn=STORE.toSatang(v); calcChange(); }
+  function tcCalc(){ const total=POS.calc().total, el=$('#tcGov'), out=$('#tcCust'); if(!el||!out) return;
+    const g=Math.max(0,Math.min(total,STORE.toSatang(el.value)||0)); out.textContent=STORE.baht(total-g); }
   function quickCash(v){ cashIn=v; const el=$('#cashIn'); if(el) el.value=(v/100); calcChange(); }
   function calcChange(){
     const total=POS.calc().total, ch=cashIn-total, box=$('#changeBox');
@@ -4587,6 +4605,10 @@ const PAY = (()=>{
   async function _complete(){
     const s=POS.calc();
     if(method==='cash'&&cashIn<s.total){ UI.toast('รับเงินไม่พอ','err'); return; }
+    // ⭐ v12.16 อ่านค่าช่องทางพิเศษก่อนปิดหน้าต่าง
+    let coPay=null, payRef='';
+    if(method==='thaichuay'){ const el=$('#tcGov'); let g=el?STORE.toSatang(el.value):Math.floor(s.total*0.6); g=Math.max(0,Math.min(s.total,g||0)); coPay={gov:g,cust:s.total-g}; }
+    if(method==='card'){ const el=$('#payRef'); payRef=el?String(el.value||'').replace(/[<>"'`&\\]/g,'').trim().slice(0,30):''; }
     // ⭐ v12.0 ปิดบิลโต๊ะ: บิลค้างทุกใบต้องยังค้างอยู่จริง (กันอีกเครื่องปิด/ยกเลิกไปก่อน -> เก็บเงินซ้ำ)
     const _tab=POS.getTabCtx(), _srcs=_tab?_tab.ids.map(id=>STORE.find('orders',id)):[];
     if(_tab && _srcs.some(o=>!o||o.payStatus!=='open'||o.status==='void')){ UI.close('payOverlay'); POS.cancelTab(true); UI.toast('บิลโต๊ะนี้ถูกปิด/เปลี่ยนจากเครื่องอื่นแล้ว — เปิดผังโต๊ะแล้วกดปิดบิลใหม่','err'); return; }
@@ -4608,7 +4630,7 @@ const PAY = (()=>{
       type:POS.getType(), table:POS.getTable()||'',
       items:JSON.parse(JSON.stringify(cart)).map(it=>{ delete it.tab; return it; }),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
-      method, paid:method==='cash'?cashIn:s.total, change:method==='cash'?cashIn-s.total:0,
+      method, paid:method==='cash'?cashIn:s.total, change:method==='cash'?cashIn-s.total:0, coPay, payRef,
       status:'preparing', payStatus:'paid', memberId:(member&&!member.ext)?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
       channel:'pos', createdAt:STORE.now(), closedAt:null
     };
@@ -4674,7 +4696,9 @@ const PAY = (()=>{
           ${order.service>0?`<tr><td>Service</td><td style="text-align:right">${STORE.baht(order.service)}</td></tr>`:''}
           ${order.vat>0?`<tr><td>VAT ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(order.vat)}</td></tr>`:''}
           <tr class="rtot"><td>สุทธิ</td><td style="text-align:right">${STORE.baht(order.total)}</td></tr>
-          <tr><td>รับ (${esc(order.method)})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          <tr><td>รับ (${esc(payLabel(order.method))})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          ${order.coPay?`<tr><td>· รัฐช่วย</td><td style="text-align:right">${STORE.baht(order.coPay.gov)}</td></tr><tr><td>· ลูกค้าจ่าย</td><td style="text-align:right">${STORE.baht(order.coPay.cust)}</td></tr>`:''}
+          ${order.payRef?`<tr><td>· อ้างอิง</td><td style="text-align:right">${esc(order.payRef)}</td></tr>`:''}
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
@@ -4854,7 +4878,9 @@ const PAY = (()=>{
           ${order.service>0?`<tr><td>Service</td><td style="text-align:right">${STORE.baht(order.service)}</td></tr>`:''}
           ${order.vat>0?`<tr><td>VAT ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(order.vat)}</td></tr>`:''}
           <tr class="rtot"><td>สุทธิ</td><td style="text-align:right">${STORE.baht(order.total)}</td></tr>
-          <tr><td>รับ (${esc(order.method)})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          <tr><td>รับ (${esc(payLabel(order.method))})</td><td style="text-align:right">${STORE.baht(order.paid)}</td></tr>
+          ${order.coPay?`<tr><td>· รัฐช่วย</td><td style="text-align:right">${STORE.baht(order.coPay.gov)}</td></tr><tr><td>· ลูกค้าจ่าย</td><td style="text-align:right">${STORE.baht(order.coPay.cust)}</td></tr>`:''}
+          ${order.payRef?`<tr><td>· อ้างอิง</td><td style="text-align:right">${esc(order.payRef)}</td></tr>`:''}
           ${order.change>0?`<tr><td>เงินทอน</td><td style="text-align:right">${STORE.baht(order.change)}</td></tr>`:''}
         </tbody></table>
         <div class="rdiv"></div>
@@ -4872,7 +4898,7 @@ const PAY = (()=>{
     if(_kit) docs.push(...KDS.serveSlipDocs(order));   // + ใบครัว (แยกบาร์/ครัวถ้าเปิดไว้)
     setTimeout(()=>printDocs(docs),200);
   }
-  return {open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
+  return {tcCalc,open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
 })();
 
 /* ============================================================
@@ -6806,7 +6832,7 @@ const REPORT = (()=>{
         <div>
           <h3 style="margin-bottom:12px;font-size:16px">💳 ตามวิธีชำระ</h3>
           <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-bottom:16px">
-            ${Object.entries(byMethod).map(([k,v])=>`<div class="sr" style="margin-bottom:8px"><span>${({cash:'💵 เงินสด',promptpay:'📱 PromptPay',transfer:'🏦 โอน'})[k]||k}</span><b>${STORE.baht(v)}</b></div>`).join('')||'<div class="empty">—</div>'}
+            ${Object.entries(byMethod).map(([k,v])=>`<div class="sr" style="margin-bottom:8px"><span>${({cash:'💵 เงินสด',promptpay:'📱 PromptPay',transfer:'🏦 โอน',card:'💳 บัตรเครดิต',thaichuay:'🤝 ไทยช่วยไทย 60/40'})[k]||k}</span><b>${STORE.baht(v)}</b></div>`).join('')||'<div class="empty">—</div>'}
           </div>
           <h3 style="margin-bottom:12px;font-size:16px">👥 ยอดตามพนักงาน</h3>
           <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow)">
@@ -6979,6 +7005,8 @@ const HISTORY = (()=>{
     cash      :['💵','เงินสด',    '#0f6e56','#e1f5ee'],
     promptpay :['📱','พร้อมเพย์',  '#185fa5','#e6f1fb'],
     transfer  :['🏦','โอน',       '#534ab7','#eeedfe'],
+    card      :['💳','บัตรเครดิต', '#7a3e9d','#f3e8fa'],
+    thaichuay :['🤝','ไทยช่วยไทย', '#b4451f','#fdeee6'],
     unpaid    :['⏳','ยังไม่จ่าย', '#854f0b','#faeeda']
   };
   function payCell(o){
@@ -8478,7 +8506,7 @@ const SHIFT = (()=>{
     const seq=_same.findIndex(x=>x.id===sh.id)+1;
     const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
     const by=m=>ok.filter(o=>o.method===m);
-    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer');
+    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay');
     const log=(D.cashlog||[]).filter(c=>c.shiftId===sh.id);
     const g=t=>log.filter(c=>c.type===t).reduce((a,b)=>a+b.amount,0);
     const cnt={}; ok.forEach(o=>(o.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
@@ -8490,6 +8518,8 @@ const SHIFT = (()=>{
       cash:{n:cash.length,v:sum(cash,o=>o.total)},
       pp:{n:pp.length,v:sum(pp,o=>o.total)},
       tr:{n:tr.length,v:sum(tr,o=>o.total)},
+      cd:{n:cd.length,v:sum(cd,o=>o.total)},
+      tc:{n:tc.length,v:sum(tc,o=>o.total),gov:sum(tc,o=>(o.coPay&&o.coPay.gov)||0)},
       voided:{n:voided.length,v:sum(voided,o=>o.total)},
       openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
       waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
@@ -8715,7 +8745,7 @@ const SHIFT = (()=>{
       LINEN.send('🔒 ปิดกะ — '+(sh.closedBy||'-')+'\n'+LINEN.SEP
         +'\n🕐 '+hhmm2(sh.openedAt)+' - '+hhmm2(sh.closedAt)
         +'\n🧾 บิล: '+d.bills+' · ยอดขายกะนี้: '+STORE.baht(d.total)
-        +'\n💵 เงินสด: '+STORE.baht(d.cash.v)+' · QR: '+STORE.baht(d.pp.v)+' · โอน: '+STORE.baht(d.tr.v)
+        +'\n💵 เงินสด: '+STORE.baht(d.cash.v)+' · QR: '+STORE.baht(d.pp.v)+' · โอน: '+STORE.baht(d.tr.v)+(d.cd&&d.cd.n?' · บัตร: '+STORE.baht(d.cd.v):'')+(d.tc&&d.tc.n?' · ไทยช่วยไทย: '+STORE.baht(d.tc.v):'')
         +'\n'+LINEN.SEP
         +'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)
         +'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ ':'⚠️ ')+res)
@@ -8768,6 +8798,8 @@ const SHIFT = (()=>{
       + row('💵 เงินสด ('+d.cash.n+')', B(d.cash.v))
       + row('📱 QR ('+d.pp.n+')', B(d.pp.v))
       + row('🏦 โอน ('+d.tr.n+')', B(d.tr.v))
+      + (d.cd&&d.cd.n?row('💳 บัตรเครดิต ('+d.cd.n+')', B(d.cd.v)):'')
+      + (d.tc&&d.tc.n?row('🤝 ไทยช่วยไทย ('+d.tc.n+')', B(d.tc.v)):'')
       + '</tbody></table><div class="rdiv"></div>'
       + '<div class="rc" style="font-weight:700">ลิ้นชักเงินสด</div>'
       + '<table style="width:100%"><tbody>'
@@ -8854,7 +8886,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.15</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.16</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -8972,7 +9004,7 @@ const SETTINGS = (()=>{
         <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🔠 ขนาดตัวอักษรใบเสร็จ (พิมพ์ออกมาจาง/เล็ก ให้เพิ่มขนาด)</label><select id="setRcScale">${['small:เล็ก','normal:ปกติ','large:ใหญ่','xlarge:ใหญ่มาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptScale||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
-        <div class="field"><label>🇹🇭 RawBT — วิธีส่งข้อมูล <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะเมื่อเลือกวิธีพิมพ์ = RawBT)</small></label>
+        <div class="field"><label>🤝 RawBT — วิธีส่งข้อมูล <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะเมื่อเลือกวิธีพิมพ์ = RawBT)</small></label>
           <select id="setRbImg"><option value="1" ${s.rawbtImage!==false?'selected':''}>ส่งเป็นรูปภาพ — ไทยสวยชัวร์ทุกเครื่อง (แนะนำ)</option><option value="0" ${s.rawbtImage===false?'selected':''}>ส่งเป็นตัวอักษร — เร็วกว่า แต่ต้องมีฟอนต์ไทยในเครื่องพิมพ์</option></select></div>
         <div class="field"><label>🔍 ตรวจภาพก่อนพิมพ์ <small style="color:var(--muted);font-weight:400">(พิมพ์ 1 ครั้งก่อน แล้วกดดู)</small> <button type="button" class="btn-gold" style="padding:4px 12px;font-size:12px;margin-left:6px" onclick="PRINT.preview()">ดูตัวอย่าง</button></label></div>
         <div class="field"><label>🔠 RawBT — ขนาดตัวอักษร</label>
@@ -9086,7 +9118,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.15) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.16) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9654,7 +9686,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
   const SEP='━━━━━━━━━━━━━━';
   const thDT=ts=>{ const d=new Date(ts||Date.now()); return d.getDate()+'/'+(d.getMonth()+1)+'/'+(d.getFullYear()+543)+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'+('0'+d.getSeconds()).slice(-2); };
   const hhmm=ts=>{ const d=new Date(ts); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); };
-  const payName=m=>m==='cash'?'เงินสด':m==='promptpay'?'สแกน PromptPay':m==='transfer'?'โอนเงิน':(m||'-');
+  const payName=m=>m==='cash'?'เงินสด':m==='promptpay'?'สแกน PromptPay':m==='transfer'?'โอนเงิน':payLabel(m);
   function saleMsg(o){
     const n=(o.items||[]).reduce((a,b)=>a+(b.qty||1),0);
     return '🛒 ขายได้!\n'+SEP
@@ -9686,7 +9718,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
     const ok=all.filter(isPaidOrder);
     const voided=all.filter(x=>x.status==='void'&&!x.merged);
     const tot=ok.reduce((a,b)=>a+b.total,0);
-    const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer');
+    const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer'), cdtc=ok.filter(x=>x.method==='card'||x.method==='thaichuay');
     const times=ok.map(x=>x.createdAt).sort((a,b)=>a-b);
     const cnt={}; ok.forEach(x=>(x.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
     const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -9698,6 +9730,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
       +(ok.length?'\n📈 เฉลี่ย: '+STORE.baht(Math.round(tot/ok.length))+'/บิล':'')
       +'\n\n💵 เงินสด: '+STORE.baht(cash.reduce((a,b)=>a+b.total,0))+' ('+cash.length+' บิล)'
       +'\n📱 QR/โอน: '+STORE.baht(qrtr.reduce((a,b)=>a+b.total,0))+' ('+qrtr.length+' บิล)'
+      +(cdtc.length?'\n💳 บัตร/ไทยช่วยไทย: '+STORE.baht(cdtc.reduce((a,b)=>a+b.total,0))+' ('+cdtc.length+' บิล)':'')
       +'\n❌ ยกเลิก: '+voided.length+' บิล'
       +'\n\n🏆 เมนูขายดีวันนี้:'+(top.length?top.map((t,i)=>'\n'+(i+1)+'. '+t[0]+' ×'+t[1]).join(''):'\n- ไม่มีข้อมูล');
   }
@@ -9942,7 +9975,7 @@ const DAYEND = (()=>{
     const waitPay=all.filter(o=>o.status==='wait_payment');
     const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
     const by=m=>ok.filter(o=>o.method===m);
-    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer');
+    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay');
     const total=sum(ok,o=>o.total);
     const times=ok.map(o=>o.createdAt).sort((a,b)=>a-b);
     // เมนูขายดี
@@ -9968,6 +10001,8 @@ const DAYEND = (()=>{
       cash:{n:cash.length,v:sum(cash,o=>o.total)},
       pp:{n:pp.length,v:sum(pp,o=>o.total)},
       tr:{n:tr.length,v:sum(tr,o=>o.total)},
+      cd:{n:cd.length,v:sum(cd,o=>o.total)},
+      tc:{n:tc.length,v:sum(tc,o=>o.total),gov:sum(tc,o=>(o.coPay&&o.coPay.gov)||0)},
       voided:{n:voided.length,v:sum(voided,o=>o.total)},
       openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
       waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
@@ -9997,6 +10032,8 @@ const DAYEND = (()=>{
     L.push('💵 เงินสด   '+B(d.cash.v)+'  ('+d.cash.n+' บิล)');
     L.push('📱 QR       '+B(d.pp.v)+'  ('+d.pp.n+' บิล)');
     L.push('🏦 โอน      '+B(d.tr.v)+'  ('+d.tr.n+' บิล)');
+    if(d.cd.n) L.push('💳 บัตรเครดิต '+B(d.cd.v)+'  ('+d.cd.n+' บิล)');
+    if(d.tc.n) L.push('🤝 ไทยช่วยไทย '+B(d.tc.v)+'  ('+d.tc.n+' บิล · รัฐช่วย '+B(d.tc.gov)+')');
     if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n||d.waitPay.n){
       L.push('');
       L.push('━━ รายละเอียด ━━');
@@ -10048,6 +10085,8 @@ const DAYEND = (()=>{
         ${r('เงินสด ('+d.cash.n+')',B(d.cash.v))}
         ${r('QR ('+d.pp.n+')',B(d.pp.v))}
         ${r('โอน ('+d.tr.n+')',B(d.tr.v))}
+        ${d.cd.n?r('บัตรเครดิต ('+d.cd.n+')',B(d.cd.v)):''}
+        ${d.tc.n?r('ไทยช่วยไทย ('+d.tc.n+')',B(d.tc.v)):''}
       </tbody></table>`;
     if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n){
       h+=`<div class="rdiv"></div><table><tbody>
@@ -10161,6 +10200,8 @@ const DAYEND = (()=>{
           ${row('💵 เงินสด ('+d.cash.n+' บิล)',B(d.cash.v))}
           ${row('📱 QR ('+d.pp.n+' บิล)',B(d.pp.v))}
           ${row('🏦 โอน ('+d.tr.n+' บิล)',B(d.tr.v))}
+          ${d.cd.n?row('💳 บัตรเครดิต ('+d.cd.n+' บิล)',B(d.cd.v)):''}
+          ${d.tc.n?row('🤝 ไทยช่วยไทย ('+d.tc.n+' บิล · รัฐช่วย '+B(d.tc.gov)+')',B(d.tc.v)):''}
           ${d.discount>0?row('🎁 ส่วนลดรวม','-'+B(d.discount)):''}
           ${d.vat>0?row('🧮 VAT',B(d.vat)):''}
           ${d.voided.n?row('❌ บิลยกเลิก',d.voided.n+' บิล'):''}
