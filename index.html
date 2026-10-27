@@ -682,6 +682,14 @@ tr:hover td{background:var(--surface-2)}
 .pc-qty.pop{animation:pcPop .28s ease}
 @keyframes pcPop{0%{transform:scale(.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
 #grid [data-pid].pc-in{box-shadow:0 0 0 3px var(--gold),var(--shadow) !important}
+/* ⭐ v12.12 จัดการหมวดหมู่: ปุ่มขึ้นบรรทัดใหม่ได้ ไม่ตกขอบ */
+.cat-row{padding:10px 0;border-bottom:1px dashed var(--line)}
+.cat-top{display:flex;align-items:center;gap:6px;margin-bottom:7px;min-width:0}
+.cat-top b{font-size:15.5px}
+.cat-top small{color:var(--muted)}
+.cat-mv{margin-left:auto;display:flex;gap:4px;flex:none}
+.cat-btns{display:flex;flex-wrap:wrap;gap:6px}
+.cat-row .sub-tab{padding:7px 12px;font-size:13px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -4014,7 +4022,7 @@ const POS = (()=>{
   }
   function setTable(t){ if(tabCtx){ UI.toast('กำลังปิดบิลโต๊ะ '+tabCtx.table+' — เปลี่ยนโต๊ะไม่ได้','err'); UI.close('genOverlay'); return; } table=t||null; renderTypes(); UI.close('genOverlay'); }
   function getTable(){ return table; }
-  function setType(k){ if(tabCtx&&k!=='dine-in'){ UI.toast('กำลังปิดบิลโต๊ะ — เปลี่ยนประเภทไม่ได้','err'); return; } orderType=k; renderTypes(); repriceCart(); renderGrid(); }
+  function setType(k){ if(tabCtx&&k!==(tabCtx.type||'dine-in')){ UI.toast('กำลังปิดบิลโต๊ะ — เปลี่ยนประเภทไม่ได้','err'); return; } orderType=k; renderTypes(); repriceCart(); renderGrid(); }
   // ราคาตามประเภทออเดอร์: ใช้ราคาที่ตั้งเฉพาะ ถ้าไม่ตั้งให้ใช้ราคาหลัก (ทานที่ร้าน)
   function priceOf(p,type){ type=type||orderType; const pr=p.prices&&p.prices[type]; return (pr!=null&&pr!=='')?pr:p.price; }
   // ⭐ ส่วนต่างของแบบเมนู (ปั่น/เย็น) แยกตามช่องทางขายได้ — ไม่ตั้งไว้ = ใช้ค่าปกติ
@@ -4198,8 +4206,9 @@ const POS = (()=>{
     if(s.vat>0) html+=`<div class="sr"><span>VAT ${m.vatRate}%${m.vatIncluded?' (รวมแล้ว)':''}</span><span>${STORE.baht(s.vat)}</span></div>`;
     html+=`<div class="sr tot"><span>สุทธิ</span><span>${STORE.baht(s.total)}</span></div>`;
     // ⭐ v12.0 แถบ "กำลังปิดบิลโต๊ะ" + ปุ่มส่งครัวแบบเก็บเงินทีหลัง (เฉพาะทานที่ร้านที่เลือกโต๊ะแล้ว)
-    const _tabTop=tabCtx?`<div class="tab-banner">🍽️ ปิดบิลโต๊ะ <b>${esc(tabCtx.table)}</b> · รวม ${tabCtx.ids.length} บิล<button onclick="POS.cancelTab()">ยกเลิก</button></div>`:'';
-    const _send=(!tabCtx&&orderType==='dine-in'&&table)?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">🍽️ ส่งครัว · เก็บเงินตอนลูกค้ากลับ</button>`:'';
+    const _tabTop=tabCtx?`<div class="tab-banner">${tabCtx.type==='takeaway'?'🛍️':'🍽️'} ปิดบิล <b>${esc(tabCtx.label||('โต๊ะ '+tabCtx.table))}</b>${tabCtx.ids.length>1?' · รวม '+tabCtx.ids.length+' บิล':''}<button onclick="POS.cancelTab()">ยกเลิก</button></div>`:'';
+    const _send=(!tabCtx&&orderType==='dine-in'&&table)?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">🍽️ ส่งครัว · เก็บเงินตอนลูกค้ากลับ</button>`
+      :(!tabCtx&&(orderType==='takeaway'||orderType==='dine-in'))?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">${orderType==='takeaway'?'🛍️':'🧾'} ส่งครัว + พิมพ์ใบ · เก็บเงินทีหลัง</button>`:'';
     $('#summary').innerHTML=_tabTop+bdayBanner()+html+_send;
   }
   // ===== ⭐ v12.0 โต๊ะ: ส่งครัวแล้วเก็บเงินทีหลัง · ปิดบิลโต๊ะผ่านหน้าชำระเงินปกติ (ส่วนลด/สมาชิก/แต้ม/ใบเสร็จครบ) =====
@@ -4212,47 +4221,79 @@ const POS = (()=>{
     go();
   }
   function loadTab(name){
-    const src=PENDING.openTabs().filter(o=>o.table===name).sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    const src=PENDING.openTabs().filter(o=>o.table===name);
     if(!src.length){ UI.toast('โต๊ะนี้ไม่มีบิลค้างชำระ','err'); return; }
+    loadOrders(src.map(o=>o.id));
+  }
+  // ⭐ v12.14 โหลดบิลค้างชำระ (โต๊ะ หรือ กลับบ้าน) เข้าตะกร้า แล้วจ่ายผ่านหน้าชำระเงินปกติ
+  function loadOrders(ids){
+    const src=(ids||[]).map(id=>STORE.find('orders',id)).filter(o=>o&&o.payStatus==='open'&&o.status!=='void').sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+    if(!src.length){ UI.toast('ไม่พบบิลค้างชำระ (อาจถูกปิดไปแล้ว)','err'); return; }
+    const f=src[0], tb=f.table||'', ty=f.type||'dine-in';
+    const label=tb?('โต๊ะ '+tb):((ty==='takeaway'?'กลับบ้าน ':'ทานที่ร้าน ')+(f.no||'')+(f.guest?' · คุณ '+f.guest:''));
     const go=()=>{
       cart=[]; src.forEach(o=>(o.items||[]).forEach(it=>{ const c=JSON.parse(JSON.stringify(it)); c.tab=1; if(!c.line) c.line=STORE.uuid();
         if(!Array.isArray(c.mods)) c.mods=[]; c.base=+c.base||0; c.modPrice=+c.modPrice||0; cart.push(c); }));
-      tabCtx={table:name,ids:src.map(o=>o.id),lines:cart.map(c=>c.line)};
-      orderType='dine-in'; table=name; discount=null; member=src.map(o=>o.tabMember).find(Boolean)||null; orderNo=null;
+      tabCtx={table:tb,type:ty,label,ids:src.map(o=>o.id),lines:cart.map(c=>c.line)};
+      orderType=ty; table=tb||null; discount=null; member=src.map(o=>o.tabMember).find(Boolean)||null; orderNo=null;
       UI.close('genOverlay'); NAV.go('pos');
-      UI.toast('โหลดบิลโต๊ะ '+name+' ('+src.length+' บิล) · ใส่ส่วนลด/สมาชิกได้ แล้วกดชำระเงิน','ok');
+      UI.toast('โหลดบิล '+label+(src.length>1?' ('+src.length+' บิล)':'')+' · ใส่ส่วนลด/สมาชิกได้ แล้วกดชำระเงิน','ok');
     };
-    if(tabCtx){ if(tabCtx.table===name){ go(); return; } cancelTab(true); }
-    if(cart.length){ UI.confirm2('มีรายการค้างในตะกร้า','พักบิลปัจจุบันไว้ก่อน แล้วปิดบิลโต๊ะ '+name+'?',()=>{ hold(); go(); }); return; }
+    const same=tabCtx&&tabCtx.ids.length===src.length&&src.every(o=>tabCtx.ids.includes(o.id));
+    if(tabCtx){ if(same){ go(); return; } cancelTab(true); }
+    if(cart.length){ UI.confirm2('มีรายการค้างในตะกร้า','พักบิลปัจจุบันไว้ก่อน แล้วปิดบิล '+label+'?',()=>{ hold(); go(); }); return; }
     go();
   }
   function cancelTab(silent){ if(!tabCtx) return; const n=tabCtx.table; tabCtx=null; cart=[]; discount=null; member=null; table=n; renderTypes(); renderCart();
-    if(!silent) UI.toast('ยกเลิกการปิดบิล — บิลโต๊ะ '+n+' ยังค้างอยู่เหมือนเดิม','ok'); }
+    if(!silent) UI.toast('ยกเลิกการปิดบิล — บิลยังค้างชำระอยู่เหมือนเดิม','ok'); }
   let _tabBusy=false;
-  async function sendTab(){
+  // ⭐ v12.14 ใบรับออเดอร์ (ยังไม่ชำระ) — ให้ลูกค้ากลับบ้านถือไว้ / ติดถุง · มีราคา ยอดที่ต้องจ่าย
+  function unpaidBillHtml(o){
+    const m=STORE.binfo();
+    const rows=(o.items||[]).map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+      return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht(((+it.base||0)+(+it.modPrice||0))*(+it.qty||0))}</td></tr>`; }).join('');
+    return `<div class="receipt"><div class="rc"><div style="font-size:2.2em;font-weight:900;line-height:1.1">${esc(o.no)}</div>`
+      +`<div style="font-size:1.5em;font-weight:800;margin-top:2px">${o.type==='takeaway'?'🛍️ กลับบ้าน':'🍽️ ทานที่ร้าน'}${o.guest?' · คุณ '+esc(o.guest):''}</div>`
+      +`<div>${esc(m.shopName||'')}${m.branchName?' · '+esc(m.branchName):''}</div><div>${new Date(o.createdAt).toLocaleString('th-TH')}</div><div>ใบรับออเดอร์ (ยังไม่ใช่ใบเสร็จ)</div></div>`
+      +`<div class="rdiv"></div><table><tbody>${rows}</tbody></table><div class="rdiv"></div>`
+      +`<table><tbody><tr class="rtot"><td>ยอดที่ต้องชำระ</td><td style="text-align:right">${STORE.baht(o.total)}</td></tr></tbody></table>`
+      +`<div class="rdiv"></div><div class="rc" style="font-size:1.5em;font-weight:900">⏳ ยังไม่ชำระเงิน</div><div class="rc">ชำระที่เคาน์เตอร์ · ได้ใบเสร็จตอนชำระ</div></div>`;
+  }
+  async function sendTab(guestName){
     if(_tabBusy) return;
-    if(tabCtx){ UI.toast('กำลังปิดบิลโต๊ะ — กดชำระเงิน หรือยกเลิกการปิดบิลก่อน','err'); return; }
+    if(tabCtx){ UI.toast('กำลังปิดบิล — กดชำระเงิน หรือยกเลิกการปิดบิลก่อน','err'); return; }
     if(!cart.length) return;
-    if(orderType!=='dine-in'||!table){ UI.toast('เลือกโต๊ะก่อน','err'); pickTable(); return; }
-    if(discount){ UI.toast('ส่วนลดให้ใส่ตอนปิดบิล — เอาส่วนลดออกก่อนส่งครัว','err'); return; }
+    if(orderType!=='dine-in'&&orderType!=='takeaway'){ UI.toast('ส่งครัว · เก็บเงินทีหลัง ใช้ได้กับ "ทานที่ร้าน" และ "กลับบ้าน"','err'); return; }
+    const take=orderType==='takeaway'||!table;            // ⭐ v12.15 ไม่มีโต๊ะ (กลับบ้าน / ทานที่ร้านไม่เลือกโต๊ะ) = ถามชื่อ + พิมพ์ใบรับออเดอร์ · เก็บเงินที่หน้ารอชำระ
+    if(discount){ UI.toast('ส่วนลดให้ใส่ตอนเก็บเงิน — เอาส่วนลดออกก่อนส่งครัว','err'); return; }
     if(!SHIFT.gate()) return;
+    if(take && guestName===undefined){                     // กลับบ้าน: ถามชื่อไว้เรียกรับของ (ไม่บังคับ)
+      UI.ask((orderType==='takeaway'?'🛍️ กลับบ้าน':'🍽️ ทานที่ร้าน (ไม่ระบุโต๊ะ)')+' · ส่งครัวก่อน เก็บเงินทีหลัง',[{key:'name',label:'ชื่อลูกค้า / เบอร์ท้าย 4 ตัว — ไว้เรียกรับของ (ไม่บังคับ)',value:'',ph:'เช่น เอ, 1234'}],
+        (o)=>{ sendTab(String(o.name||'').replace(/[<>"'`&\\]/g,'').trim().slice(0,20)); });
+      return;
+    }
     _tabBusy=true;
     try{
       const s=calc(), st=AUTH.get();
       const _c=STORE.bcounter(), _lb=_c.orderNo; let n=await CLOUD.nextNo('order');
       if(!(n>0)||n<_lb) n=_lb; if(_c.orderNo<=n) _c.orderNo=n+1;
       const order={id:STORE.uuid(),no:'#'+STORE.deviceTag()+'-'+String(n).padStart(3,'0'),receiptNo:'',branchId:STORE.bid(),
-        type:'dine-in',table,items:JSON.parse(JSON.stringify(cart)),
+        type:orderType,table:take?'':table,guest:take?(guestName||''):'',items:JSON.parse(JSON.stringify(cart)),
         subtotal:s.sub,discount:0,vat:s.vat,service:s.service,total:s.total,method:'unpaid',paid:0,change:0,
         status:'preparing',payStatus:'open',memberId:null,tabMember:member||null,
         staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null};
       STORE.get().orders.push(order); INV.deduct(order); STORE.save(); CLOUD.pushOrder(order);
-      try{ FLOOR.touchSeat(table); }catch(e){}
-      try{ if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); }catch(e){ console.error('kitchen',e); }
+      if(take){
+        // กลับบ้าน: พิมพ์ใบครัว (ถ้าเปิดไว้) + ใบรับออเดอร์ให้ลูกค้า ทันที
+        try{ const docs=[]; if(STORE.get().settings.kdsServeSlip) docs.push(...KDS.serveSlipDocs(order)); docs.push(unpaidBillHtml(order)); PAY.printDocs(docs,true); }catch(e){ console.error('print',e); }
+      } else {
+        try{ FLOOR.touchSeat(table); }catch(e){}
+        try{ if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); }catch(e){ console.error('kitchen',e); }
+      }
       const tn=table; cart=[]; discount=null; member=null; table=null; orderNo=null; newOrderNo(); renderTypes(); renderCart();
       KDS.updateBadge(); PENDING.updateBadge();
-      UI.toast('ส่งครัวแล้ว · โต๊ะ '+tn+' (เก็บเงินตอนปิดบิล)','ok');
-      NAV.go('floor');
+      if(take) UI.toast('ส่งครัวแล้ว · '+order.no+(order.guest?' คุณ '+order.guest:'')+' — เก็บเงินที่หน้า 📥 รอชำระ','ok');
+      else { UI.toast('ส่งครัวแล้ว · โต๊ะ '+tn+' (เก็บเงินตอนปิดบิล)','ok'); NAV.go('floor'); }
     }catch(e){ console.error('sendTab',e); UI.toast('ส่งครัวไม่สำเร็จ ลองใหม่','err'); }
     finally{ _tabBusy=false; }
   }
@@ -4303,7 +4344,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {loadOrders,startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -4561,8 +4602,9 @@ const PAY = (()=>{
       STORE.save();
     }catch(e){ console.error('reserve orderNo',e); }
     const _no='#'+STORE.deviceTag()+'-'+String(_ono).padStart(3,'0');
+    const _noUse=(_tab&&_srcs.length===1&&_srcs[0]&&_srcs[0].no)?_srcs[0].no:_no;   // ⭐ v12.14 ปิดบิลใบเดียว (เช่น กลับบ้าน) ใช้เลขเดิม ตรงกับใบรับออเดอร์ที่ลูกค้าถือ
     const order={
-      id:STORE.uuid(), no:_no, receiptNo:_rno, branchId:STORE.bid(),
+      id:STORE.uuid(), no:_noUse, receiptNo:_rno, branchId:STORE.bid(),
       type:POS.getType(), table:POS.getTable()||'',
       items:JSON.parse(JSON.stringify(cart)).map(it=>{ delete it.tab; return it; }),
       subtotal:s.sub, discount:s.disc, discountLabel:discount?discount.label:'', vat:s.vat, service:s.service, total:s.total,
@@ -4678,6 +4720,7 @@ const PAY = (()=>{
     ps.textContent='@media print{@page{size:'+mm+' auto;margin:0}'
       +'#printHost{width:'+mm+';font-size:'+fs+'}'
       +'#printHost,#printHost *{font-weight:'+fw+'!important}'
+      +'#printHost .kslip,#printHost .kslip *{font-weight:800!important;color:#000!important}#printHost .kslip .rdiv{border-top:3px dashed #000!important}'
       +'#printHost .rtot,#printHost b,#printHost h3{font-weight:'+Math.min(900,fw+200)+'!important}}';
     host.innerHTML=inner;
     document.body.classList.add('printing');
@@ -5251,14 +5294,18 @@ const KDS = (()=>{
   }
   function serveSlipHtml(o,station,part){
     const m=STORE.binfo();
-    const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<div style="padding:5px 0;border-bottom:1px dashed #000"><b style="font-size:15px">${esc(it.qty)}× ${esc(it.name)}</b>${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>หมายเหตุ: '+esc(it.note)+'</small>':''}</div>`; }).join('');
+    // ⭐ v12.12 ใบครัวตัวใหญ่ หนา ชัด — ชื่อเมนู 1.6 เท่า · ตัวเลือก 1.25 เท่า (RawBT: ≥1.4em = ตัวใหญ่ · weight ≥700 = ตัวหนา)
+    const items=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+      return `<div class="kit" style="padding:7px 0 8px;border-bottom:2px dashed #000"><div style="font-size:1.6em;font-weight:800;line-height:1.25">${esc(it.qty)} × ${esc(it.name)}</div>`
+        +(mt?`<div style="font-size:1.25em;font-weight:800;line-height:1.3;margin-top:3px">+ ${esc(mt)}</div>`:'')
+        +(it.note?`<div style="font-size:1.25em;font-weight:800;line-height:1.3;margin-top:3px">📝 ${esc(it.note)}</div>`:'')+`</div>`; }).join('');
     const tp=otypeName(o.type);
     const where=(o.type==='dine-in'?(o.table?'โต๊ะ '+esc(o.table):'ทานที่ร้าน'):tp)+(o.guest?' · คุณ '+esc(o.guest):'');
     // ⭐ ไม่ใส่โลโก้ — ประหยัดกระดาษ · เลขออเดอร์อยู่บนสุด ตัวใหญ่สุด เห็นชัดตอนเรียกคิว
     const head = `<div style="font-size:2.4em;font-weight:900;line-height:1.1;letter-spacing:.5px">${esc(o.no)}</div>`
-      + `<div style="font-size:1.05em;font-weight:700;margin-top:1px">${station&&(STORE.get().settings||{}).splitSlip?ST_LBL[station]:'🍽️ ใบครัว'}${part?' (ใบ '+part+')':''}</div>`;
-    return `<div class="receipt"><div class="rc">${head}</div>`+
-      `<div class="rc" style="font-size:1.5em;font-weight:800;margin:3px 0 2px">${where}</div>`+
+      + `<div style="font-size:1.2em;font-weight:800;margin-top:2px">${station&&(STORE.get().settings||{}).splitSlip?ST_LBL[station]:'🍽️ ใบครัว'}${part?' (ใบ '+part+')':''}</div>`;
+    return `<div class="receipt kslip"><div class="rc">${head}</div>`+
+      `<div class="rc" style="font-size:1.7em;font-weight:900;margin:4px 0 2px">${where}</div>`+
       `<div class="rc" style="font-size:.9em">${esc(m.branchName||'')}${m.branchName?' · ':''}${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}</div>`+
       `<div class="rdiv"></div>${items}<div class="rdiv"></div><div class="rc">ทวนกับลูกค้า ✓</div></div>`;
   }
@@ -5910,12 +5957,12 @@ const PENDING = (()=>{
   function openTabs(){ return STORE.get().orders.filter(o=>o.payStatus==='open'&&o.status!=='void'&&(o.branchId||'BR-001')===STORE.bid()); }
   function methodPill(m){ return m==='cash'?'<span class="pill lo">💵 เงินสด</span>':m==='transfer'?'<span class="pill ok">🏦 โอน</span>':'<span class="pill ok">📱 PromptPay</span>'; }
   function card(o,kind){
-    const head=(o.table?'🪑 โต๊ะ '+esc(o.table):esc(o.no))+(o.guest?' · คุณ '+esc(o.guest):'');
+    const head=(o.table?'🪑 โต๊ะ '+esc(o.table):((o.type==='takeaway'?'🛍️ กลับบ้าน ':'🍽️ ทานที่ร้าน ')+esc(o.no)))+(o.guest?' · คุณ '+esc(o.guest):'');
     const items=o.items.map(it=>esc(it.qty+'× '+it.name)).join(', ');
     const actions = kind==='wait'
       ? `<button class="btn btn-pay" style="flex:2;padding:11px" onclick="PENDING.confirm('${o.id}')">✅ รับเงินแล้ว → ครัว</button>
          <button class="btn btn-danger" style="flex:1;padding:11px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`
-      : `<button class="btn btn-pay" style="flex:1 1 100%;padding:11px;background:var(--gold)" onclick="PENDING.settle('${o.id}')">💰 ปิดบิล · รับเงิน</button>
+      : `<button class="btn btn-pay" style="flex:1 1 100%;padding:11px;background:var(--gold)" onclick="PENDING.settleFull('${o.id}')">💰 ปิดบิล · รับเงิน</button>
          <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.moveTable('${o.id}')">🔀 ย้ายโต๊ะ</button>
          <button class="btn btn-danger" style="flex:1;padding:10px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`;
     const border = kind==='wait' ? (o.method==='cash'?'var(--warn)':'var(--gold)') : 'var(--success)';
@@ -5970,6 +6017,9 @@ const PENDING = (()=>{
       </div></div>`;
     UI.open('genOverlay');
   }
+  // ⭐ v12.14 ปิดบิลค้างผ่านหน้าชำระเงินปกติ (ส่วนลด/สมาชิก/แต้ม/ใบเสร็จครบ) — โต๊ะ = รวมทุกบิลของโต๊ะ · กลับบ้าน = บิลนั้น
+  function settleFull(id){ const o=STORE.find('orders',id); if(!o) return; if(!SHIFT.gate()) return;
+    if(o.table) POS.loadTab(o.table); else POS.loadOrders([o.id]); }
   function settleQR(id,method){
     const o=STORE.find('orders',id); if(!o) return;
     $('#genModal').className='modal';
@@ -6043,7 +6093,7 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } if(waitList().length===0 && (unseen>0||sndTimer)) seen(); try{ UI.updateHamBadge(); }catch(e){} }
-  return {render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
+  return {settleFull,render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
 })();
 
 /* ============================================================
@@ -7371,15 +7421,16 @@ const BO = (()=>{
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🏷️ จัดการหมวดหมู่</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b">
         <div style="display:flex;gap:8px;margin-bottom:14px"><input id="newCat" placeholder="ชื่อหมวดใหม่ เช่น สมูทตี้, เบเกอรี่" style="flex:1;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)"><button class="btn-gold" style="padding:0 16px;border-radius:10px" onclick="BO.addCat()">+ เพิ่ม</button></div>
-        ${cats.map(c=>`<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-bottom:1px dashed var(--line)">
-          <span style="flex:1"><b>${esc(c.name)}</b> <small style="color:var(--muted)">(${STORE.scoped('products').filter(p=>p.cat===c.id&&!p.deletedAt).length} เมนู)</small></span>
+        ${cats.map(c=>`<div class="cat-row">
+          <div class="cat-top"><b>${esc(c.name)}</b><small>(${STORE.scoped('products').filter(p=>p.cat===c.id&&!p.deletedAt).length} เมนู)</small>
+            <span class="cat-mv"><button class="sub-tab" title="เลื่อนขึ้น" onclick="BO.moveCat('${c.id}',-1)">↑</button><button class="sub-tab" title="เลื่อนลง" onclick="BO.moveCat('${c.id}',1)">↓</button></span></div>
+          <div class="cat-btns">
           <button class="sub-tab" title="หน้าลูกค้าสแกนสั่ง: ให้หมวดนี้ขึ้นเป็นหมวดแรก" onclick="BO.catTop('${c.id}')" style="${c.qrTop?'color:var(--gold);font-weight:700':''}">📌 ${c.qrTop?'ขึ้นก่อน ✓':'ขึ้นก่อน'}</button>
           <button class="sub-tab" title="ลูกค้าสแกนสั่งเห็นหมวดนี้ไหม" onclick="BO.catQR('${c.id}')">${c.hideQR?'🙈 ซ่อนจากลูกค้า':'👁️ ลูกค้าเห็น'}</button>
           <button class="sub-tab" title="ใบครัวไปจุดไหน" onclick="BO.catStation('${c.id}')" style="font-weight:600">${KDS.catStation(c)==='kitchen'?'🍳 ครัว':'🍹 บาร์'}</button>
-          <button class="sub-tab" onclick="BO.moveCat('${c.id}',-1)">↑</button>
-          <button class="sub-tab" onclick="BO.moveCat('${c.id}',1)">↓</button>
-          <button class="sub-tab" onclick="BO.editCat('${c.id}')">แก้ไข</button>
-          <button class="sub-tab" style="color:var(--danger)" onclick="BO.delCat('${c.id}')">ลบ</button>
+          <button class="sub-tab" onclick="BO.editCat('${c.id}')">✏️ แก้ไข</button>
+          <button class="sub-tab" style="color:var(--danger)" onclick="BO.delCat('${c.id}')">🗑️ ลบ</button>
+          </div>
         </div>`).join('')||'<div class="empty">ยังไม่มีหมวดหมู่</div>'}
       </div>
       <div class="modal-f"><button class="btn-gold" onclick="UI.close('genOverlay')">เสร็จ</button></div>`;
@@ -8803,7 +8854,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.11</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.15</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9035,7 +9086,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.11) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.15) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
