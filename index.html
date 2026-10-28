@@ -6021,8 +6021,10 @@ const PENDING = (()=>{
     const items=o.items.map(it=>esc(it.qty+'× '+it.name)).join(', ');
     const actions = kind==='wait'
       ? `<button class="btn btn-pay" style="flex:2;padding:11px" onclick="PENDING.confirm('${o.id}')">✅ รับเงินแล้ว → ครัว</button>
+         <button class="btn btn-ghost" style="flex:1;padding:11px" onclick="PAY.kitchenSlip('${o.id}')">🖨️ ใบครัว</button>
          <button class="btn btn-danger" style="flex:1;padding:11px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`
       : `<button class="btn btn-pay" style="flex:1 1 100%;padding:11px;background:var(--gold)" onclick="PENDING.settleFull('${o.id}')">💰 ปิดบิล · รับเงิน</button>
+         <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PAY.kitchenSlip('${o.id}')">🖨️ ใบครัว</button>
          <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.moveTable('${o.id}')">🔀 ย้ายโต๊ะ</button>
          <button class="btn btn-danger" style="flex:1;padding:10px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`;
     const border = kind==='wait' ? (o.method==='cash'?'var(--warn)':'var(--gold)') : 'var(--success)';
@@ -6056,6 +6058,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     if(!SHIFT.gate()) return;                            // ⭐ v12.7 รับเงินบิล QR ก็ต้องเปิดกะ (เงินสดต้องเข้ากะ)
     if(o.status!=='wait_payment'){ UI.toast('บิลนี้ถูกยืนยันไปแล้ว','err'); render(); return; }   // กันกดซ้ำ/หลายเครื่องพร้อมกัน
+    try{ CLOUD.markPrinted(o.id); }catch(e){}
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now();   // ⭐ v11.2 เวลา "รับเงินจริง" — ยอดกะ/สิ้นวันใช้ตัวนี้
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     INV.deduct(o); SHIFT.recordSale(o);                                                          // ⭐ เงินสดเข้าลิ้นชัก
@@ -9077,7 +9080,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.21</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.22</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9309,7 +9312,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.21) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.22) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11303,6 +11306,23 @@ const CLOUD = (()=>{
     return o;
   }
   const _qrNoticed=new Set();
+  // ⭐ v12.22 พิมพ์ใบครัว/ใบเสร็จของออเดอร์ลูกค้าสแกนสั่ง "ทุกเครื่องที่เปิดพิมพ์อัตโนมัติ"
+  //   เดิมผูกกับธง qrNotified บน cloud -> ถ้าเครื่องอื่น (มือถือเจ้าของ/อีกแท็บเล็ต) เห็นออเดอร์ก่อน เครื่องที่ต่อปริ้นเตอร์จะข้ามไม่พิมพ์ = ใบไม่ออกบางครั้ง
+  //   ตอนนี้: จำว่าพิมพ์แล้วในเครื่องนี้ · พิมพ์ทั้งตอนออเดอร์เข้า และตอนสถานะเปลี่ยนเป็นจ่ายแล้ว (ยืนยันจากเครื่องอื่น)
+  //   ไม่พิมพ์ย้อนออเดอร์ที่เกิดก่อนเปิดหน้านี้ (กันพิมพ์ซ้ำทั้งชุดตอนรีเฟรช) และเกิน 1 ชม.
+  const _bootAt=Date.now(), _printedQR=new Set();
+  function markPrinted(id){ if(id) _printedQR.add(id); }
+  function autoPrintQR(o){
+    if(window._CUSTOMER_MODE||!o||o.channel!=='qr'||(o.branchId||'BR-001')!==STORE.bid()) return;
+    const st=STORE.get().settings||{}; if(!st.autoPrint) return;
+    if(o.status==='void'||o.status==='done'||o.merged||o.status==='wait_payment') return;
+    if(!(o.payStatus==='open'||o.payStatus==='paid')) return;
+    if(_printedQR.has(o.id)) return;
+    const evt=(o.payStatus==='paid'&&o.paidAt)?o.paidAt:(o.createdAt||0);
+    if(evt<_bootAt-60000 || Date.now()-(o.createdAt||0)>60*60000) return;
+    _printedQR.add(o.id);
+    try{ if(o.payStatus==='paid') PAY.autoPrint(o); else if(st.kdsServeSlip) KDS.serveSlip(o); }catch(e){ console.error('autoPrintQR',e); }
+  }
   function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียว · ไม่เด้งของเก่า)
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
     if(o.qrNotified || _qrNoticed.has(o.id)) return;
@@ -11312,8 +11332,7 @@ const CLOUD = (()=>{
     if(needs&&fresh){
       try{ PENDING.alertNew(); }catch(e){}
       try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
-      try{ if(o.payStatus==='paid') PAY.autoPrint(o);
-           else if(o.payStatus==='open'){ const _s=STORE.get().settings; if(_s.autoPrint && _s.kdsServeSlip) KDS.serveSlip(o); }
+      try{ autoPrintQR(o);
            if((o.payStatus==='paid'||o.payStatus==='open') && authUser && !window._CUSTOMER_MODE){ try{ INV.deduct(o); }catch(e){} }   // ⭐ v11.5 ตัดสต็อกทันทีที่ออเดอร์ถึงเครื่องร้าน (เดิมรอครัวกดเปลี่ยนสถานะ ร้านที่ดูใบครัวอย่างเดียวจะไม่เคยตัด)   // ⭐ v11.3 โต๊ะ "จ่ายตอนกลับ": ของเข้าครัวเลย -> ใบครัวต้องออกทันที (เดิมพิมพ์เฉพาะบิลที่จ่ายแล้ว)
       }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
       try{ pushOrder(o); }catch(e){}
@@ -11386,6 +11405,7 @@ const CLOUD = (()=>{
       data.forEach(r=>{ const o=cleanIn('orders',r.data); if(!o) return; const i=arr.findIndex(x=>x.id===o.id);
         if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; chg=true; } }
         else { o._uat=r.updated_at||0; arr.push(o); chg=true; try{ noticeQR(o); }catch(e){} } });
+      data.forEach(r=>{ const x=r.data&&arr.find(y=>y.id===r.data.id); if(x) try{ autoPrintQR(x); }catch(e){} });
       if(chg){ STORE.save(); rerender(); }
     }catch(e){}
   }
@@ -11403,6 +11423,7 @@ const CLOUD = (()=>{
       if(key==='orders') noticeQR(o);
     }
     STORE.save(); rerender();
+    if(key==='orders') try{ autoPrintQR(arr.find(x=>x.id===o.id)); }catch(e){}
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
@@ -11479,6 +11500,7 @@ const CLOUD = (()=>{
           const i=arr.findIndex(x=>x.id===o.id);
           if(i>=0){ if((arr[i]._uat||0) < (r.updated_at||0)){ o._uat=r.updated_at||0; arr[i]=o; } }   // < ไม่ใช่ <= : เวลาเท่ากันให้ของในเครื่องชนะ
           else { o._uat=r.updated_at||0; arr.push(o); if(key==='orders') try{ noticeQR(o); }catch(e){} } });
+        if(key==='orders') data.forEach(r=>{ const x=r.data&&arr.find(y=>y.id===r.data.id); if(x) try{ autoPrintQR(x); }catch(e){} });
       }
       // ⭐ v11.2 ดึงการตั้งค่าร้าน (VAT/อัตราแต้ม/ของรางวัล) ทุกรอบ — เดิมมาทาง realtime อย่างเดียว เครื่องที่ออฟไลน์ตอนแก้จะไม่ได้ค่าใหม่เลย
       if(authUser){ try{
@@ -11498,7 +11520,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {markPrinted,sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
