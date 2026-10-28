@@ -690,6 +690,14 @@ tr:hover td{background:var(--surface-2)}
 .cat-mv{margin-left:auto;display:flex;gap:4px;flex:none}
 .cat-btns{display:flex;flex-wrap:wrap;gap:6px}
 .cat-row .sub-tab{padding:7px 12px;font-size:13px;white-space:nowrap}
+/* ⭐ v12.21 รายงานแยกประเภท */
+.rx-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rx-bar select{flex:1 1 260px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Prompt';font-size:15px;font-weight:600}
+.rx-wrap{overflow:auto;max-height:70vh;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow);border:1px solid var(--line)}
+table.rx{width:100%;border-collapse:collapse;font-size:13px}
+table.rx th{position:sticky;top:0;background:var(--surface-2);z-index:1;padding:9px 10px;white-space:nowrap;border-bottom:1px solid var(--line)}
+table.rx td{padding:7px 10px;border-bottom:1px solid var(--line)}
+table.rx tfoot td{position:sticky;bottom:0;background:var(--cream);font-weight:800;border-top:2px solid var(--gold)}
 </style>
 </head>
 <body>
@@ -5323,13 +5331,24 @@ const KDS = (()=>{
   }
   // ใบเสิร์ฟ: พิมพ์รายการในออเดอร์ ไว้ให้พนักงานเสิร์ฟ+ทวนลูกค้า (เปิด/ปิดได้ในตั้งค่า)
   // ⭐ v12.2 แยกใบครัวตามจุดทำ — หมวดหมู่กำหนดได้ (หลังร้าน › เมนู › จัดการหมวดหมู่) · ยังไม่กำหนด = เดาจากชื่อหมวด
-  const ST_LBL={bar:'🍹 บาร์ · เครื่องดื่ม/ของหวาน',kitchen:'🍳 ครัว · ของคาว'};
+  // ⭐ v12.19 แยก 3 จุด: เครื่องดื่ม/ของหวาน · ครัว · ติ่มซำ
+  // ⭐ v12.20 แยก 4 จุด: เครื่องดื่ม · ของหวาน · ครัว · ติ่มซำ
+  const ST_LBL={bar:'🍹 เครื่องดื่ม',dessert:'🍰 ของหวาน',kitchen:'🍳 ครัว',dimsum:'🥟 ติ่มซำ'};
+  const ST_ORDER=['bar','dessert','kitchen','dimsum'];
+  const _DES=/ของหวาน|ขนม|ปัง|โรตี|ไอศกรีม|ไอติม|เค้ก|เบเกอรี่|บิงซู|โทสต์|วาฟเฟิล|dessert|bakery|toast|cake|waffle/i;
+  const _DIM=/ติ่มซำ|dim ?sum|ขนมจีบ|ซาลาเปา|ฮะเก๋า|เสี่ยวหลง/i;
   const _KIT=/ติ่มซำ|ข้าว|หมี่|ซุป|ไข่กระทะ|อาหาร|ของคาว|ทอด|นึ่ง|ก๋วยเตี๋ยว|เส้น|ผัด|แกง|ต้ม|ยำ|สเต็ก|พาสต้า|สลัด|แซนด์วิช|food|dim ?sum|rice|noodle/i;
-  function catStation(c){ if(!c) return 'kitchen'; if(c.station==='bar'||c.station==='kitchen') return c.station; return _KIT.test(c.name||'')?'kitchen':'bar'; }
+  function catStation(c){ if(!c) return 'kitchen';
+    const _nm=c.name||'';
+    if(c.station&&c.stv>=3) return c.station;                                   // ตั้งเองในระบบ 4 จุดแล้ว = ตามที่ตั้ง
+    if(c.station==='bar') return _DES.test(_nm)?'dessert':'bar';                // "บาร์" แบบเก่ารวมของหวาน -> แยกของหวานออก
+    if(c.station==='dimsum') return 'dimsum';
+    if(c.station==='kitchen') return (!c.stv2&&_DIM.test(c.name||''))?'dimsum':'kitchen';   // หมวดติ่มซำที่เคยตั้ง "ครัว" ไว้ตอนมีแค่ 2 จุด -> ไปจุดติ่มซำ
+    return _DIM.test(_nm)?'dimsum':(_KIT.test(_nm)?'kitchen':(_DES.test(_nm)?'dessert':'bar')); }
   function itemStation(it){ const p=STORE.find('products',it.productId); return catStation(p&&STORE.find('categories',p.cat)); }
   function serveSlipDocs(o){
     if(!(STORE.get().settings||{}).splitSlip) return [serveSlipHtml(o)];
-    const parts=['bar','kitchen'].map(k=>({k,items:(o.items||[]).filter(it=>itemStation(it)===k)})).filter(x=>x.items.length);
+    const parts=ST_ORDER.map(k=>({k,items:(o.items||[]).filter(it=>itemStation(it)===k)})).filter(x=>x.items.length);
     if(parts.length<2) return [serveSlipHtml(o,parts[0]?parts[0].k:null)];
     return parts.map((x,i)=>serveSlipHtml(Object.assign({},o,{items:x.items}),x.k,(i+1)+'/'+parts.length));
   }
@@ -6841,6 +6860,7 @@ const REPORT = (()=>{
         ${fixedMonthly>0?`<div class="stat-card" style="border-left:4px solid ${netProfit>=0?'var(--success)':'var(--danger)'}"><div class="lbl">กำไรสุทธิ (ประมาณ)</div><div class="val" style="color:${netProfit>=0?'var(--success)':'var(--danger)'}">${STORE.baht(netProfit)}</div><div class="trend">หักค่าใช้จ่ายคงที่ ${STORE.baht(fixedShare)} (${days} วัน)</div></div>`:''}
         <div class="stat-card"><div class="lbl">⏱️ เวลาทำเฉลี่ย</div><div class="val">${avgPrep!=null?fmtDur(avgPrep):'-'}<small> นาที</small></div></div>
       </div>
+      ${repxHtml()}
       <div class="row2">
         <div>
           <h3 style="margin-bottom:12px;font-size:16px">🏆 เมนูขายดี</h3>
@@ -6926,6 +6946,151 @@ const REPORT = (()=>{
     if(!rows.length) return '<div class="empty">ยังไม่มียอดขาย</div>';
     return `<table><thead><tr><th>เมนู</th><th>ขาย</th><th>ยอด</th><th>ต้นทุน</th><th>กำไร</th><th>Margin</th></tr></thead><tbody>${rows.map(([nm,d])=>{const pf=d.rev-d.cost;const mg=d.rev?Math.round(pf/d.rev*100):0;return `<tr><td>${esc(nm)}</td><td>${d.q}</td><td>${STORE.baht(d.rev)}</td><td>${STORE.baht(d.cost)}</td><td style="color:var(--success);font-weight:600">${STORE.baht(pf)}</td><td><span class="pill ${mg>=50?'ok':mg>=30?'lo':'no'}">${mg}%</span></td></tr>`;}).join('')}</tbody></table>`;
   }
+  // ===== ⭐ v12.21 รายงานแยกประเภท + Export Excel (.xlsx) =====
+  let rtype='day';
+  const RT=[['day','ยอดขายรวมตามวัน'],['month','ยอดขายรวมตามเดือน'],['bill','ยอดขายตามบิล'],['billd','ยอดขายตามรายละเอียดบิล'],
+    ['prod','ยอดขายตามสินค้า'],['prodday','ยอดขายสินค้าตามวัน'],['prodmonth','ยอดขายสินค้าตามเดือน'],['prodhour','ยอดขายตามสินค้ารายชั่วโมง'],
+    ['cat','ยอดขายตามหมวด'],['type','ยอดขายตามช่องทางการขาย'],['pay','ยอดขายตามการชำระเงิน'],['mod','ยอดขายตามตัวเลือก'],
+    ['hour','ยอดขายรายชั่วโมง'],['shift','ยอดขายตามรอบการขาย (กะ)']];
+  const _p2=n=>String(n).padStart(2,'0');
+  const tsOf=o=>(isPaidOrder(o)&&o.paidAt)||o.createdAt;
+  const dKey=ts=>{ const d=new Date(ts); return d.getFullYear()+'-'+_p2(d.getMonth()+1)+'-'+_p2(d.getDate()); };
+  const mKey=ts=>{ const d=new Date(ts); return d.getFullYear()+'-'+_p2(d.getMonth()+1); };
+  const dTh=k=>{ const [y,m,d]=k.split('-'); return d+'/'+m+'/'+(+y+543); };
+  const mTh=k=>{ const [y,m]=k.split('-'); return ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'][+m-1]+' '+(+y+543); };
+  const hm=ts=>{ const d=new Date(ts); return _p2(d.getHours())+':'+_p2(d.getMinutes()); };
+  const bt=v=>Math.round(v||0)/100;                       // สตางค์ -> บาท (ตัวเลขจริงใน Excel)
+  const catOf=it=>{ const p=STORE.find('products',it.productId); const c=p&&STORE.find('categories',p.cat); return c?c.name:'-'; };
+  const lineAmt=it=>((+it.base||0)+(+it.modPrice||0))*(+it.qty||0);
+  const units=o=>(o.items||[]).reduce((s,it)=>s+(+it.qty||0),0);
+  const DLV=['grab','lineman','shopee'];
+  function voidsInRange(){ return STORE.get().orders.filter(o=>o.status==='void'&&!o.merged&&inPeriod(o)&&inBranch(o)); }
+  function periodText(){ if(period==='custom'&&cFrom&&cTo) return dTh(cFrom)+' – '+dTh(cTo); return ({today:'วันนี้',week:'7 วันล่าสุด',month:'เดือนนี้',all:'ทั้งหมด'})[period]||period; }
+  // รายงานแต่ละแบบ -> {cols:[[หัว,ชนิด]], rows:[[...]], total:[...]|null, note}  ชนิด: t=ข้อความ n=จำนวน b=บาท p=%
+  function build(type){
+    const os=sales().slice().sort((a,b)=>tsOf(a)-tsOf(b)), sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
+    const grp=(keyFn)=>{ const m={}; os.forEach(o=>{ const k=keyFn(o); (m[k]=m[k]||[]).push(o); }); return m; };
+    const sumRow=(k,list,label)=>{ const by=mm=>sum(list.filter(o=>o.method===mm),o=>o.total);
+      return [label,list.length,sum(list,units),bt(sum(list,o=>o.subtotal)),bt(sum(list,o=>o.discount)),bt(sum(list,o=>o.service)),bt(sum(list,o=>o.vat)),bt(sum(list,o=>o.total)),
+        bt(list.length?sum(list,o=>o.total)/list.length:0),bt(by('cash')),bt(by('promptpay')+by('transfer')),bt(by('card')),bt(by('thaichuay')),bt(sum(list.filter(o=>DLV.includes(o.method)),o=>o.total))]; };
+    const SUMCOLS=[['บิล','n'],['ชิ้น','n'],['ยอดก่อนลด','b'],['ส่วนลด','b'],['Service','b'],['VAT','b'],['ยอดสุทธิ','b'],['เฉลี่ย/บิล','b'],['เงินสด','b'],['พร้อมเพย์/โอน','b'],['บัตรเครดิต','b'],['ไทยช่วยไทย','b'],['Grab/LINE MAN/Shopee','b']];
+    const itemsAll=[]; os.forEach(o=>(o.items||[]).forEach(it=>itemsAll.push({o,it})));
+    const prodAgg=(list,keyFn)=>{ const m={}; list.forEach(({o,it})=>{ const k=keyFn(o,it); const r=m[k]||(m[k]={q:0,v:0,cost:0,it}); r.q+=(+it.qty||0); r.v+=lineAmt(it);
+      const p=STORE.find('products',it.productId); r.cost+=((p&&p.cost)||0)*(+it.qty||0); }); return m; };
+    const totalSales=sum(itemsAll,x=>lineAmt(x.it))||1;
+    if(type==='day'||type==='month'){
+      const g=grp(o=>type==='day'?dKey(tsOf(o)):mKey(tsOf(o))), keys=Object.keys(g).sort();
+      const rows=keys.map(k=>sumRow(k,g[k],type==='day'?dTh(k):mTh(k)));
+      return {cols:[[type==='day'?'วันที่':'เดือน','t'],...SUMCOLS],rows,total:os.length?sumRow('',os,'รวม'):null,note:'บิลยกเลิกในช่วงนี้: '+voidsInRange().length+' บิล (ไม่นับในยอด)'};
+    }
+    if(type==='bill'){
+      const list=os.concat(voidsInRange()).sort((a,b)=>tsOf(a)-tsOf(b));
+      const rows=list.map(o=>{ const ok=isPaidOrder(o); return [dTh(dKey(tsOf(o))),hm(tsOf(o)),o.no||'',o.receiptNo||'',otypeName(o.type),o.table||'',o.guest||'',o.staffName||'',units(o),
+        bt(o.subtotal),bt(o.discount),bt(o.vat),bt(o.total),ok?payLabel(o.method):'-',o.payRef||'',ok?'สำเร็จ':'ยกเลิก'+(o.voidReason?' ('+o.voidReason+')':'')]; });
+      return {cols:[['วันที่','t'],['เวลา','t'],['เลขที่','t'],['ใบเสร็จ','t'],['ช่องทาง','t'],['โต๊ะ','t'],['ลูกค้า','t'],['พนักงาน','t'],['ชิ้น','n'],['ยอดก่อนลด','b'],['ส่วนลด','b'],['VAT','b'],['ยอดสุทธิ','b'],['ชำระด้วย','t'],['อ้างอิง','t'],['สถานะ','t']],
+        rows,total:['รวม (เฉพาะบิลสำเร็จ)','','','','','','','',sum(os,units),bt(sum(os,o=>o.subtotal)),bt(sum(os,o=>o.discount)),bt(sum(os,o=>o.vat)),bt(sum(os,o=>o.total)),'','',os.length+' บิล']};
+    }
+    if(type==='billd'){
+      const rows=itemsAll.map(({o,it})=>[dTh(dKey(tsOf(o))),hm(tsOf(o)),o.no||'',otypeName(o.type),it.name||'',catOf(it),(it.mods||[]).map(m=>m.name).join(', '),+it.qty||0,bt((+it.base||0)+(+it.modPrice||0)),bt(lineAmt(it)),payLabel(o.method)]);
+      return {cols:[['วันที่','t'],['เวลา','t'],['เลขที่','t'],['ช่องทาง','t'],['สินค้า','t'],['หมวด','t'],['ตัวเลือก','t'],['จำนวน','n'],['ราคา/หน่วย','b'],['รวม','b'],['ชำระด้วย','t']],
+        rows,total:['รวม','','','','','','',sum(itemsAll,x=>+x.it.qty||0),'',bt(sum(itemsAll,x=>lineAmt(x.it))),''],note:'ยอดรายสินค้าเป็นราคาก่อนส่วนลดท้ายบิล'};
+    }
+    if(type==='prod'){
+      const m=prodAgg(itemsAll,(o,it)=>it.name||'-'), rows=Object.entries(m).sort((a,b)=>b[1].v-a[1].v)
+        .map(([k,r])=>[k,catOf(r.it),r.q,bt(r.v),Math.round(r.v/totalSales*1000)/10,bt(r.cost),bt(r.v-r.cost)]);
+      return {cols:[['สินค้า','t'],['หมวด','t'],['จำนวน','n'],['ยอดขาย','b'],['% ของยอด','p'],['ต้นทุน','b'],['กำไรขั้นต้น','b']],rows,
+        total:['รวม','',sum(rows,r=>r[2]),bt(totalSales),100,Math.round(sum(rows,r=>r[5]*100))/100,Math.round(sum(rows,r=>r[6]*100))/100],note:'ยอดก่อนส่วนลดท้ายบิล · ต้นทุนจากต้นทุนเมนูปัจจุบัน'};
+    }
+    if(type==='prodday'||type==='prodmonth'||type==='prodhour'){
+      const kf=type==='prodday'?(o=>dKey(tsOf(o))):type==='prodmonth'?(o=>mKey(tsOf(o))):(o=>_p2(new Date(tsOf(o)).getHours()));
+      const lbl=type==='prodday'?dTh:type==='prodmonth'?mTh:(k=>k+':00–'+k+':59');
+      const m=prodAgg(itemsAll,(o,it)=>kf(o)+'\u0001'+(it.name||'-'));
+      const rows=Object.entries(m).map(([k,r])=>{ const [a,n]=k.split('\u0001'); return [a,n,catOf(r.it),r.q,bt(r.v)]; })
+        .sort((x,y)=>x[0]<y[0]?-1:x[0]>y[0]?1:(y[4]-x[4])).map(r=>[lbl(r[0]),r[1],r[2],r[3],r[4]]);
+      return {cols:[[type==='prodday'?'วันที่':type==='prodmonth'?'เดือน':'ชั่วโมง','t'],['สินค้า','t'],['หมวด','t'],['จำนวน','n'],['ยอดขาย','b']],rows,
+        total:['รวม','','',sum(rows,r=>r[3]),bt(totalSales)]};
+    }
+    if(type==='cat'){
+      const m={}; itemsAll.forEach(({it})=>{ const k=catOf(it), r=m[k]||(m[k]={q:0,v:0}); r.q+=(+it.qty||0); r.v+=lineAmt(it); });
+      const rows=Object.entries(m).sort((a,b)=>b[1].v-a[1].v).map(([k,r])=>[k,r.q,bt(r.v),Math.round(r.v/totalSales*1000)/10]);
+      return {cols:[['หมวด','t'],['จำนวน','n'],['ยอดขาย','b'],['% ของยอด','p']],rows,total:['รวม',sum(rows,r=>r[1]),bt(totalSales),100]};
+    }
+    if(type==='type'||type==='pay'){
+      const g=grp(o=>type==='type'?(o.type||'-'):(o.method||'-')), tot=sum(os,o=>o.total)||1;
+      const rows=Object.entries(g).sort((a,b)=>sum(b[1],o=>o.total)-sum(a[1],o=>o.total)).map(([k,list])=>{
+        const r=[type==='type'?otypeName(k):payLabel(k),list.length,sum(list,units),bt(sum(list,o=>o.total)),Math.round(sum(list,o=>o.total)/tot*1000)/10];
+        if(type==='pay') r.push(k==='thaichuay'?bt(sum(list,o=>(o.coPay&&o.coPay.gov)||0)):''); return r; });
+      const cols=[[type==='type'?'ช่องทางการขาย':'วิธีชำระ','t'],['บิล','n'],['ชิ้น','n'],['ยอดสุทธิ','b'],['% ของยอด','p']];
+      if(type==='pay') cols.push(['รัฐช่วย (ไทยช่วยไทย)','b']);
+      const total=['รวม',os.length,sum(os,units),bt(sum(os,o=>o.total)),100]; if(type==='pay') total.push('');
+      return {cols,rows,total};
+    }
+    if(type==='mod'){
+      const m={}; itemsAll.forEach(({it})=>(it.mods||[]).forEach(md=>{ if(!md||md.name==='ปกติ') return; const k=(md.group||'-')+'\u0001'+md.name, r=m[k]||(m[k]={q:0,v:0}); r.q+=(+it.qty||0); r.v+=(+md.price||0)*(+it.qty||0); }));
+      const rows=Object.entries(m).map(([k,r])=>{ const [g,n]=k.split('\u0001'); return [g,n,r.q,bt(r.v)]; }).sort((a,b)=>a[0]<b[0]?-1:a[0]>b[0]?1:b[2]-a[2]);
+      return {cols:[['กลุ่มตัวเลือก','t'],['ตัวเลือก','t'],['จำนวนแก้ว/ชิ้น','n'],['ยอดเงินเพิ่ม','b']],rows,total:['รวม','',sum(rows,r=>r[2]),Math.round(sum(rows,r=>r[3]*100))/100]};
+    }
+    if(type==='hour'){
+      const g=grp(o=>_p2(new Date(tsOf(o)).getHours())), keys=Object.keys(g).sort();
+      const rows=keys.map(k=>{ const l=g[k], v=sum(l,o=>o.total); return [k+':00–'+k+':59',l.length,sum(l,units),bt(v),bt(l.length?v/l.length:0)]; });
+      return {cols:[['ช่วงเวลา','t'],['บิล','n'],['ชิ้น','n'],['ยอดสุทธิ','b'],['เฉลี่ย/บิล','b']],rows,total:['รวม',os.length,sum(os,units),bt(sum(os,o=>o.total)),bt(os.length?sum(os,o=>o.total)/os.length:0)]};
+    }
+    if(type==='shift'){
+      const sh=(STORE.get().shifts||[]).filter(x=>x&&inBranch(x)&&inPeriod({createdAt:x.openedAt})).sort((a,b)=>a.openedAt-b.openedAt);
+      const rows=sh.map(x=>{ const d=SHIFT.data(x)||{}; return [dTh(dKey(x.openedAt)),hm(x.openedAt),x.closedAt?dTh(dKey(x.closedAt))+' '+hm(x.closedAt):'ยังไม่ปิด',x.openBy||'',x.closedBy||'',
+        d.bills||0,bt(d.total),bt(x.openCash),bt(d.cash&&d.cash.v),x.closedAt?bt(x.expected):'',x.closedAt?bt(x.closeCash):'',x.closedAt?bt(x.diff):'',x.diffReason||'']; });
+      return {cols:[['วันที่','t'],['เปิดกะ','t'],['ปิดกะ','t'],['เปิดโดย','t'],['ปิดโดย','t'],['บิล','n'],['ยอดขาย','b'],['เงินเปิดกะ','b'],['ขายเงินสด','b'],['ควรมีในลิ้นชัก','b'],['นับได้','b'],['ขาด(-)/เกิน(+)','b'],['เหตุผล','t']],
+        rows,total:sh.length?['รวม '+sh.length+' กะ','','','','',sum(rows,r=>r[5]),Math.round(sum(rows,r=>r[6]*100))/100,'',Math.round(sum(rows,r=>(r[8]||0)*100))/100,'','',Math.round(sum(rows,r=>(+r[11]||0)*100))/100,'']:null};
+    }
+    return {cols:[],rows:[],total:null};
+  }
+  const fmt=(v,k)=> v===''||v==null?'':(k==='b'?Number(v).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}):k==='p'?v+'%':k==='n'?Number(v).toLocaleString('th-TH'):esc(v));
+  function repxHtml(){
+    const r=build(rtype), name=(RT.find(x=>x[0]===rtype)||[])[1]||'', MAX=400;
+    const td=(v,k)=>`<td style="${k!=='t'?'text-align:right;':''}white-space:nowrap">${fmt(v,k)}</td>`;
+    return `<h3 style="margin:22px 0 10px;font-size:16px">📑 รายงานแยกประเภท</h3>
+      <div class="rx-bar"><select onchange="REPORT.setRType(this.value)">${RT.map(([k,t])=>`<option value="${k}" ${k===rtype?'selected':''}>${t}</option>`).join('')}</select>
+        <button class="add-fab" style="background:#1D6F42" onclick="REPORT.exportXlsx(false)">⬇️ Excel (รายงานนี้)</button>
+        <button class="add-fab" style="background:#145A32" onclick="REPORT.exportXlsx(true)">⬇️ Excel ทุกรายงาน</button></div>
+      <div style="font-size:12.5px;color:var(--muted);margin:6px 0 8px">${esc(name)} · ${esc(periodText())} · ${esc(bfLabel())}${r.note?' · '+esc(r.note):''}</div>
+      <div class="rx-wrap"><table class="rx"><thead><tr>${r.cols.map(([h,k])=>`<th style="${k!=='t'?'text-align:right':''}">${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${r.rows.slice(0,MAX).map(row=>`<tr>${row.map((v,i)=>td(v,(r.cols[i]||[])[1])).join('')}</tr>`).join('')||`<tr><td colspan="${r.cols.length}"><div class="empty">ไม่มีข้อมูลในช่วงนี้</div></td></tr>`}</tbody>
+      ${r.total&&r.rows.length?`<tfoot><tr>${r.total.map((v,i)=>td(v,(r.cols[i]||[])[1])).join('')}</tr></tfoot>`:''}</table></div>
+      ${r.rows.length>MAX?`<div style="font-size:12px;color:var(--muted);margin-top:6px">แสดง ${MAX} แถวแรกจาก ${r.rows.length} แถว — กด Export Excel เพื่อดูครบ</div>`:''}`;
+  }
+  function setRType(t){ rtype=t; render(); setTimeout(()=>{ const el=document.querySelector('.rx-bar'), pn=document.getElementById('reportPanel'); if(el&&pn) pn.scrollTop=Math.max(0,el.offsetTop-90); },60); }
+  let _xl=null;
+  function loadXlsx(){ if(window.XLSX) return Promise.resolve(window.XLSX); if(_xl) return _xl;
+    _xl=new Promise((ok,ko)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      sc.onload=()=>window.XLSX?ok(window.XLSX):ko(new Error('no XLSX')); sc.onerror=()=>{ _xl=null; ko(new Error('load fail')); }; document.head.appendChild(sc); });
+    return _xl; }
+  const _xs=v=>(typeof v==='string'&&/^[=+@-]/.test(v))?"'"+v:v;           // กันสูตร Excel ฝังมาในชื่อ
+  function sheetAoa(type){
+    const r=build(type), name=(RT.find(x=>x[0]===type)||[])[1]||type, m=STORE.binfo();
+    const aoa=[[name],[(m.shopName||'')+(bfLabel()?' · '+bfLabel():'')],['ช่วงเวลา: '+periodText()+' · ออกรายงาน '+new Date().toLocaleString('th-TH')],[]];
+    aoa.push(r.cols.map(c=>c[0]));
+    r.rows.forEach(row=>aoa.push(row.map(_xs)));
+    if(r.total&&r.rows.length) aoa.push(r.total.map(_xs));
+    if(r.note) aoa.push([],['หมายเหตุ: '+r.note]);
+    return {aoa,cols:r.cols,name,n:r.rows.length+(r.total?1:0)};
+  }
+  async function exportXlsx(all){
+    let X=null; try{ UI.toast('กำลังสร้างไฟล์ Excel…','ok'); X=await loadXlsx(); }catch(e){}
+    const types=all?RT.map(x=>x[0]):[rtype];
+    const stamp=new Date().toISOString().slice(0,10), base='SAO_รายงาน_'+(all?'ทั้งหมด':((RT.find(x=>x[0]===rtype)||[])[1]||rtype))+'_'+stamp;
+    if(!X){   // โหลดตัวสร้าง Excel ไม่ได้ (ออฟไลน์) -> CSV แทน (เปิดใน Excel ได้)
+      const {aoa}=sheetAoa(rtype); const csv=aoa.map(r=>r.map(v=>{ v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(',')).join('\n');
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'})); a.download=base+'.csv'; a.click();
+      UI.toast('ออฟไลน์ — ดาวน์โหลดเป็น CSV แทน (เปิดใน Excel ได้)','err'); return; }
+    const wb=X.utils.book_new();
+    types.forEach(t=>{ const {aoa,cols,name,n}=sheetAoa(t); const ws=X.utils.aoa_to_sheet(aoa);
+      ws['!cols']=cols.map((c,i)=>({wch:Math.min(40,Math.max(8,c[0].length+2,...aoa.slice(5,5+n).map(r=>String(r[i]==null?'':r[i]).length+1)))}));
+      const range=X.utils.decode_range(ws['!ref']||'A1');                      // ตัวเลขบาท -> รูปแบบ #,##0.00
+      for(let R=5;R<=range.e.r;R++) cols.forEach((c,C)=>{ const cell=ws[X.utils.encode_cell({r:R,c:C})]; if(cell&&cell.t==='n') cell.z=(c[1]==='b'?'#,##0.00':c[1]==='p'?'0.0"%"':'#,##0'); });
+      X.utils.book_append_sheet(wb,ws,name.replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31)); });
+    X.writeFile(wb,base+'.xlsx');
+    UI.toast('ดาวน์โหลด Excel แล้ว ('+types.length+' รายงาน)','ok');
+  }
   function setPeriod(p){ period=p; needRange(p,cFrom,cTo,render); }
   function reload(){ autoLoadCloud(render,true); }
   function setCustom(){ const f=$('#repFrom').value, t=$('#repTo').value; if(f)cFrom=f; if(t)cTo=t; if(cFrom&&cTo){ if(cFrom>cTo){ const x=cFrom; cFrom=cTo; cTo=x; } period='custom'; needRange('custom',cFrom,cTo,render); } }
@@ -6973,7 +7138,7 @@ const REPORT = (()=>{
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sao_accounting_'+period+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
     UI.toast('ดาวน์โหลดไฟล์บัญชีแล้ว (เปิดใน Excel/FlowAccount ได้)','ok');
   }
-  return {render,setPeriod,setCustom,setBranch,reload,exportCSV,exportAccounting,zReport};
+  return {setRType,exportXlsx,render,setPeriod,setCustom,setBranch,reload,exportCSV,exportAccounting,zReport};
 })();
 
 /* ============================================================
@@ -7477,7 +7642,7 @@ const BO = (()=>{
           <div class="cat-btns">
           <button class="sub-tab" title="หน้าลูกค้าสแกนสั่ง: ให้หมวดนี้ขึ้นเป็นหมวดแรก" onclick="BO.catTop('${c.id}')" style="${c.qrTop?'color:var(--gold);font-weight:700':''}">📌 ${c.qrTop?'ขึ้นก่อน ✓':'ขึ้นก่อน'}</button>
           <button class="sub-tab" title="ลูกค้าสแกนสั่งเห็นหมวดนี้ไหม" onclick="BO.catQR('${c.id}')">${c.hideQR?'🙈 ซ่อนจากลูกค้า':'👁️ ลูกค้าเห็น'}</button>
-          <button class="sub-tab" title="ใบครัวไปจุดไหน" onclick="BO.catStation('${c.id}')" style="font-weight:600">${KDS.catStation(c)==='kitchen'?'🍳 ครัว':'🍹 บาร์'}</button>
+          <button class="sub-tab" title="ใบครัวไปจุดไหน" onclick="BO.catStation('${c.id}')" style="font-weight:600">${({bar:'🍹 เครื่องดื่ม',dessert:'🍰 ของหวาน',kitchen:'🍳 ครัว',dimsum:'🥟 ติ่มซำ'})[KDS.catStation(c)]}</button>
           <button class="sub-tab" onclick="BO.editCat('${c.id}')">✏️ แก้ไข</button>
           <button class="sub-tab" style="color:var(--danger)" onclick="BO.delCat('${c.id}')">🗑️ ลบ</button>
           </div>
@@ -7491,7 +7656,7 @@ const BO = (()=>{
   function catQR(id){ const c=STORE.find('categories',id); if(!c) return; c.hideQR=!c.hideQR; STORE.save(); CLOUD.pushItem('categories',c); manageCats();   // ⭐ v12.9
     UI.toast(c.hideQR?('ซ่อน "'+c.name+'" จากหน้าลูกค้าแล้ว'):('ลูกค้าเห็น "'+c.name+'" แล้ว'),'ok'); }
   function catStation(id){ const c=STORE.find('categories',id); if(!c) return;   // ⭐ v12.2 สลับจุดทำของหมวด (ใบครัวแยก)
-    c.station=KDS.catStation(c)==='kitchen'?'bar':'kitchen'; STORE.save(); CLOUD.pushItem('categories',c); manageCats(); }
+    const _cy={bar:'dessert',dessert:'kitchen',kitchen:'dimsum',dimsum:'bar'}; c.station=_cy[KDS.catStation(c)]||'bar'; c.stv2=true; c.stv=3; STORE.save(); CLOUD.pushItem('categories',c); manageCats(); }
   function addCat(){
     const v=(($('#newCat')||{}).value||'').trim(); if(!v){ UI.toast('ใส่ชื่อหมวด','err'); return; }
     const cats=STORE.scoped('categories'); const mx=Math.max(0,...cats.map(c=>c.sort||0));
@@ -8912,7 +9077,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.18</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.21</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9065,7 +9230,7 @@ const SETTINGS = (()=>{
         <div class="field" id="thcpBox"><label>🔢 รหัสหน้าภาษาไทย <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะโหมดตัวอักษร)</small> <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.thaiTest()">🖨 พิมพ์ใบทดสอบ</button></label><input id="setThCP" type="number" min="0" max="255" value="${s.thaiCodePage==null?255:s.thaiCodePage}"></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="rawbt" ${s.printMethod==='rawbt'?'selected':''}>RawBT — Android พิมพ์เงียบ (ต้องลงแอป RawBT)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
-        <div class="field"><label>🍹🍳 แยกใบครัว 2 จุด: บาร์ (เครื่องดื่ม/ของหวาน) กับ ครัว (ของคาว)<br><small style="color:var(--muted);font-weight:400">ตั้งว่าหมวดไหนไปจุดไหนที่ หลังร้าน › เมนู › 🏷️ จัดการหมวดหมู่</small></label><select id="setSplitSlip"><option value="0" ${!s.splitSlip?'selected':''}>ปิด (ใบครัวใบเดียว)</option><option value="1" ${s.splitSlip?'selected':''}>เปิด (แยก 2 ใบ)</option></select></div>
+        <div class="field"><label>🍹🍰🍳🥟 แยกใบครัวตามจุดทำ: เครื่องดื่ม · ของหวาน · ครัว · ติ่มซำ<br><small style="color:var(--muted);font-weight:400">ตั้งว่าหมวดไหนไปจุดไหนที่ หลังร้าน › เมนู › 🏷️ จัดการหมวดหมู่ (กดปุ่มจุดทำวนได้)</small></label><select id="setSplitSlip"><option value="0" ${!s.splitSlip?'selected':''}>ปิด (ใบครัวใบเดียว)</option><option value="1" ${s.splitSlip?'selected':''}>เปิด (แยกตามจุด)</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้กับ Bluetooth ESC/POS และ RawBT<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
           <div class="field"><label>🔔 เสียงเตือนเมื่อลูกค้าสแกนสั่ง (ติ๊ง + เสียงพูดไทย · ดัง 3 รอบ หรือจนกว่าแตะหน้าจอ)</label><select id="setSndQR"><option value="1" ${s.sndQR!==false?'selected':''}>เปิด</option><option value="0" ${s.sndQR===false?'selected':''}>ปิด</option></select>
             <div style="margin-top:6px;font-size:12px;color:var(--muted)">${esc(PENDING.voiceInfo?PENDING.voiceInfo():'')} <button class="sub-tab" style="margin-left:8px" onclick="PENDING.testVoice()">🔊 ทดสอบเสียงเตือน</button></div></div>
@@ -9144,7 +9309,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.18) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.21) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
