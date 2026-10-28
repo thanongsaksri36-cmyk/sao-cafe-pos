@@ -3172,7 +3172,8 @@ const otypeList=()=> ORDER_TYPES.filter(t=>!t.legacy);       // ที่ให�
 const isDelivery=(k)=> ['grab','lineman','shopee','delivery'].includes(k);
 // บิลนี้ "รับเงินจริงแล้ว" หรือยัง — ใช้ร่วมกันทุกรายงาน (กันนับบิลรอชำระเป็นยอดขาย)
 // ⭐ v12.16 ชื่อช่องทางชำระ (ใบเสร็จ/รายงาน)
-const PAYNAMES={cash:'เงินสด',promptpay:'พร้อมเพย์',transfer:'โอน',card:'บัตรเครดิต',thaichuay:'ไทยช่วยไทย 60/40'};
+const PAYNAMES={cash:'เงินสด',promptpay:'พร้อมเพย์',transfer:'โอน',card:'บัตรเครดิต',thaichuay:'ไทยช่วยไทย 60/40',grab:'Grab',lineman:'LINE MAN',shopee:'ShopeeFood'};
+const isAppPay=m=>m==='grab'||m==='lineman'||m==='shopee';   // ⭐ v12.18 ลูกค้าจ่ายผ่านแอปเดลิเวอรี่ — บันทึกยอดอย่างเดียว ไม่ออกใบเสร็จ
 const payLabel=m=>PAYNAMES[m]||m||'-';
 const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
   && o.payStatus!=='open' && o.payStatus!=='wait_cash' && o.payStatus!=='wait_verify'
@@ -4545,11 +4546,15 @@ const PAY = (()=>{
           <button class="opt-chip" data-m="transfer" onclick="PAY.setMethod('transfer')">🏦 โอน</button>
           <button class="opt-chip" data-m="card" onclick="PAY.setMethod('card')">💳 บัตรเครดิต</button>
           <button class="opt-chip" data-m="thaichuay" onclick="PAY.setMethod('thaichuay')">🤝 ไทยช่วยไทย 60/40</button>
+          <button class="opt-chip" data-m="grab" onclick="PAY.setMethod('grab')">🟢 Grab</button>
+          <button class="opt-chip" data-m="lineman" onclick="PAY.setMethod('lineman')">🟩 LINE MAN</button>
+          <button class="opt-chip" data-m="shopee" onclick="PAY.setMethod('shopee')">🟠 Shopee</button>
         </div>
         <div id="payBody"></div>
       </div>
       <div class="modal-f"><button class="btn-gold" id="payConfirm" onclick="PAY.complete()">ยืนยันการชำระ</button></div>`;
-    UI.open('payOverlay'); renderBody();
+    UI.open('payOverlay');
+    { const ty=POS.getType(); if(isAppPay(ty)) setMethod(ty); else renderBody(); }   // ⭐ v12.18 ขายช่องทาง Grab/LINE MAN/Shopee -> เลือกช่องทางจ่ายให้ตรงแอปเลย
   }
   function setMethod(m){ method=m; cashIn=0; $$('#payModal .opt-chip').forEach(b=>b.classList.toggle('sel',b.dataset.m===m)); renderBody(); }
   function renderBody(){
@@ -4567,6 +4572,11 @@ const PAY = (()=>{
         <div class="qr-box">${promptpayQR(total)}</div>
         <p style="margin-top:12px;font-size:14px">สแกนจ่าย <b>${STORE.baht(total)}</b><br><small style="color:var(--muted)">PromptPay: ${esc(ppid)}</small></p>
       </div>`;
+    } else if(isAppPay(method)){             // ⭐ v12.18 จ่ายผ่านแอปเดลิเวอรี่ — บันทึกยอดอย่างเดียว
+      const nm=payLabel(method), ic={grab:'🟢',lineman:'🟩',shopee:'🟠'}[method];
+      $('#payBody').innerHTML=`<div style="text-align:center;padding:6px 0 10px"><div style="font-size:42px">${ic}</div>
+        <b style="font-size:18px">${nm}</b><p style="margin:4px 0 0">บันทึกยอด <b style="font-size:20px">${STORE.baht(total)}</b> เข้าระบบ<br><small style="color:var(--muted)">ลูกค้าจ่ายผ่านแอปแล้ว · ไม่แสดง/ไม่พิมพ์ใบเสร็จ · ใบครัวยังออกตามปกติ</small></p></div>
+        <div class="field"><label>เลขออเดอร์ของแอป (ไม่บังคับ)</label><input id="payRef" maxlength="30" placeholder="เช่น GF-123 / 4 ตัวท้าย"></div>`;
     } else if(method==='card'){              // ⭐ v12.16 บัตรเครดิต (รูด/แตะที่เครื่อง EDC)
       $('#payBody').innerHTML=`<div style="text-align:center;padding:6px 0 10px"><div style="font-size:44px">💳</div>
         <p style="margin:4px 0 0">รูด / แตะบัตร ที่เครื่อง EDC<br><b style="font-size:22px">${STORE.baht(total)}</b><br><small style="color:var(--muted)">ได้สลิปจากเครื่องบัตรแล้ว กดยืนยัน</small></p></div>
@@ -4608,7 +4618,7 @@ const PAY = (()=>{
     // ⭐ v12.16 อ่านค่าช่องทางพิเศษก่อนปิดหน้าต่าง
     let coPay=null, payRef='';
     if(method==='thaichuay'){ const el=$('#tcGov'); let g=el?STORE.toSatang(el.value):Math.floor(s.total*0.6); g=Math.max(0,Math.min(s.total,g||0)); coPay={gov:g,cust:s.total-g}; }
-    if(method==='card'){ const el=$('#payRef'); payRef=el?String(el.value||'').replace(/[<>"'`&\\]/g,'').trim().slice(0,30):''; }
+    if(method==='card'||isAppPay(method)){ const el=$('#payRef'); payRef=el?String(el.value||'').replace(/[<>"'`&\\]/g,'').trim().slice(0,30):''; }
     // ⭐ v12.0 ปิดบิลโต๊ะ: บิลค้างทุกใบต้องยังค้างอยู่จริง (กันอีกเครื่องปิด/ยกเลิกไปก่อน -> เก็บเงินซ้ำ)
     const _tab=POS.getTabCtx(), _srcs=_tab?_tab.ids.map(id=>STORE.find('orders',id)):[];
     if(_tab && _srcs.some(o=>!o||o.payStatus!=='open'||o.status==='void')){ UI.close('payOverlay'); POS.cancelTab(true); UI.toast('บิลโต๊ะนี้ถูกปิด/เปลี่ยนจากเครื่องอื่นแล้ว — เปิดผังโต๊ะแล้วกดปิดบิลใหม่','err'); return; }
@@ -4663,6 +4673,11 @@ const PAY = (()=>{
     STORE.save();
     POS.clearAfterPay();               // ⭐ ล้างตะกร้า/ออกเลขใหม่ก่อน — พิมพ์พังต้องไม่ค้างที่บิลเดิม
     UI.close('payOverlay');
+    if(isAppPay(order.method)){
+      try{ const _S=STORE.get().settings; if(_S.autoPrint&&_S.kdsServeSlip&&!(_tab&&!(_fresh&&_fresh.items.length))) KDS.serveSlip(_tab&&_fresh?Object.assign({},order,{items:_fresh.items}):order); }catch(e){ console.error('kitchen',e); }
+      KDS.updateBadge(); UI.toast('บันทึกยอด '+payLabel(order.method)+' '+STORE.baht(s.total)+' แล้ว','ok');
+      return;
+    }
     try{ receipt(order); }catch(e){ console.error('receipt',e); }
     try{ if(order.method==='cash') PRINT.kickDrawer(); }catch(e){ console.error('drawer',e); }
     try{ if(_tab){ autoPrint(order,{noKitchen:true});   // ใบครัวออกไปแล้วตอนสั่ง · พิมพ์ใบครัวเฉพาะของที่เพิ่มตอนปิดบิล
@@ -6667,6 +6682,10 @@ const REMIND = (()=>{
   function hide(k){ const r=document.querySelector('#remBar [data-k="'+k+'"]'); if(r) r.remove(); }
   function check(){
     if(window._CUSTOMER_MODE) return;
+    // ⭐ v12.17 หน้าล็อก/ล็อกอิน/ตั้งเครื่อง ยังเปิดอยู่ = ยังไม่มีใครใช้งาน -> ไม่เตือน และซ่อนแถบไว้ก่อน
+    const _bar=document.getElementById('remBar'), _locked=['lockScreen','cloudScreen','setupScreen'].some(id=>{ const e=document.getElementById(id); return e&&!e.classList.contains('hide'); });
+    if(_bar) _bar.style.display=_locked?'none':'';
+    if(_locked) return;
     const me=(AUTH.get&&AUTH.get()); if(!me) return;
     const st=STORE.get().settings||{}, now=Date.now(), h=nowHm();
     ITEMS.forEach(it=>{
@@ -6832,7 +6851,7 @@ const REPORT = (()=>{
         <div>
           <h3 style="margin-bottom:12px;font-size:16px">💳 ตามวิธีชำระ</h3>
           <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-bottom:16px">
-            ${Object.entries(byMethod).map(([k,v])=>`<div class="sr" style="margin-bottom:8px"><span>${({cash:'💵 เงินสด',promptpay:'📱 PromptPay',transfer:'🏦 โอน',card:'💳 บัตรเครดิต',thaichuay:'🤝 ไทยช่วยไทย 60/40'})[k]||k}</span><b>${STORE.baht(v)}</b></div>`).join('')||'<div class="empty">—</div>'}
+            ${Object.entries(byMethod).map(([k,v])=>`<div class="sr" style="margin-bottom:8px"><span>${({cash:'💵 เงินสด',promptpay:'📱 PromptPay',transfer:'🏦 โอน',card:'💳 บัตรเครดิต',thaichuay:'🤝 ไทยช่วยไทย 60/40',grab:'🟢 Grab',lineman:'🟩 LINE MAN',shopee:'🟠 Shopee'})[k]||k}</span><b>${STORE.baht(v)}</b></div>`).join('')||'<div class="empty">—</div>'}
           </div>
           <h3 style="margin-bottom:12px;font-size:16px">👥 ยอดตามพนักงาน</h3>
           <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow)">
@@ -7007,6 +7026,9 @@ const HISTORY = (()=>{
     transfer  :['🏦','โอน',       '#534ab7','#eeedfe'],
     card      :['💳','บัตรเครดิต', '#7a3e9d','#f3e8fa'],
     thaichuay :['🤝','ไทยช่วยไทย', '#b4451f','#fdeee6'],
+    grab      :['🟢','Grab',      '#00875a','#e3f6ec'],
+    lineman   :['🟩','LINE MAN',  '#06a14a','#e6f7ec'],
+    shopee    :['🟠','Shopee',    '#d0461b','#fdeee6'],
     unpaid    :['⏳','ยังไม่จ่าย', '#854f0b','#faeeda']
   };
   function payCell(o){
@@ -8506,7 +8528,7 @@ const SHIFT = (()=>{
     const seq=_same.findIndex(x=>x.id===sh.id)+1;
     const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
     const by=m=>ok.filter(o=>o.method===m);
-    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay');
+    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay'), gb=by('grab'), lm=by('lineman'), sp=by('shopee');
     const log=(D.cashlog||[]).filter(c=>c.shiftId===sh.id);
     const g=t=>log.filter(c=>c.type===t).reduce((a,b)=>a+b.amount,0);
     const cnt={}; ok.forEach(o=>(o.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
@@ -8520,6 +8542,7 @@ const SHIFT = (()=>{
       tr:{n:tr.length,v:sum(tr,o=>o.total)},
       cd:{n:cd.length,v:sum(cd,o=>o.total)},
       tc:{n:tc.length,v:sum(tc,o=>o.total),gov:sum(tc,o=>(o.coPay&&o.coPay.gov)||0)},
+      gb:{n:gb.length,v:sum(gb,o=>o.total)}, lm:{n:lm.length,v:sum(lm,o=>o.total)}, sp:{n:sp.length,v:sum(sp,o=>o.total)},
       voided:{n:voided.length,v:sum(voided,o=>o.total)},
       openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
       waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
@@ -8745,7 +8768,7 @@ const SHIFT = (()=>{
       LINEN.send('🔒 ปิดกะ — '+(sh.closedBy||'-')+'\n'+LINEN.SEP
         +'\n🕐 '+hhmm2(sh.openedAt)+' - '+hhmm2(sh.closedAt)
         +'\n🧾 บิล: '+d.bills+' · ยอดขายกะนี้: '+STORE.baht(d.total)
-        +'\n💵 เงินสด: '+STORE.baht(d.cash.v)+' · QR: '+STORE.baht(d.pp.v)+' · โอน: '+STORE.baht(d.tr.v)+(d.cd&&d.cd.n?' · บัตร: '+STORE.baht(d.cd.v):'')+(d.tc&&d.tc.n?' · ไทยช่วยไทย: '+STORE.baht(d.tc.v):'')
+        +'\n💵 เงินสด: '+STORE.baht(d.cash.v)+' · QR: '+STORE.baht(d.pp.v)+' · โอน: '+STORE.baht(d.tr.v)+(d.cd&&d.cd.n?' · บัตร: '+STORE.baht(d.cd.v):'')+(d.tc&&d.tc.n?' · ไทยช่วยไทย: '+STORE.baht(d.tc.v):'')+(d.gb&&d.gb.n?' · Grab: '+STORE.baht(d.gb.v):'')+(d.lm&&d.lm.n?' · LINE MAN: '+STORE.baht(d.lm.v):'')+(d.sp&&d.sp.n?' · Shopee: '+STORE.baht(d.sp.v):'')
         +'\n'+LINEN.SEP
         +'\n💼 ควรมี: '+STORE.baht(_ccExpected)+'\n🧮 นับได้: '+STORE.baht(counted)
         +'\n'+(diff===0?'✅ ตรงพอดี':(diff>0?'➕ ':'⚠️ ')+res)
@@ -8800,6 +8823,9 @@ const SHIFT = (()=>{
       + row('🏦 โอน ('+d.tr.n+')', B(d.tr.v))
       + (d.cd&&d.cd.n?row('💳 บัตรเครดิต ('+d.cd.n+')', B(d.cd.v)):'')
       + (d.tc&&d.tc.n?row('🤝 ไทยช่วยไทย ('+d.tc.n+')', B(d.tc.v)):'')
+      + (d.gb&&d.gb.n?row('🟢 Grab ('+d.gb.n+')', B(d.gb.v)):'')
+      + (d.lm&&d.lm.n?row('🟩 LINE MAN ('+d.lm.n+')', B(d.lm.v)):'')
+      + (d.sp&&d.sp.n?row('🟠 Shopee ('+d.sp.n+')', B(d.sp.v)):'')
       + '</tbody></table><div class="rdiv"></div>'
       + '<div class="rc" style="font-weight:700">ลิ้นชักเงินสด</div>'
       + '<table style="width:100%"><tbody>'
@@ -8886,7 +8912,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.16</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.18</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9118,7 +9144,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.16) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.18) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9718,7 +9744,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
     const ok=all.filter(isPaidOrder);
     const voided=all.filter(x=>x.status==='void'&&!x.merged);
     const tot=ok.reduce((a,b)=>a+b.total,0);
-    const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer'), cdtc=ok.filter(x=>x.method==='card'||x.method==='thaichuay');
+    const cash=ok.filter(x=>x.method==='cash'), qrtr=ok.filter(x=>x.method==='promptpay'||x.method==='transfer'), cdtc=ok.filter(x=>x.method==='card'||x.method==='thaichuay'), apps=ok.filter(x=>isAppPay(x.method));
     const times=ok.map(x=>x.createdAt).sort((a,b)=>a-b);
     const cnt={}; ok.forEach(x=>(x.items||[]).forEach(it=>{ cnt[it.name]=(cnt[it.name]||0)+(it.qty||1); }));
     const top=Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3);
@@ -9731,6 +9757,7 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
       +'\n\n💵 เงินสด: '+STORE.baht(cash.reduce((a,b)=>a+b.total,0))+' ('+cash.length+' บิล)'
       +'\n📱 QR/โอน: '+STORE.baht(qrtr.reduce((a,b)=>a+b.total,0))+' ('+qrtr.length+' บิล)'
       +(cdtc.length?'\n💳 บัตร/ไทยช่วยไทย: '+STORE.baht(cdtc.reduce((a,b)=>a+b.total,0))+' ('+cdtc.length+' บิล)':'')
+      +(apps.length?'\n🛵 Grab/LINE MAN/Shopee: '+STORE.baht(apps.reduce((a,b)=>a+b.total,0))+' ('+apps.length+' บิล)':'')
       +'\n❌ ยกเลิก: '+voided.length+' บิล'
       +'\n\n🏆 เมนูขายดีวันนี้:'+(top.length?top.map((t,i)=>'\n'+(i+1)+'. '+t[0]+' ×'+t[1]).join(''):'\n- ไม่มีข้อมูล');
   }
@@ -9975,7 +10002,7 @@ const DAYEND = (()=>{
     const waitPay=all.filter(o=>o.status==='wait_payment');
     const sum=(a,f)=>a.reduce((x,y)=>x+(f(y)||0),0);
     const by=m=>ok.filter(o=>o.method===m);
-    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay');
+    const cash=by('cash'), pp=by('promptpay'), tr=by('transfer'), cd=by('card'), tc=by('thaichuay'), gb=by('grab'), lm=by('lineman'), sp=by('shopee');
     const total=sum(ok,o=>o.total);
     const times=ok.map(o=>o.createdAt).sort((a,b)=>a-b);
     // เมนูขายดี
@@ -10003,6 +10030,7 @@ const DAYEND = (()=>{
       tr:{n:tr.length,v:sum(tr,o=>o.total)},
       cd:{n:cd.length,v:sum(cd,o=>o.total)},
       tc:{n:tc.length,v:sum(tc,o=>o.total),gov:sum(tc,o=>(o.coPay&&o.coPay.gov)||0)},
+      gb:{n:gb.length,v:sum(gb,o=>o.total)}, lm:{n:lm.length,v:sum(lm,o=>o.total)}, sp:{n:sp.length,v:sum(sp,o=>o.total)},
       voided:{n:voided.length,v:sum(voided,o=>o.total)},
       openTab:{n:openTab.length,v:sum(openTab,o=>o.total)},
       waitPay:{n:waitPay.length,v:sum(waitPay,o=>o.total)},
@@ -10034,6 +10062,9 @@ const DAYEND = (()=>{
     L.push('🏦 โอน      '+B(d.tr.v)+'  ('+d.tr.n+' บิล)');
     if(d.cd.n) L.push('💳 บัตรเครดิต '+B(d.cd.v)+'  ('+d.cd.n+' บิล)');
     if(d.tc.n) L.push('🤝 ไทยช่วยไทย '+B(d.tc.v)+'  ('+d.tc.n+' บิล · รัฐช่วย '+B(d.tc.gov)+')');
+    if(d.gb.n) L.push('🟢 Grab      '+B(d.gb.v)+'  ('+d.gb.n+' บิล)');
+    if(d.lm.n) L.push('🟩 LINE MAN  '+B(d.lm.v)+'  ('+d.lm.n+' บิล)');
+    if(d.sp.n) L.push('🟠 Shopee    '+B(d.sp.v)+'  ('+d.sp.n+' บิล)');
     if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n||d.waitPay.n){
       L.push('');
       L.push('━━ รายละเอียด ━━');
@@ -10087,6 +10118,9 @@ const DAYEND = (()=>{
         ${r('โอน ('+d.tr.n+')',B(d.tr.v))}
         ${d.cd.n?r('บัตรเครดิต ('+d.cd.n+')',B(d.cd.v)):''}
         ${d.tc.n?r('ไทยช่วยไทย ('+d.tc.n+')',B(d.tc.v)):''}
+        ${d.gb.n?r('Grab ('+d.gb.n+')',B(d.gb.v)):''}
+        ${d.lm.n?r('LINE MAN ('+d.lm.n+')',B(d.lm.v)):''}
+        ${d.sp.n?r('Shopee ('+d.sp.n+')',B(d.sp.v)):''}
       </tbody></table>`;
     if(d.discount>0||d.vat>0||d.service>0||d.voided.n||d.openTab.n){
       h+=`<div class="rdiv"></div><table><tbody>
@@ -10202,6 +10236,9 @@ const DAYEND = (()=>{
           ${row('🏦 โอน ('+d.tr.n+' บิล)',B(d.tr.v))}
           ${d.cd.n?row('💳 บัตรเครดิต ('+d.cd.n+' บิล)',B(d.cd.v)):''}
           ${d.tc.n?row('🤝 ไทยช่วยไทย ('+d.tc.n+' บิล · รัฐช่วย '+B(d.tc.gov)+')',B(d.tc.v)):''}
+          ${d.gb.n?row('🟢 Grab ('+d.gb.n+' บิล)',B(d.gb.v)):''}
+          ${d.lm.n?row('🟩 LINE MAN ('+d.lm.n+' บิล)',B(d.lm.v)):''}
+          ${d.sp.n?row('🟠 Shopee ('+d.sp.n+' บิล)',B(d.sp.v)):''}
           ${d.discount>0?row('🎁 ส่วนลดรวม','-'+B(d.discount)):''}
           ${d.vat>0?row('🧮 VAT',B(d.vat)):''}
           ${d.voided.n?row('❌ บิลยกเลิก',d.voided.n+' บิล'):''}
