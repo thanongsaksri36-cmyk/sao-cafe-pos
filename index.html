@@ -16,7 +16,8 @@
 <meta name="apple-mobile-web-app-title" content="SAO POS">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Sarabun:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>/* โหลดน้ำหนักฟอนต์ไว้ก่อน ให้รูปใบเสร็จ (canvas) ใช้ Sarabun ได้ตั้งแต่ใบแรก */try{if(document.fonts)['400','700','800'].forEach(function(w){document.fonts.load(w+' 26px Sarabun');});}catch(e){}</script>
 <style>
 /* ============================================================
    SAO CAFE POS v2 — Design Tokens (60-30-10, 8pt grid)
@@ -36,10 +37,11 @@
   --text:#EDE6D6; --muted:#9A9382; --line:#352E22;
   --shadow:0 2px 12px rgba(0,0,0,.4); --shadow-lg:0 8px 28px rgba(0,0,0,.55);
 }
-*{margin:0;padding:0;box-sizing:border-box;font-family:'Prompt',sans-serif;-webkit-tap-highlight-color:transparent}
-body{background:var(--cream);color:var(--text);height:100vh;height:100dvh;overflow:hidden;transition:background .25s var(--ease),color .25s var(--ease)}
+*{margin:0;padding:0;box-sizing:border-box;font-family:'Sarabun','Noto Sans Thai',sans-serif;-webkit-tap-highlight-color:transparent}
+body{font-weight:500;background:var(--cream);color:var(--text);height:100vh;height:100dvh;overflow:hidden;transition:background .25s var(--ease),color .25s var(--ease)}
 .app{display:flex;flex-direction:column;height:100vh;height:100dvh}
-button{font-family:'Prompt';cursor:pointer;border:none}
+button{font-family:'Sarabun';cursor:pointer;border:none}
+button,input,select,textarea{font-weight:inherit}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
 
@@ -49,8 +51,8 @@ header{background:var(--green);color:#fff;display:flex;align-items:center;justif
   padding-left:calc(16px + env(safe-area-inset-left,0px));
   padding-right:calc(16px + env(safe-area-inset-right,0px));box-shadow:0 2px 12px rgba(27,58,47,.25);z-index:56}
 .brand{display:flex;align-items:center;gap:12px}
-.logo{font-family:'Playfair Display',serif;font-size:32px;font-weight:700;letter-spacing:1px}
-.logo small{display:block;font-family:'Prompt';font-size:12px;letter-spacing:4px;color:var(--gold-light);font-weight:400;text-align:center;margin-top:-2px}
+.logo{font-family:'Playfair Display','Sarabun',serif;font-size:32px;font-weight:700;letter-spacing:1px}
+.logo small{display:block;font-family:'Sarabun';font-size:12px;letter-spacing:4px;color:var(--gold-light);font-weight:400;text-align:center;margin-top:-2px}
 nav{display:flex;gap:4px;flex-wrap:wrap}
 .nav-btn{background:rgba(255,255,255,.08);color:#cfd8d0;padding:9px 14px;border-radius:11px;font-size:13px;font-weight:500;transition:.15s var(--ease);display:flex;align-items:center;gap:6px}
 .nav-btn:hover{background:rgba(255,255,255,.16);color:#fff}
@@ -110,12 +112,12 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 .cart-head h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
 .cart-head .cnt{background:var(--gold);color:#fff;border-radius:12px;font-size:12px;padding:1px 9px}
 .order-meta{font-size:11px;color:var(--gold-light);text-align:right;line-height:1.4}
-.table-btn{display:inline-flex;align-items:center;gap:5px;margin-top:6px;background:var(--gold-light);color:#2A2A24;border:none;padding:5px 13px;border-radius:15px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Prompt';box-shadow:0 1px 5px rgba(0,0,0,.25);transition:.15s var(--ease)}
+.table-btn{display:inline-flex;align-items:center;gap:5px;margin-top:6px;background:var(--gold-light);color:#2A2A24;border:none;padding:5px 13px;border-radius:15px;font-size:12px;font-weight:700;cursor:pointer;font-family:'Sarabun';box-shadow:0 1px 5px rgba(0,0,0,.25);transition:.15s var(--ease)}
 .table-btn:hover{filter:brightness(1.06)}
 .table-btn:active{transform:scale(.94)}
 .table-btn.empty{background:var(--gold-light);color:#2A2A24}
 .tbl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:12px}
-.tbl-pick{padding:20px 10px;border-radius:16px;background:var(--surface-2);border:2px solid var(--line);font-size:20px;font-weight:700;color:var(--text);cursor:pointer;font-family:'Prompt';transition:.15s var(--ease);box-shadow:var(--shadow)}
+.tbl-pick{padding:20px 10px;border-radius:16px;background:var(--surface-2);border:2px solid var(--line);font-size:20px;font-weight:700;color:var(--text);cursor:pointer;font-family:'Sarabun';transition:.15s var(--ease);box-shadow:var(--shadow)}
 .tbl-pick:hover{border-color:var(--gold);background:var(--cream)}
 .tbl-pick.sel{background:var(--gold);color:#fff;border-color:var(--gold)}
 .tbl-pick:active{transform:scale(.94)}
@@ -196,7 +198,7 @@ nav{display:flex;gap:4px;flex-wrap:wrap}
 /* ---------- Generic panels / tables ---------- */
 .panel{flex:1;overflow-y:auto;padding:20px 24px}
 .panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px}
-.panel-head h2{font-size:22px;font-weight:600;font-family:'Playfair Display',serif}
+.panel-head h2{font-size:22px;font-weight:600;font-family:'Playfair Display','Sarabun',serif}
 .sub-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .sub-tab{padding:9px 17px;border-radius:20px;background:var(--surface);color:var(--muted);font-size:13px;font-weight:500;box-shadow:var(--shadow);border:1px solid var(--line);transition:.15s var(--ease)}
 .sub-tab:hover{border-color:var(--gold-light);color:var(--text)}
@@ -268,24 +270,24 @@ tr:hover td{background:var(--surface-2)}
 #setupScreen.hide{display:none}
 #cloudScreen{position:fixed;inset:0;background:var(--green-dark);z-index:130;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;padding:24px;text-align:center}
 #cloudScreen.hide{display:none}
-#cloudScreen h2{font-family:'Playfair Display',serif;font-size:24px;margin:14px 0 4px}
+#cloudScreen h2{font-family:'Playfair Display','Sarabun',serif;font-size:24px;margin:14px 0 4px}
 #cloudScreen p{color:var(--gold-light);font-size:13px;line-height:1.7;margin-bottom:16px;max-width:340px}
-#cloudScreen input{width:min(330px,88vw);padding:14px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:16px;margin-bottom:10px;font-family:'Prompt'}
+#cloudScreen input{width:min(330px,88vw);padding:14px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:16px;margin-bottom:10px;font-family:'Sarabun'}
 #cloudScreen input::placeholder{color:rgba(255,255,255,.35)}
 #cloudScreen .cl-btn{width:min(330px,88vw);padding:15px;border-radius:12px;background:var(--gold);color:#fff;font-size:16px;font-weight:600;border:0;margin-top:4px}
 #cloudScreen .cl-btn:disabled{opacity:.45}
 #cloudScreen .cl-msg{margin-top:14px;font-size:13px;min-height:38px;line-height:1.6;max-width:340px}
-#setupScreen h2{font-family:'Playfair Display',serif;font-size:26px;margin:14px 0 4px}
+#setupScreen h2{font-family:'Playfair Display','Sarabun',serif;font-size:26px;margin:14px 0 4px}
 #setupScreen p{color:var(--gold-light);font-size:13px;line-height:1.7;margin-bottom:18px;max-width:340px}
-#setupScreen input{width:min(320px,86vw);padding:15px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:19px;text-align:center;letter-spacing:2px;text-transform:uppercase;font-family:'Prompt'}
+#setupScreen input{width:min(320px,86vw);padding:15px 16px;border-radius:12px;border:2px solid var(--gold);background:rgba(255,255,255,.06);color:#fff;font-size:19px;text-align:center;letter-spacing:2px;text-transform:uppercase;font-family:'Sarabun'}
 #setupScreen input::placeholder{color:rgba(255,255,255,.35);letter-spacing:1px}
 #setupScreen .su-btn{width:min(320px,86vw);margin-top:14px;padding:15px;border-radius:12px;background:var(--gold);color:#fff;font-size:16px;font-weight:600;border:0}
 #setupScreen .su-btn:disabled{opacity:.45}
 #setupScreen .su-msg{margin-top:14px;font-size:13px;min-height:40px;line-height:1.6}
 #setupScreen .su-list{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:16px;max-width:360px}
 #setupScreen .su-list button{background:rgba(255,255,255,.08);color:#fff;padding:9px 14px;border-radius:18px;font-size:13px;border:0}
-.lock-logo{font-family:'Playfair Display',serif;font-size:34px;font-weight:700;letter-spacing:2px;color:#fff}
-.lock-logo small{display:block;font-family:'Prompt';font-size:11px;letter-spacing:5px;color:var(--gold-light);text-align:center;margin-top:2px}
+.lock-logo{font-family:'Playfair Display','Sarabun',serif;font-size:34px;font-weight:700;letter-spacing:2px;color:#fff}
+.lock-logo small{display:block;font-family:'Sarabun';font-size:11px;letter-spacing:5px;color:var(--gold-light);text-align:center;margin-top:2px}
 .lock-staff{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:24px 0 8px;max-width:420px}
 .lock-staff button{background:rgba(255,255,255,.08);color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;display:flex;align-items:center;gap:8px}
 .lock-staff button.sel{background:var(--gold)}
@@ -294,9 +296,9 @@ tr:hover td{background:var(--surface-2)}
 .lock-msg{color:var(--gold-light);font-size:13px;height:18px;margin-top:6px}
 
 /* ---------- Receipt ---------- */
-.receipt{font-family:'Courier New',monospace;background:#fff;color:#000;padding:18px;max-width:320px;margin:0 auto;font-size:12px;line-height:1.5}
+.receipt{font-family:'Sarabun',sans-serif;background:#fff;color:#000;padding:18px;max-width:320px;margin:0 auto;font-size:12px;line-height:1.5}
 .receipt .rc{text-align:center}
-.receipt h3{font-family:'Playfair Display',serif;font-size:20px}
+.receipt h3{font-family:'Playfair Display','Sarabun',serif;font-size:20px}
 .receipt table{box-shadow:none;background:none}
 .receipt td,.receipt th{border:none;padding:2px 0;font-size:12px;background:none!important;color:#000}
 .receipt .rdiv{border-top:1px dashed #000;margin:8px 0}
@@ -313,7 +315,7 @@ tr:hover td{background:var(--surface-2)}
 .qr-customer{flex:1;display:flex;flex-direction:column;overflow:hidden;background:var(--cream)}
 /* ---- QR swipe carousel (หน้าลูกค้าสแกนสั่ง) ---- */
 .qrc-head{background:linear-gradient(135deg,var(--green),var(--green-dark));color:#fff;padding:18px 16px 14px;text-align:center;flex-shrink:0;box-shadow:0 4px 18px rgba(15,36,25,.25)}
-.qrc-head .qn{font-family:'Playfair Display',serif;font-size:24px;font-weight:700;letter-spacing:1px}
+.qrc-head .qn{font-family:'Playfair Display','Sarabun',serif;font-size:24px;font-weight:700;letter-spacing:1px}
 .qrc-head small{color:var(--gold-light);font-size:11px;letter-spacing:2px}
 .qrc-cats{display:flex;gap:8px;padding:12px 16px 4px;overflow-x:auto;flex-shrink:0}
 .qrc-cats::-webkit-scrollbar{height:0}
@@ -335,11 +337,11 @@ tr:hover td{background:var(--surface-2)}
 .qrc-info .nm{font-size:26px;font-weight:700;line-height:1.2}
 .qrc-info .ds{font-size:13px;color:var(--muted);margin-top:4px;min-height:18px}
 .qrc-info .row{display:flex;align-items:center;justify-content:space-between;margin-top:14px}
-.qrc-info .pr{font-size:30px;font-weight:800;color:var(--gold);font-family:'Playfair Display',serif}
+.qrc-info .pr{font-size:30px;font-weight:800;color:var(--gold);font-family:'Playfair Display','Sarabun',serif}
 .qrc-addbtn{background:var(--green);color:#fff;border-radius:18px;padding:14px 22px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;box-shadow:0 6px 16px rgba(27,58,47,.28);transition:.15s var(--ease)}
 /* ---- QR เมนูกริด (สแกนสั่ง สไตล์ใหม่) ---- */
 .qmenu{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 0 24px}
-.qmenu-head{font-size:19px;font-weight:700;padding:16px 16px 8px;font-family:'Playfair Display',serif;color:var(--text)}
+.qmenu-head{font-size:19px;font-weight:700;padding:16px 16px 8px;font-family:'Playfair Display','Sarabun',serif;color:var(--text)}
 .qgrid{grid-auto-rows:minmax(min-content,auto);display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:2px 14px 10px}
 .qcard{background:var(--surface);border-radius:16px;overflow:hidden;box-shadow:var(--shadow);border:1px solid var(--line);cursor:pointer;transition:transform .14s var(--ease),box-shadow .14s var(--ease);position:relative;display:flex;flex-direction:column}
 .qcard:active{transform:scale(.97)}
@@ -498,7 +500,7 @@ tr:hover td{background:var(--surface-2)}
 .fl-tools .btn{padding:9px 14px;font-size:13.5px}
 .fl-hint{color:var(--gold);font-size:13px;font-weight:600}
 .fl-zones{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
-.fl-ztab{padding:8px 16px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:'Prompt';font-size:13.5px;font-weight:600;cursor:pointer}
+.fl-ztab{padding:8px 16px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-family:'Sarabun';font-size:13.5px;font-weight:600;cursor:pointer}
 .fl-ztab.active{background:var(--green);border-color:var(--green);color:#fff}
 .fl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:16px;border:1px solid var(--line);background:#F3F4F6}
 .fl-canvas{--u:32px;position:relative;width:100%;min-width:600px;max-width:1000px;margin:0 auto;height:calc(var(--rows)*var(--u))}
@@ -537,7 +539,7 @@ tr:hover td{background:var(--surface-2)}
 .fl-ebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;margin-bottom:10px;border-radius:12px;background:var(--surface);border:1px solid var(--line);font-size:13.5px}
 .fl-ebar .fl-grp{display:inline-flex;align-items:center;gap:4px;padding:3px 4px 3px 10px;border-radius:20px;background:var(--surface-2);border:1px solid var(--line)}
 .fl-ebar .fl-grp button{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--surface);color:var(--text);font-size:17px;cursor:pointer}
-.fl-ebar .fl-b{padding:7px 12px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-family:'Prompt';font-size:13px;cursor:pointer}
+.fl-ebar .fl-b{padding:7px 12px;border-radius:20px;border:1px solid var(--line);background:var(--surface);color:var(--text);font-family:'Sarabun';font-size:13px;cursor:pointer}
 .fl-ebar .fl-b.danger{color:var(--danger)}
 .fl-st{display:inline-block;font-size:12px;padding:3px 10px;border-radius:12px;vertical-align:middle;margin-left:6px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted)}
 .fl-st.st-busy{background:var(--green);color:#fff;border-color:var(--green)}
@@ -550,7 +552,7 @@ tr:hover td{background:var(--surface-2)}
 .fl-btns.col{flex-direction:column}
 .fl-btns.col .btn{min-height:50px;font-size:15px;width:100%}
 .fl-pax{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
-.fl-pax button{height:64px;border-radius:50%;max-width:72px;width:100%;justify-self:center;border:none;background:var(--surface-2);box-shadow:var(--shadow);font-size:24px;font-weight:700;color:var(--text);font-family:'Prompt';cursor:pointer}
+.fl-pax button{height:64px;border-radius:50%;max-width:72px;width:100%;justify-self:center;border:none;background:var(--surface-2);box-shadow:var(--shadow);font-size:24px;font-weight:700;color:var(--text);font-family:'Sarabun';cursor:pointer}
 .fl-pax button.sel{background:var(--gold);color:#fff}
 .opt-chip.fl-mv small{opacity:.7;margin-left:4px}
 .opt-chip.fl-mv.st-busy,.opt-chip.fl-mv.st-wait{border-color:var(--warn)}
@@ -561,7 +563,7 @@ tr:hover td{background:var(--surface-2)}
 .fl-rrow.late{opacity:.75}
 .fl-rbtn{display:flex;gap:6px;flex-wrap:wrap}
 .tab-banner{display:flex;align-items:center;gap:6px;padding:9px 12px;margin-bottom:10px;border-radius:12px;background:rgba(27,58,47,.08);border:1.5px solid var(--green);font-size:13.5px;color:var(--text)}
-.tab-banner button{margin-left:auto;padding:5px 12px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:var(--danger);font-family:'Prompt';font-size:12.5px;cursor:pointer}
+.tab-banner button{margin-left:auto;padding:5px 12px;border-radius:16px;border:1px solid var(--line);background:var(--surface);color:var(--danger);font-family:'Sarabun';font-size:12.5px;cursor:pointer}
 .citem.tabline{opacity:.85}
 .citem .tabtag{font-size:11.5px;color:var(--success);font-weight:600;margin-right:auto;padding:2px 8px;border-radius:10px;background:rgba(62,124,79,.12)}
 .send-tab{width:100%;margin-top:10px;padding:11px;border:1.5px dashed var(--green);color:var(--green);font-weight:700}
@@ -583,7 +585,7 @@ tr:hover td{background:var(--surface-2)}
 .shot-row{display:grid;grid-template-columns:1fr 1fr;gap:8px 10px;margin:8px 0 12px}
 .shot-f label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:3px}
 .shot-in{display:flex;align-items:center;gap:6px}
-.shot-in input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:17px;font-weight:700;font-family:'Prompt'}
+.shot-in input{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2);color:var(--text);font-size:17px;font-weight:700;font-family:'Sarabun'}
 .shot-in span{font-size:13px;color:var(--muted);white-space:nowrap}
 .shot-sub{font-size:13px;font-weight:700;margin:4px 0 4px}
 .shot-r{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px}
@@ -602,7 +604,7 @@ tr:hover td{background:var(--surface-2)}
 .shot-hrow:last-child{border-bottom:none}
 .shot-hsum{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.6}
 .shot-hbtn{display:flex;gap:6px}
-.shot-txt{width:100%;min-height:340px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Prompt';font-size:14px;line-height:1.55;resize:vertical}
+.shot-txt{width:100%;min-height:340px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Sarabun';font-size:14px;line-height:1.55;resize:vertical}
 [data-theme="dark"] .shot-warn{color:#FFD9A0}
 @media (max-width:640px){ .shot-foot{grid-template-columns:1fr} .shot-r>span{min-width:100px} }
 /* ===== ⭐ v12.5 แถบเตือน ===== */
@@ -610,22 +612,22 @@ tr:hover td{background:var(--surface-2)}
 .rem-row{background:#B7791F;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.28);animation:remPulse 1.4s ease-in-out infinite}
 .rem-t{font-size:17px;font-weight:800;margin-bottom:8px}
 .rem-b{display:flex;gap:6px;flex-wrap:wrap}
-.rem-b button{padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;font-family:'Prompt';font-size:13.5px;font-weight:600;cursor:pointer}
+.rem-b button{padding:9px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.15);color:#fff;font-family:'Sarabun';font-size:13.5px;font-weight:600;cursor:pointer}
 .rem-b .rem-go{background:#fff;color:#8A5A00;border-color:#fff;flex:1 1 160px}
 @keyframes remPulse{0%,100%{box-shadow:0 10px 30px rgba(0,0,0,.28)}50%{box-shadow:0 10px 30px rgba(0,0,0,.28),0 0 0 6px rgba(183,121,31,.35)}}
 .rem-cfg{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px dashed var(--line);border-radius:12px;margin-bottom:10px;font-size:13.5px}
-.rem-cfg input,.rem-cfg select{padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-family:'Prompt'}
+.rem-cfg input,.rem-cfg select{padding:7px 9px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--text);font-family:'Sarabun'}
 .cc-seg{display:flex;gap:6px;margin-bottom:12px;background:var(--surface-2);padding:4px;border-radius:12px;border:1px solid var(--line)}
-.cc-seg button{flex:1;padding:10px 8px;border:none;border-radius:9px;background:transparent;color:var(--muted);font-family:'Prompt';font-size:14px;font-weight:600;cursor:pointer}
+.cc-seg button{flex:1;padding:10px 8px;border:none;border-radius:9px;background:transparent;color:var(--muted);font-family:'Sarabun';font-size:14px;font-weight:600;cursor:pointer}
 .cc-seg button.on{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
-.cc-total{width:100%;margin-top:6px;padding:16px;border:2px solid var(--gold);border-radius:14px;background:var(--surface);color:var(--text);font-size:30px;font-weight:800;text-align:center;font-family:'Prompt'}
+.cc-total{width:100%;margin-top:6px;padding:16px;border:2px solid var(--gold);border-radius:14px;background:var(--surface);color:var(--text);font-size:30px;font-weight:800;text-align:center;font-family:'Sarabun'}
 /* ===== ⭐ v12.9 หน้าลูกค้าสแกนสั่งแบบใหม่ ===== */
 .qx{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;position:relative;background:var(--surface)}
 .qx-hero{position:relative;height:210px;background:linear-gradient(135deg,var(--green),var(--green-dark));overflow:hidden}
 .qx-hero img{width:100%;height:100%;object-fit:cover;display:block}
 .qx-hero.plain::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 18% 30%,rgba(255,255,255,.14),transparent 40%),radial-gradient(circle at 82% 75%,rgba(201,165,92,.3),transparent 45%)}
 .qx-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;z-index:2}
-.qx-chip{background:rgba(255,255,255,.96);border:none;border-radius:12px;padding:9px 12px;font-family:'Prompt';font-size:14.5px;font-weight:600;color:#222;box-shadow:0 2px 10px rgba(0,0,0,.15);max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.qx-chip{background:rgba(255,255,255,.96);border:none;border-radius:12px;padding:9px 12px;font-family:'Sarabun';font-size:14.5px;font-weight:600;color:#222;box-shadow:0 2px 10px rgba(0,0,0,.15);max-width:60vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .qx-chip i{font-style:normal;color:#aaa;margin:0 3px}
 .qx-chip span{margin-left:4px;color:#666}
 .qx-icons{display:flex;gap:8px}
@@ -634,16 +636,16 @@ tr:hover td{background:var(--surface-2)}
 .qx-brand{text-align:center;margin-top:-58px;position:relative;z-index:1;padding-bottom:8px}
 .qx-logo{width:116px;height:116px;border-radius:50%;margin:0 auto;background:#fff;border:5px solid #fff;box-shadow:0 4px 16px rgba(0,0,0,.18);overflow:hidden;display:flex;align-items:center;justify-content:center}
 .qx-logo img{width:100%;height:100%;object-fit:cover}
-.qx-logo span{font-family:'Playfair Display',serif;font-size:30px;font-weight:700;color:var(--green)}
+.qx-logo span{font-family:'Playfair Display','Sarabun',serif;font-size:30px;font-weight:700;color:var(--green)}
 .qx-name{font-size:21px;font-weight:800;margin-top:8px;color:var(--text)}
 .qx-sub{font-size:13px;color:var(--muted)}
 .qx-tabs{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:2px;overflow-x:auto;background:var(--surface);border-bottom:1px solid var(--line);padding:0 6px;scrollbar-width:none}
 .qx-tabs::-webkit-scrollbar{display:none}
 .qx-ic{flex:none;width:40px;height:50px;border:none;background:none;font-size:19px;cursor:pointer}
-.qx-tab{flex:none;height:50px;padding:0 12px;border:none;background:none;font-family:'Prompt';font-size:16px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap;cursor:pointer}
+.qx-tab{flex:none;height:50px;padding:0 12px;border:none;background:none;font-family:'Sarabun';font-size:16px;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap;cursor:pointer}
 .qx-tab.on{color:#1E88C8;border-bottom-color:#1E88C8}
 .qx-search{position:sticky;top:50px;z-index:4;gap:8px;padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--line)}
-.qx-search input{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;background:var(--surface-2);color:var(--text);font-family:'Prompt'}
+.qx-search input{flex:1;padding:11px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;background:var(--surface-2);color:var(--text);font-family:'Sarabun'}
 .qx-search button{border:none;background:none;font-size:18px;padding:0 6px;color:var(--muted)}
 .qx-h{font-size:20px;font-weight:800;padding:16px 16px 8px;margin:0;color:var(--text)}
 .qx .qgrid{gap:14px 12px}
@@ -655,12 +657,12 @@ tr:hover td{background:var(--surface-2)}
 .modal.qx-sheet{margin-top:auto;width:100%;max-width:560px;border-radius:24px 24px 0 0;max-height:88vh;overflow-y:auto}
 .qx-sh-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;font-size:17px}
 .qx-callgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.qx-callgrid button{border:1px solid var(--line);background:var(--surface);border-radius:18px;padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:var(--shadow);font-family:'Prompt';color:var(--text);cursor:pointer}
+.qx-callgrid button{border:1px solid var(--line);background:var(--surface);border-radius:18px;padding:18px 10px;display:flex;flex-direction:column;align-items:center;gap:4px;box-shadow:var(--shadow);font-family:'Sarabun';color:var(--text);cursor:pointer}
 .qx-callgrid .ic{font-size:42px}
 .qx-callgrid b{font-size:14.5px}
 .qx-callgrid small{font-size:11.5px;color:var(--muted)}
-.qx-in{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;background:var(--surface-2);color:var(--text);font-family:'Prompt';box-sizing:border-box}
-.qx-catlist button{display:flex;justify-content:space-between;width:100%;padding:14px 6px;border:none;border-bottom:1px solid var(--line);background:none;font-family:'Prompt';font-size:15.5px;color:var(--text);cursor:pointer}
+.qx-in{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px;background:var(--surface-2);color:var(--text);font-family:'Sarabun';box-sizing:border-box}
+.qx-catlist button{display:flex;justify-content:space-between;width:100%;padding:14px 6px;border:none;border-bottom:1px solid var(--line);background:none;font-family:'Sarabun';font-size:15.5px;color:var(--text);cursor:pointer}
 .qx-catlist small{color:var(--muted)}
 .qx-ord{background:var(--surface-2);border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:10px}
 .qx-ord-h{display:flex;align-items:center;gap:8px;margin-bottom:6px}
@@ -692,7 +694,7 @@ tr:hover td{background:var(--surface-2)}
 .cat-row .sub-tab{padding:7px 12px;font-size:13px;white-space:nowrap}
 /* ⭐ v12.21 รายงานแยกประเภท */
 .rx-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.rx-bar select{flex:1 1 260px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Prompt';font-size:15px;font-weight:600}
+.rx-bar select{flex:1 1 260px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Sarabun';font-size:15px;font-weight:600}
 .rx-wrap{overflow:auto;max-height:70vh;background:var(--surface);border-radius:var(--r-card);box-shadow:var(--shadow);border:1px solid var(--line)}
 table.rx{width:100%;border-collapse:collapse;font-size:13px}
 table.rx th{position:sticky;top:0;background:var(--surface-2);z-index:1;padding:9px 10px;white-space:nowrap;border-bottom:1px solid var(--line)}
@@ -703,7 +705,7 @@ table.rx tfoot td{position:sticky;bottom:0;background:var(--cream);font-weight:8
 .fl-tk .fl-box{position:absolute;overflow:visible}
 .fl-tk.has .fl-box{background:#FFE7C2;color:#6E4300;box-shadow:0 0 0 2px var(--warn);animation:flPulse 1.4s ease-out infinite}
 .fl-badge{position:absolute;top:-10px;right:-10px;min-width:28px;height:28px;padding:0 7px;border-radius:14px;background:#E5484D;color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25)}
-.fl-tkchip{padding:7px 12px;border-radius:20px;border:2px solid var(--warn);background:#FFE7C2;color:#6E4300;font-family:'Prompt';font-size:13px;font-weight:700;cursor:pointer}
+.fl-tkchip{padding:7px 12px;border-radius:20px;border:2px solid var(--warn);background:#FFE7C2;color:#6E4300;font-family:'Sarabun';font-size:13px;font-weight:700;cursor:pointer}
 .fl-tkchip b{background:#E5484D;color:#fff;border-radius:10px;padding:0 7px;margin-left:4px}
 </style>
 </head>
@@ -5629,7 +5631,7 @@ const QR = (()=>{
       <div class="qrc-head"><div class="qn">ตะกร้าของคุณ</div><small>ตรวจรายการก่อนยืนยัน</small></div>
       <div style="flex:1;overflow-y:auto;padding:16px;max-width:520px;margin:0 auto;width:100%">
         ${qcart.length?qcart.map((c,i)=>{ const mt=(c.mods||[]).map(m=>m.name).join(', '); return `<div style="display:flex;align-items:center;gap:12px;background:var(--surface);border-radius:14px;padding:12px 14px;margin-bottom:10px;box-shadow:var(--shadow)">
-          <div style="flex:1;min-width:0"><b style="font-size:15px">${esc(c.name)}</b>${mt?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">+ ${esc(mt)}</div>`:''}${c.note?`<div style="font-size:12.5px;color:var(--warn);margin-top:2px">📝 ${esc(c.note)}</div>`:''}<button onclick="QR.noteLine(${i})" style="margin-top:4px;border:1px dashed var(--line);background:none;border-radius:8px;padding:3px 8px;font-size:12px;color:var(--muted);font-family:'Prompt'">📝 ${c.note?'แก้หมายเหตุ':'เพิ่มหมายเหตุ'}</button><div style="color:var(--gold);font-weight:700;margin-top:2px">${STORE.baht(c.price*c.qty)}</div></div>
+          <div style="flex:1;min-width:0"><b style="font-size:15px">${esc(c.name)}</b>${mt?`<div style="font-size:12.5px;color:var(--muted);margin-top:2px">+ ${esc(mt)}</div>`:''}${c.note?`<div style="font-size:12.5px;color:var(--warn);margin-top:2px">📝 ${esc(c.note)}</div>`:''}<button onclick="QR.noteLine(${i})" style="margin-top:4px;border:1px dashed var(--line);background:none;border-radius:8px;padding:3px 8px;font-size:12px;color:var(--muted);font-family:'Sarabun'">📝 ${c.note?'แก้หมายเหตุ':'เพิ่มหมายเหตุ'}</button><div style="color:var(--gold);font-weight:700;margin-top:2px">${STORE.baht(c.price*c.qty)}</div></div>
           <button class="qbtn" onclick="QR.chQty(${i},-1)">−</button>
           <span style="min-width:24px;text-align:center;font-weight:700">${c.qty}</span>
           <button class="qbtn" onclick="QR.chQty(${i},1)">＋</button>
@@ -5740,7 +5742,7 @@ const QR = (()=>{
     stage='done';
     $('#qrRoot').innerHTML=`<div style="margin:auto;text-align:center;padding:40px">
       <div style="font-size:80px">✅</div>
-      <h2 style="font-family:'Playfair Display',serif;margin:14px 0;color:var(--success)">สั่งสินค้าเรียบร้อย!</h2>
+      <h2 style="font-family:'Playfair Display','Sarabun',serif;margin:14px 0;color:var(--success)">สั่งสินค้าเรียบร้อย!</h2>
       <p style="font-size:20px">ออเดอร์ <b style="color:var(--gold)">${esc(order.no)}</b>${order.table?' · โต๊ะ '+esc(order.table):''}</p>
       <p style="color:var(--muted);margin:10px 0 26px">ตรวจสลิปผ่านแล้ว กำลังเข้าครัว 🍳<br>ยอดรวม <b>${STORE.baht(order.total)}</b></p>
       <button class="qrc-checkout" style="max-width:240px;margin:0 auto" onclick="QR.render()">สั่งเพิ่ม</button>
@@ -5886,7 +5888,7 @@ const QR = (()=>{
       return `<div class="qx-it"><span>${esc(it.qty)}×</span><div>${esc(it.name)}${mt?`<small>+ ${esc(mt)}</small>`:''}</div><b>${STORE.baht(((+it.base||0)+(+it.modPrice||0))*(+it.qty||0))}</b></div>`; }).join('');
     $('#qrRoot').innerHTML=`<div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch"><div style="margin:0 auto;text-align:center;padding:28px 20px 30px;max-width:460px;width:100%">
       <div style="font-size:60px">${head.ic}</div>
-      <h2 style="font-family:'Playfair Display',serif;margin:8px 0 4px">${head.t}</h2>
+      <h2 style="font-family:'Playfair Display','Sarabun',serif;margin:8px 0 4px">${head.t}</h2>
       <p style="font-size:18px;margin:0">ออเดอร์ <b style="color:var(--gold)">${esc(o.no)}</b>${o.table?' · โต๊ะ '+esc(o.table):''}</p>
       <div style="display:flex;align-items:flex-start;margin:18px 0 14px">${bar}</div>
       <p style="color:var(--muted);margin-bottom:16px">${head.m}<br><small style="opacity:.7">หน้านี้อัปเดตสถานะให้อัตโนมัติ · เปิดค้างไว้ได้เลย</small></p>
@@ -5926,14 +5928,14 @@ const JOIN = (()=>{
   }
   function fail(msg){
     box(wrap('<div style="font-size:56px">🙏</div>'
-      +'<h2 style="font-family:\'Playfair Display\',serif;margin:12px 0 6px">ขออภัยค่ะ</h2>'
+      +'<h2 style="font-family:\'Playfair Display\',\'Sarabun\',serif;margin:12px 0 6px">ขออภัยค่ะ</h2>'
       +'<p style="color:var(--muted);line-height:1.8">'+esc(msg)+'</p>'
       +'<p style="color:var(--muted);font-size:13px;margin-top:16px">สอบถามพนักงานที่เคาน์เตอร์ได้เลยค่ะ</p>'));
   }
   function form(){
     box(wrap(
       '<div style="font-size:56px">🎂</div>'
-      +'<h2 style="font-family:\'Playfair Display\',serif;margin:10px 0 2px">รับ '+((info.points||0)+(info.bonus||0))+' แต้ม</h2>'
+      +'<h2 style="font-family:\'Playfair Display\',\'Sarabun\',serif;margin:10px 0 2px">รับ '+((info.points||0)+(info.bonus||0))+' แต้ม</h2>'
       +((info.bonus>0)?('<p style="color:var(--gold);font-size:13px;margin:0 0 4px">('+(info.points||0)+' แต้มจากบิล + โบนัสสมัครใหม่ '+info.bonus+' แต้ม)</p>'):'')
       +'<p style="color:var(--muted);margin-bottom:4px">จากบิลนี้ '+esc(info.branchName||'')+'</p>'
       +'<p style="color:var(--gold);font-weight:600;margin-bottom:18px">'+STORE.baht(info.total||0)+'</p>'
@@ -5970,7 +5972,7 @@ const JOIN = (()=>{
   }
   function done(r){
     box(wrap('<div style="font-size:64px">🎉</div>'
-      +'<h2 style="font-family:\'Playfair Display\',serif;margin:12px 0 4px">ได้ '+(r.earned||0)+' แต้มแล้ว</h2>'
+      +'<h2 style="font-family:\'Playfair Display\',\'Sarabun\',serif;margin:12px 0 4px">ได้ '+(r.earned||0)+' แต้มแล้ว</h2>'
       +((r.bonus>0)?('<p style="color:var(--gold);font-size:14px;margin:0 0 6px">🎁 รวมโบนัสสมาชิกใหม่ '+r.bonus+' แต้ม</p>'):'')
       +'<p style="font-size:20px;color:var(--gold);font-weight:700;margin-bottom:6px">รวมมี '+(r.points||0)+' แต้ม</p>'
       +'<p style="color:var(--muted);line-height:1.8">ครั้งหน้าบอกเบอร์ที่เคาน์เตอร์<br>เพื่อสะสมแต้มต่อได้เลยค่ะ</p>'
@@ -6891,7 +6893,7 @@ const REPORT = (()=>{
       <div class="panel-head"><h2>📊 รายงานการขาย</h2>
         <div class="sub-tabs">
           ${[['today','วันนี้'],['week','7 วัน'],['month','เดือนนี้'],['all','ทั้งหมด']].map(([k,t])=>`<button class="sub-tab ${period===k?'active':''}" onclick="REPORT.setPeriod('${k}')">${t}</button>`).join('')}
-          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="repFrom" value="${cFrom}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"> ถึง <input type="date" id="repTo" value="${cTo}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"></span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="repFrom" value="${cFrom}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Sarabun'"> ถึง <input type="date" id="repTo" value="${cTo}" onchange="REPORT.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Sarabun'"></span>
           <button class="add-fab" onclick="REPORT.exportCSV()">⬇️ Export CSV</button>
           <button class="add-fab" onclick="REPORT.exportAccounting()">⬇️ Export บัญชี</button>
           <button class="add-fab" style="background:var(--gold)" onclick="REPORT.zReport()">🧾 Z-Report</button>
@@ -7267,7 +7269,7 @@ const HISTORY = (()=>{
       <div class="panel-head"><h2>📜 ประวัติบิล</h2>
         <div class="sub-tabs">
           ${[['today','วันนี้'],['week','7 วัน'],['all','ทั้งหมด']].map(([k,t])=>`<button class="sub-tab ${period===k?'active':''}" onclick="HISTORY.setPeriod('${k}')">${t}</button>`).join('')}
-          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="hisFrom" value="${cFrom}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"> ถึง <input type="date" id="hisTo" value="${cTo}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Prompt'"></span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--muted);background:var(--surface);border:1px solid ${period==='custom'?'var(--gold)':'var(--line)'};border-radius:8px;padding:3px 8px">📅 <input type="date" id="hisFrom" value="${cFrom}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Sarabun'"> ถึง <input type="date" id="hisTo" value="${cTo}" onchange="HISTORY.setCustom()" style="border:none;background:none;color:var(--text);font-size:12px;font-family:'Sarabun'"></span>
         </div></div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
         <div class="field" style="max-width:250px;margin:0"><input placeholder="ค้นหาเลขบิล เช่น 001" oninput="HISTORY.search(this.value)"></div>
@@ -7797,7 +7799,7 @@ const BO = (()=>{
     const url=orderUrl(t.name);
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🔗 QR โต๊ะ ${esc(t.name)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b" style="text-align:center"><div id="rcptPrint"><div style="text-align:center;font-family:'Prompt'"><div style="font-weight:700;font-size:20px">${esc(STORE.binfo().shopName)}</div><div style="font-size:28px;font-weight:800;margin:6px 0">โต๊ะ ${esc(t.name)}</div><div>${qrFor(url)}</div><div style="font-size:13px;margin-top:6px">สแกนเพื่อสั่งอาหาร</div></div></div>
+      <div class="modal-b" style="text-align:center"><div id="rcptPrint"><div style="text-align:center;font-family:'Sarabun'"><div style="font-weight:700;font-size:20px">${esc(STORE.binfo().shopName)}</div><div style="font-size:28px;font-weight:800;margin:6px 0">โต๊ะ ${esc(t.name)}</div><div>${qrFor(url)}</div><div style="font-size:13px;margin-top:6px">สแกนเพื่อสั่งอาหาร</div></div></div>
       <p style="font-size:11px;color:var(--muted);margin-top:8px;word-break:break-all">${esc(url)}</p></div>
       <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="PAY.print()">🖨️ พิมพ์</button></div>`;
     UI.open('genOverlay');
@@ -7807,7 +7809,7 @@ const BO = (()=>{
     const ts=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco');
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🖨️ QR ทุกโต๊ะ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b"><div id="rcptPrint"><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;font-family:'Prompt'">
+      <div class="modal-b"><div id="rcptPrint"><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;font-family:'Sarabun'">
       ${ts.map(t=>`<div style="text-align:center;border:1px solid #ccc;border-radius:10px;padding:10px"><div style="font-weight:700">${esc(STORE.binfo().shopName)}</div><div style="font-size:20px;font-weight:800;margin:4px 0">โต๊ะ ${esc(t.name)}</div>${qrFor(orderUrl(t.name))}<div style="font-size:12px">สแกนสั่งอาหาร</div></div>`).join('')}
       </div></div></div>
       <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="PAY.print()">🖨️ พิมพ์ทั้งหมด</button></div>`;
@@ -9152,7 +9154,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.24</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.26</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9188,7 +9190,7 @@ const SETTINGS = (()=>{
           ${(AUTH.isHQ&&AUTH.isHQ())||((AUTH.get()||{}).role==='owner')?`
           <div class="field"><label>🎨 สีแบรนด์ของสาขานี้ (เฉพาะผู้ดูแล/เจ้าของ · ไม่กระจายไปสาขาอื่น)</label>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px">
-              ${SETTINGS.colorPresets().map(p=>`<button type="button" onclick="SETTINGS.pickColor('${p.id}')" style="padding:9px 6px;border-radius:10px;border:2px solid ${ (((STORE.curBranch()||{}).brandColors||{}).id===p.id)?'var(--gold)':'var(--line)'};background:${p.primary};color:#fff;font-size:12px;cursor:pointer;font-family:'Prompt'"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${p.accent};margin-right:4px;vertical-align:middle"></span>${p.name}</button>`).join('')}
+              ${SETTINGS.colorPresets().map(p=>`<button type="button" onclick="SETTINGS.pickColor('${p.id}')" style="padding:9px 6px;border-radius:10px;border:2px solid ${ (((STORE.curBranch()||{}).brandColors||{}).id===p.id)?'var(--gold)':'var(--line)'};background:${p.primary};color:#fff;font-size:12px;cursor:pointer;font-family:'Sarabun'"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${p.accent};margin-right:4px;vertical-align:middle"></span>${p.name}</button>`).join('')}
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)">
               เลือกเอง: สีหลัก <input type="color" id="setColPrimary" value="${((STORE.curBranch()||{}).brandColors||{}).primary||'#1B3A2F'}" style="width:40px;height:32px;border:1px solid var(--line);border-radius:8px;padding:1px;cursor:pointer">
@@ -9384,7 +9386,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.24) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.26) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10521,7 +10523,7 @@ const DAYEND = (()=>{
       <div class="modal-b">
         ${REMIND.cfgHtml('mid')}
         <div class="field"><label>สรุปตั้งแต่เปิดร้าน ถึงเวลา</label><input id="midTo" type="time" value="${hm}" onchange="DAYEND.midRefresh()"></div>
-        <textarea id="midTxt" readonly style="width:100%;min-height:46vh;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Prompt';font-size:13.5px;line-height:1.55"></textarea>
+        <textarea id="midTxt" readonly style="width:100%;min-height:46vh;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Sarabun';font-size:13.5px;line-height:1.55"></textarea>
       </div>
       <div class="modal-f" style="flex-wrap:wrap;gap:8px">
         <button class="btn-ghost" onclick="DAYEND.midPrint()">🖨️ พิมพ์</button>
@@ -10690,7 +10692,7 @@ const PRINT = (()=>{
     const _szMap0={small:0.85, normal:1.0, large:1.15, huge:1.32};
     const _fs=_szMap0[(STORE.get().settings||{}).rbFontSize]||1.15;   // ค่าเริ่มต้น = ใหญ่
     const PAD=Math.round(10*_g), LH=Math.round(34*_g*_fs), LHB=Math.round(52*_g*_fs), DIVH=Math.round(24*_g);
-    const FN="'Sarabun','Prompt','Noto Sans Thai',sans-serif";
+    const FN="'Sarabun','Noto Sans Thai',sans-serif";
     const F1=Math.round(26*_fs), F2=Math.round(40*_fs);                // ปกติ / หัวข้อ
     const f=(big,bold)=>(bold?'bold ':'')+(big?F2:F1)+"px "+FN;
     // ตัดขึ้นบรรทัดใหม่ให้พอดีความกว้าง (ไทยไม่มีเว้นวรรค -> ตัดทีละตัวอักษรด้วย)
@@ -10855,8 +10857,7 @@ const PRINT = (()=>{
       }
       g.drawImage(c,0,y); y+=c.height;
     });
-    const send=(url)=>{ const a=document.createElement('a'); a.href='rawbt:'+url; a.style.display='none';
-      document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); };
+    const send=(url)=>_rbOpen('rawbt:'+url);
     const kbU=u=>Math.round(((u.split(',')[1])||'').length/1024), LIM=420;
     let url=_encBW(big);
     if(url&&kbU(url)<=LIM){
@@ -10870,7 +10871,7 @@ const PRINT = (()=>{
     const urls=cvs.map(_encBW);
     if(urls.every(u=>u&&kbU(u)<=LIM)){
       if(_pendingDrawer){ _pendingDrawer=false; rawSend([0x1B,0x70,0x00,0x19,0xFA]); }
-      urls.forEach((u,i)=>setTimeout(()=>send(u), i*1500));
+      urls.forEach(u=>send(u));
       return true;
     }
     return false;
@@ -10931,7 +10932,7 @@ const PRINT = (()=>{
     // ⭐ v12.23 ใบเสร็จ + ใบครัวหลายจุด รวมกันใหญ่เกิน -> ส่งทีละใบ ห่างกัน 1.5 วิ (เดิมตกไปโหมดรูป/ข้อความ -> ภาษาไทยเพี้ยน)
     if(!(o2&&o2.single) && jobs.every(b=>kbOf(b.length)<=lim)){
       _pendingDrawer=false;
-      jobs.forEach((b,i)=>setTimeout(()=>{ try{ rawSend(b); }catch(e){} }, i*1500));
+      jobs.forEach(b=>{ try{ rawSend(b); }catch(e){} });
       try{ if(dbg) UI.toast('ส่ง RawBT ทีละใบ '+jobs.length+' ใบ ('+jobs.map(b=>kbOf(b.length)).join('/')+' KB)','ok'); }catch(e){}
       return true;
     }
@@ -10975,19 +10976,26 @@ const PRINT = (()=>{
     if(opt&&opt.drawer) bytes.unshift(0x1B,0x70,0x00,0x19,0xFA);          // ⭐ เปิดลิ้นชักก่อนพิมพ์
     let bin=''; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]&0xFF);
     let b64=''; try{ b64=btoa(bin); }catch(e){ UI.toast('แปลงข้อมูลพิมพ์ไม่สำเร็จ','err'); return false; }
-    const a=document.createElement('a');
-    a.href='rawbt:base64,'+b64; a.style.display='none';
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ try{ a.remove(); }catch(e){} }, 1500);
-    return true;
+    return _rbOpen('rawbt:base64,'+b64);
   }
   // ส่งไบต์ดิบเข้า RawBT (ใช้เปิดลิ้นชัก / ทดสอบหน้ารหัส)
+  // ⭐ v12.25 ส่งงานเข้า RawBT ทีละงาน ห่างกันอย่างน้อย 2.2 วิ
+  //   เดิมสั่งเปิดแอป RawBT ติดกันในวินาทีเดียว (ลูกค้า 2 คนสแกนสั่งพร้อมกัน) -> Android รับแค่งานแรก ใบที่ 2 หาย
+  const _rbQ=[]; let _rbBusy=false, _rbLast=0;
+  function _rbOpen(href){ _rbQ.push(href); _rbPump(); return true; }
+  function _rbPump(){
+    if(_rbBusy||!_rbQ.length) return;
+    _rbBusy=true;
+    setTimeout(()=>{
+      const h=_rbQ.shift();
+      try{ const a=document.createElement('a'); a.href=h; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); }catch(e){ console.error('rawbt',e); }
+      _rbLast=Date.now(); _rbBusy=false; _rbPump();
+    }, Math.max(0,_rbLast+2200-Date.now()));
+  }
   function rawSend(bytes){
     let bin=''; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]&0xFF);
     let b64=''; try{ b64=btoa(bin); }catch(e){ return false; }
-    const a=document.createElement('a'); a.href='rawbt:base64,'+b64; a.style.display='none';
-    document.body.appendChild(a); a.click();
-    setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); return true;
+    return _rbOpen('rawbt:base64,'+b64);
   }
   // ทดสอบหน้ารหัสภาษาไทย — พิมพ์ตัวอย่างทุกเลขให้เลือก
   function thaiTest(){
@@ -11028,7 +11036,7 @@ const CLOUD = (()=>{
   let client=null, status='off', subbed=false, authUser=null;   // off | ready | connecting | online | error
   function available(){ return typeof window!=='undefined' && window.supabase; }
   let _wired=false;
-  function init(){ if(!available()){ status='off'; return; } try{ client=window.supabase.createClient(URL,KEY); status='ready'; setupAuth(); connect(true);
+  function init(){ if(!available()){ status='off'; return; } try{ primeQR(); }catch(e){} try{ client=window.supabase.createClient(URL,KEY); status='ready'; setupAuth(); connect(true);
       if(!_wired){ _wired=true;
         try{ window.addEventListener('online',()=>{ connect(true); });                 // เน็ตกลับมา -> เชื่อม+กวาดคิว
              window.addEventListener('offline',()=>{ status='ready'; refresh(); }); }catch(e){}
@@ -11418,14 +11426,20 @@ const CLOUD = (()=>{
   //   ไม่พิมพ์ย้อนออเดอร์ที่เกิดก่อนเปิดหน้านี้ (กันพิมพ์ซ้ำทั้งชุดตอนรีเฟรช) และเกิน 1 ชม.
   const _bootAt=Date.now(), _printedQR=new Set();
   function markPrinted(id){ if(id) _printedQR.add(id); }
+  let _primed=false;
+  function primeQR(){ if(_primed) return; _primed=true;
+    try{ (STORE.get().orders||[]).forEach(o=>{ if(o&&o.channel==='qr'&&(o.payStatus==='open'||o.payStatus==='paid'||o.status==='void'||o.status==='done')) _printedQR.add(o.id); }); }catch(e){} }
   function autoPrintQR(o){
     if(window._CUSTOMER_MODE||!o||o.channel!=='qr'||(o.branchId||'BR-001')!==STORE.bid()) return;
     const st=STORE.get().settings||{}; if(!st.autoPrint) return;
     if(o.status==='void'||o.status==='done'||o.merged||o.status==='wait_payment') return;
     if(!(o.payStatus==='open'||o.payStatus==='paid')) return;
     if(_printedQR.has(o.id)) return;
-    const evt=(o.payStatus==='paid'&&o.paidAt)?o.paidAt:(o.createdAt||0);
-    if(evt<_bootAt-60000 || Date.now()-(o.createdAt||0)>60*60000) return;
+    // ⭐ v12.25 เดิมเทียบกับเวลาในมือถือลูกค้า (createdAt) -> มือถือที่นาฬิกาช้า ออเดอร์ถูกมองว่า "เก่า" ไม่พิมพ์
+    //   ตอนนี้: ออเดอร์ที่มีในเครื่องตั้งแต่เปิดหน้า = จัดการแล้ว (primeQR) · ที่เข้ามาหลังจากนั้น = พิมพ์ (ยกเว้นเก่าเกิน 3 ชม.)
+    primeQR();
+    if(_printedQR.has(o.id)) return;
+    if(Math.abs(Date.now()-(o.createdAt||0))>3*3600000 && o.payStatus!=='paid') return;
     _printedQR.add(o.id);
     try{ if(o.payStatus==='paid') PAY.autoPrint(o); else if(st.kdsServeSlip) KDS.serveSlip(o); }catch(e){ console.error('autoPrintQR',e); }
   }
@@ -11873,7 +11887,7 @@ const CUSTOMER = (()=>{
       document.querySelector('#qrRoot').innerHTML=
         '<div style="margin:auto;text-align:center;padding:44px 24px;max-width:420px">'
         +'<div style="font-size:64px">🙏</div>'
-        +'<h2 style="font-family:\'Playfair Display\',serif;margin:14px 0">ขออภัยค่ะ</h2>'
+        +'<h2 style="font-family:\'Playfair Display\',\'Sarabun\',serif;margin:14px 0">ขออภัยค่ะ</h2>'
         +'<p style="color:var(--muted);line-height:1.8">สาขานี้ยังไม่เปิดให้สั่งผ่าน QR<br>รบกวนสั่งที่เคาน์เตอร์ได้เลยค่ะ</p>'
         +(b.name?('<p style="margin-top:18px;font-size:13px;color:var(--muted)">'+esc(b.name)+'</p>'):'')
         +'</div>';
