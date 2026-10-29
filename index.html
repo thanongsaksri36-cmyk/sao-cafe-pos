@@ -6119,7 +6119,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     if(!SHIFT.gate()) return;                            // ⭐ v12.7 รับเงินบิล QR ก็ต้องเปิดกะ (เงินสดต้องเข้ากะ)
     if(o.status!=='wait_payment'){ UI.toast('บิลนี้ถูกยืนยันไปแล้ว','err'); render(); return; }   // กันกดซ้ำ/หลายเครื่องพร้อมกัน
-    try{ CLOUD.markPrinted(o.id); }catch(e){}
+    try{ CLOUD.markPrinted(o.id); CLOUD.claimQR(o); }catch(e){}
     o.status='preparing'; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now();   // ⭐ v11.2 เวลา "รับเงินจริง" — ยอดกะ/สิ้นวันใช้ตัวนี้
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     INV.deduct(o); SHIFT.recordSale(o);                                                          // ⭐ เงินสดเข้าลิ้นชัก
@@ -6159,6 +6159,7 @@ const PENDING = (()=>{
     const o=STORE.find('orders',id); if(!o) return;
     if(o.payStatus==='paid'||o.status==='void'){ UI.toast('บิลนี้ปิดไปแล้ว','err'); render(); return; }   // กันกดซ้ำ
     o.method=method; o.payStatus='paid'; o.paid=o.total; o.paidAt=STORE.now(); if(!o.closedAt&&o.status==='done') o.closedAt=STORE.now();
+    try{ CLOUD.markPrinted(o.id); CLOUD.claimQR(o); }catch(e){}
     o.settledBy=(AUTH.get()||{}).id||null; o.settledByName=(AUTH.get()||{}).name||'';
     SHIFT.recordSale(o);                                                                         // ⭐ เงินสดเข้าลิ้นชัก
     try{ INV.deduct(o); }catch(e){}                                                              // ⭐ v11.1 โต๊ะค้างชำระจาก QR ลูกค้า: ถ้ายังไม่เคยตัดสต็อก ตัดตอนปิดบิล
@@ -9188,7 +9189,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.29</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.30</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9422,7 +9423,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.29) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.30) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11464,9 +11465,14 @@ const CLOUD = (()=>{
   function markPrinted(id){ if(id) _printedQR.add(id); }
   let _primed=false;
   function primeQR(){ if(_primed) return; _primed=true;
-    try{ (STORE.get().orders||[]).forEach(o=>{ if(o&&o.channel==='qr'&&(o.payStatus==='open'||o.payStatus==='paid'||o.status==='void'||o.status==='done')) _printedQR.add(o.id); }); }catch(e){} }
+    try{ (STORE.get().orders||[]).forEach(o=>{ if(o&&o.channel==='qr'){ _seeClaim(o.qrPrint); if(o.payStatus==='open'||o.payStatus==='paid'||o.status==='void'||o.status==='done') _printedQR.add(o.id); } }); }catch(e){} }
+  let _qrLead=null;                                // เครื่องที่พิมพ์ออเดอร์ QR ล่าสุด {dev,at}
+  function _seeClaim(c){ if(c&&typeof c==='object'&&c.dev&&(!_qrLead||(+c.at||0)>=(+_qrLead.at||0))) _qrLead={dev:String(c.dev).slice(0,12),at:+c.at||0}; }
+  function claimQR(o){ if(!o||o.channel!=='qr') return; o.qrPrint={dev:STORE.deviceTag(),at:Date.now()}; _seeClaim(o.qrPrint); _printedQR.add(o.id); }
+  function _hashDev(t){ let h=0; String(t||'').split('').forEach(ch=>{ h=(h*31+ch.charCodeAt(0))%9973; }); return h; }
   function autoPrintQR(o){
     if(window._CUSTOMER_MODE||!o||o.channel!=='qr'||(o.branchId||'BR-001')!==STORE.bid()) return;
+    _seeClaim(o.qrPrint);
     const st=STORE.get().settings||{}; if(!st.autoPrint) return;
     if(o.status==='void'||o.status==='done'||o.merged||o.status==='wait_payment') return;
     if(!(o.payStatus==='open'||o.payStatus==='paid')) return;
@@ -11476,8 +11482,19 @@ const CLOUD = (()=>{
     primeQR();
     if(_printedQR.has(o.id)) return;
     if(Math.abs(Date.now()-(o.createdAt||0))>3*3600000 && o.payStatus!=='paid') return;
+    const me=STORE.deviceTag();
+    if(o.qrPrint&&o.qrPrint.dev&&o.qrPrint.dev!==me){ _printedQR.add(o.id); return; }   // ⭐ v12.30 เครื่องอื่นพิมพ์ไปแล้ว
     _printedQR.add(o.id);
-    try{ if(o.payStatus==='paid') PAY.autoPrint(o); else if(st.kdsServeSlip) KDS.serveSlip(o); }catch(e){ console.error('autoPrintQR',e); }
+    const lead=_qrLead&&_qrLead.dev, h=_hashDev(me);
+    const wait=(lead===me)?0:(!lead?(h%4)*1200:9000+(h%5)*1200);
+    setTimeout(()=>{
+      const cur=STORE.find('orders',o.id)||o;
+      if(cur.qrPrint&&cur.qrPrint.dev&&cur.qrPrint.dev!==me) return;            // ระหว่างรอ เครื่องอื่นพิมพ์แล้ว
+      if(cur.status==='void'||cur.merged||cur.status==='wait_payment') return;
+      claimQR(cur);
+      try{ STORE.save(); pushOrder(cur); }catch(e){}
+      try{ if(cur.payStatus==='paid') PAY.autoPrint(cur); else if(st.kdsServeSlip) KDS.serveSlip(cur); }catch(e){ console.error('autoPrintQR',e); }
+    }, wait);
   }
   function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียว · ไม่เด้งของเก่า)
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
@@ -11676,7 +11693,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {markPrinted,sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {claimQR,markPrinted,sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
