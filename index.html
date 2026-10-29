@@ -4801,11 +4801,7 @@ const PAY = (()=>{
   function print(){
     const el=$('#rcptPrint'); if(!el){ try{ UI.toast('ไม่พบใบเสร็จให้พิมพ์','err'); }catch(e){} return; }
     const c=el.cloneNode(true); c.removeAttribute('id'); try{ c.style.display=''; }catch(e){}
-    const docs=[c.outerHTML];
-    const st=STORE.get().settings;
-    if(st.kdsServeSlip && _lastOrd){                  // ⭐ เปิดสวิตช์ใบครัวไว้ = แนบมาด้วยเลย
-      try{ docs.push(...KDS.serveSlipDocs(_lastOrd)); }catch(e){ console.error('kitchen',e); }
-    }
+    const docs=[c.outerHTML];                        // ⭐ v12.27 ใบเสร็จอย่างเดียว (เดิมแนบใบครัวมาด้วย -> พิมพ์ซ้ำจากประวัติแล้วใบครัวออกซ้ำ)
     printDocs(docs,true);                             // กดเอง = พิมพ์เสมอ
   }
   // สร้าง QR แบบ visual (ไม่ใช่ payload จริงตาม EMVCo แต่สแกนอ่านได้เป็น text) — ใช้ deterministic pattern
@@ -4932,6 +4928,8 @@ const PAY = (()=>{
   function autoPrint(order,opt){                          // opt.noKitchen = ใบเสร็จอย่างเดียว (ตอนปิดบิลโต๊ะ — ใบครัวออกไปแล้วตอนสั่ง)
     const st=STORE.get().settings; if(!st.autoPrint) return;
     const _kit=st.kdsServeSlip && !(opt&&opt.noKitchen);
+    const _rc=st.rcptMode==='auto';                        // ⭐ v12.27 ใบเสร็จลูกค้าไม่พิมพ์อัตโนมัติ (ค่าเริ่มต้น) · ลูกค้าขอค่อยกดพิมพ์จากหน้าใบเสร็จ/ประวัติ
+    if(!_rc){ if(_kit) setTimeout(()=>printDocs(KDS.serveSlipDocs(order)),200); return; }
     if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order);
       if(_kit) setTimeout(()=>printDocs(KDS.serveSlipDocs(order)),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
       return; }
@@ -9154,7 +9152,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.26</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.27</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9306,6 +9304,7 @@ const SETTINGS = (()=>{
           </div></div>
         <div class="field" id="thcpBox"><label>🔢 รหัสหน้าภาษาไทย <small style="color:var(--muted);font-weight:400">(ใช้เฉพาะโหมดตัวอักษร)</small> <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.thaiTest()">🖨 พิมพ์ใบทดสอบ</button></label><input id="setThCP" type="number" min="0" max="255" value="${s.thaiCodePage==null?255:s.thaiCodePage}"></div>
         <div class="field"><label>วิธีพิมพ์</label><select id="setPrintMethod"><option value="browser" ${(s.printMethod||'browser')==='browser'?'selected':''}>ผ่านเบราว์เซอร์ (เครื่องที่ติดตั้งในระบบ/USB)</option><option value="rawbt" ${s.printMethod==='rawbt'?'selected':''}>RawBT — Android พิมพ์เงียบ (ต้องลงแอป RawBT)</option><option value="bluetooth" ${s.printMethod==='bluetooth'?'selected':''}>Bluetooth ESC/POS (Android/Chrome)</option></select></div>
+        <div class="field"><label>🧾 ใบเสร็จลูกค้า (ตอนรับเงิน)<br><small style="color:var(--muted);font-weight:400">ใบครัวยังออกอัตโนมัติตามปกติ · ลูกค้าขอใบเสร็จ กด 🖨️ พิมพ์ใบเสร็จ ที่หน้าใบเสร็จ หรือหน้าประวัติบิล</small></label><select id="setRcptMode"><option value="none" ${s.rcptMode!=='auto'?'selected':''}>ไม่พิมพ์ — กดพิมพ์เองเมื่อลูกค้าขอ</option><option value="auto" ${s.rcptMode==='auto'?'selected':''}>พิมพ์อัตโนมัติทุกบิล</option></select></div>
         <div class="field"><label>🍽️ พิมพ์ใบครัวคู่กับใบเสร็จ (รายการอาหาร ไม่มีราคา) <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.testKitchen()">ทดสอบพิมพ์</button></label><select id="setServeSlip"><option value="0" ${!s.kdsServeSlip?'selected':''}>ปิด</option><option value="1" ${s.kdsServeSlip?'selected':''}>เปิด</option></select></div>
         <div class="field"><label>🍹🍰🍳🥟 แยกใบครัวตามจุดทำ: เครื่องดื่ม · ของหวาน · ครัว · ติ่มซำ<br><small style="color:var(--muted);font-weight:400">ตั้งว่าหมวดไหนไปจุดไหนที่ หลังร้าน › เมนู › 🏷️ จัดการหมวดหมู่ (กดปุ่มจุดทำวนได้)</small></label><select id="setSplitSlip"><option value="0" ${!s.splitSlip?'selected':''}>ปิด (ใบครัวใบเดียว)</option><option value="1" ${s.splitSlip?'selected':''}>เปิด (แยกตามจุด)</option></select></div>
           <div class="field"><label>💵 เปิดลิ้นชักอัตโนมัติ — ใช้ได้กับ Bluetooth ESC/POS และ RawBT<br><small style="color:var(--muted);font-weight:400">ถ้าต่อเครื่องพิมพ์ผ่าน USB/ไดรเวอร์ ให้ตั้งที่ไดรเวอร์แทน: คลิกขวาเครื่องพิมพ์ → Printing preferences → Peripheral/Cash Drawer → Open before printing</small></label><select id="setDrawer"><option value="0" ${!s.autoDrawer?'selected':''}>ปิด</option><option value="1" ${s.autoDrawer?'selected':''}>เปิด</option></select></div>
@@ -9386,7 +9385,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.26) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.27) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9409,7 +9408,7 @@ const SETTINGS = (()=>{
     s.ptEarnPerBaht=Math.max(0,parseInt($('#setPtPer').value)||0); s.ptValueBaht=Math.max(0,parseFloat($('#setPtVal').value)||0);
     { const a=$('#setJoinMin'); if(a) s.joinMinBaht=Math.max(0,parseInt(a.value)||0);
       const b=$('#setJoinBonus'); if(b) s.joinBonusPts=Math.max(0,parseInt(b.value)||0); }
-    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const _sp=$('#setSplitSlip'); if(_sp) s.splitSlip=_sp.value==='1'; } { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const gp=$('#setGapPct'); if(gp) s.rbGapPct=Math.max(60,Math.min(400,parseInt(gp.value)||138)); const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
+    s.paperWidth=$('#setPaper').value; s.autoPrint=$('#setAutoPrint').value==='1'; { const rm=$('#setRcptMode'); if(rm) s.rcptMode=rm.value; } s.printMethod=$('#setPrintMethod').value; { const rc=$('#setRcScale'); if(rc) s.receiptScale=rc.value; const rw=$('#setRcWeight'); if(rw) s.receiptWeight=rw.value; const cs=$('#setCartStyle'); if(cs) s.cartStyle=cs.value; try{ POS.renderCart(); }catch(e){} } s.kdsServeSlip=$('#setServeSlip').value==='1'; { const _sp=$('#setSplitSlip'); if(_sp) s.splitSlip=_sp.value==='1'; } { const dr=$('#setDrawer'); if(dr) s.autoDrawer=dr.value==='1'; const dp=$('#setDrwPrint'); if(dp) s.drawerByPrint=dp.value==='1'; const tc=$('#setThCP'); if(tc) s.thaiCodePage=Math.max(0,Math.min(255,parseInt(tc.value)||255)); const ri=$('#setRbImg'); if(ri) s.rawbtImage=ri.value==='1'; const rc=$('#setRbCut'); if(rc) s.rawbtCut=rc.value==='1'; const gp=$('#setGapPct'); if(gp) s.rbGapPct=Math.max(60,Math.min(400,parseInt(gp.value)||138)); const rf=$('#setRbFont'); if(rf) s.rbFontSize=rf.value; const cf=$('#setCutFeed'); if(cf) s.rbCutFeed=Math.max(0,Math.min(255,parseInt(cf.value)||180)); const rm=$('#setRbMax'); if(rm) s.rawbtMaxKb=Math.max(10,Math.min(900,parseInt(rm.value)||120)); const sq=$('#setSndQR'); if(sq) s.sndQR=sq.value==='1'; const rq=$('#setReqShift'); if(rq) s.requireShift=rq.value==='1';
       if(AUTH.isHQ()){ const bl=$('#setBlind'); if(bl) s.blindCount=bl.value==='1';
                        const tl=$('#setTol');   if(tl) s.cashTolerance=Math.max(0,parseInt(tl.value)||0); } }
     m._rev=STORE.now();                        // ⭐ ประทับเวลา กัน cloud เอาของเก่ามาทับ
@@ -11547,7 +11546,7 @@ const CLOUD = (()=>{
   }
   // ---- ดึงข้อมูลล่าสุดจาก cloud มา "ผสาน" (ไม่ลบของในเครื่อง) ตอนเชื่อมต่อ ----
   // รวม app_meta จาก cloud อย่างปลอดภัย — ห้ามสลับสาขาให้เครื่องนี้ / ห้ามทับคีย์เฉพาะเครื่อง / ห้ามทำเลขบิลถอยหลัง
-  const LOCAL_KEYS=['ccInput','midRemind','midCut','shotRemind','shotTime','splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
+  const LOCAL_KEYS=['rcptMode','ccInput','midRemind','midCut','shotRemind','shotTime','splitSlip','geminiKey','openaiKey','claudeKey','tgToken','printMethod','autoPrint','paperWidth','receiptScale','receiptWeight','cartStyle','autoDrawer','kdsServeSlip','sessionTimeoutMin',
     // ⭐ ค่าเกี่ยวกับเครื่องพิมพ์ = ของใครของมัน ห้าม cloud ทับ (ไม่งั้นตั้งแล้วเด้งกลับ)
     'rawbtImage','rawbtCut','rawbtMaxKb','rawbtDebug','rbLineGap','rbGapPct','rbFontSize','thaiCodePage','drawerByPrint','rbCutFeed'];
   function mergeMeta(D,o){
