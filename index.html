@@ -4236,7 +4236,8 @@ const POS = (()=>{
     const _tabTop=tabCtx?`<div class="tab-banner">${tabCtx.type==='takeaway'?'🛍️':'🍽️'} ปิดบิล <b>${esc(tabCtx.label||('โต๊ะ '+tabCtx.table))}</b>${tabCtx.ids.length>1?' · รวม '+tabCtx.ids.length+' บิล':''}<button onclick="POS.cancelTab()">ยกเลิก</button></div>`:'';
     const _send=(!tabCtx&&orderType==='dine-in'&&table)?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">🍽️ ส่งครัว · เก็บเงินตอนลูกค้ากลับ</button>`
       :(!tabCtx&&(orderType==='takeaway'||orderType==='dine-in'))?`<button class="btn btn-ghost send-tab" onclick="POS.sendTab()">${orderType==='takeaway'?'🛍️':'🧾'} ส่งครัว + พิมพ์ใบ · เก็บเงินทีหลัง</button>`:'';
-    $('#summary').innerHTML=_tabTop+bdayBanner()+html+_send;
+    const _more=(tabCtx&&cart.some(c=>!c.tab))?`<button class="btn btn-ghost send-tab" style="border-color:var(--gold);color:var(--gold);font-weight:800" onclick="POS.sendMore()">➕ ส่งครัวเพิ่ม · ยังไม่เก็บเงิน</button>`:'';
+    $('#summary').innerHTML=_tabTop+bdayBanner()+html+_send+_more;
   }
   // ===== ⭐ v12.0 โต๊ะ: ส่งครัวแล้วเก็บเงินทีหลัง · ปิดบิลโต๊ะผ่านหน้าชำระเงินปกติ (ส่วนลด/สมาชิก/แต้ม/ใบเสร็จครบ) =====
   function getTabCtx(){ return tabCtx; }
@@ -4270,6 +4271,41 @@ const POS = (()=>{
     if(tabCtx){ if(same){ go(); return; } cancelTab(true); }
     if(cart.length){ UI.confirm2('มีรายการค้างในตะกร้า','พักบิลปัจจุบันไว้ก่อน แล้วปิดบิล '+label+'?',()=>{ hold(); go(); }); return; }
     go();
+  }
+  // ⭐ v12.28 โหลดบิลค้างชำระมาแล้วเพิ่มรายการ -> "ส่งครัวเพิ่ม" แทนการคิดเงิน
+  //   กลับบ้าน/ไม่มีโต๊ะ: รวมเข้าบิลเดิมใบเดียว · มีโต๊ะ: เปิดบิลใหม่ของโต๊ะนั้น (ตอนเช็คบิลรวมให้อยู่แล้ว)
+  function sendMore(){
+    if(!tabCtx||_tabBusy) return;
+    const fresh=cart.filter(c=>!c.tab);
+    if(!fresh.length){ UI.toast('เพิ่มรายการใหม่ก่อน แล้วกดส่งครัวเพิ่ม','err'); return; }
+    if(discount){ UI.toast('ส่วนลดให้ใส่ตอนเก็บเงิน — เอาส่วนลดออกก่อนส่งครัว','err'); return; }
+    const src=tabCtx.ids.map(id=>STORE.find('orders',id)).filter(o=>o&&o.payStatus==='open'&&o.status!=='void');
+    if(!src.length){ UI.toast('บิลนี้ถูกปิดไปแล้ว','err'); cancelTab(true); return; }
+    const qOf=a=>a.reduce((t,c)=>t+(+c.qty||0),0);
+    if(qOf(cart.filter(c=>c.tab))!==qOf([].concat(...src.map(o=>o.items||[])))){ UI.toast('แก้/ลบรายการเดิมได้ตอนเก็บเงินเท่านั้น — กดยกเลิกที่แถบบน แล้วโหลดบิลใหม่','err'); return; }
+    if(!SHIFT.gate()) return;
+    const add=JSON.parse(JSON.stringify(fresh)); add.forEach(c=>{ delete c.tab; });
+    if(tabCtx.table){                                      // มีโต๊ะ -> ส่งแบบบิลโต๊ะปกติ
+      const tb=tabCtx.table; tabCtx=null; cart=add; orderType='dine-in'; table=tb; discount=null; member=null;
+      sendTab(); return;
+    }
+    _tabBusy=true;
+    try{
+      const tgt=src.filter(o=>o.channel!=='qr').pop()||src[src.length-1];
+      const tmp={items:add,channel:'pos'}; INV.deduct(tmp);
+      if(tmp.stockUsed){ const u=(tgt.stockUsed&&typeof tgt.stockUsed==='object')?tgt.stockUsed:{}; Object.keys(tmp.stockUsed).forEach(k=>{ u[k]=(u[k]||0)+(+tmp.stockUsed[k]||0); }); tgt.stockUsed=u; tgt.stockDeducted=true; }
+      tgt.items=(tgt.items||[]).concat(add);
+      const t=totals(tgt.items.reduce((a,c)=>a+lineTotal(c),0),0);
+      tgt.subtotal=t.sub; tgt.vat=t.vat; tgt.service=t.service; tgt.total=t.total;
+      if(tgt.status!=='preparing') tgt.status='preparing';
+      tgt.addedAt=STORE.now();
+      STORE.save(); CLOUD.pushOrder(tgt);
+      try{ const _S=STORE.get().settings; if(_S.kdsServeSlip) KDS.serveSlip(Object.assign({},tgt,{items:add}),true); }catch(e){ console.error('kitchen',e); }
+      const lb=tabCtx.label; tabCtx=null; cart=[]; discount=null; member=null; table=null; orderNo=null; newOrderNo(); renderTypes(); renderCart();
+      KDS.updateBadge(); PENDING.updateBadge();
+      UI.toast('ส่งครัวเพิ่มแล้ว · '+lb+' — รวมในบิลเดิม ยอดใหม่ '+STORE.baht(tgt.total),'ok');
+    }catch(e){ console.error('sendMore',e); UI.toast('ส่งครัวเพิ่มไม่สำเร็จ ลองใหม่','err'); }
+    finally{ _tabBusy=false; }
   }
   function cancelTab(silent){ if(!tabCtx) return; const n=tabCtx.table; tabCtx=null; cart=[]; discount=null; member=null; table=n; renderTypes(); renderCart();
     if(!silent) UI.toast('ยกเลิกการปิดบิล — บิลยังค้างชำระอยู่เหมือนเดิม','ok'); }
@@ -4312,7 +4348,7 @@ const POS = (()=>{
       STORE.get().orders.push(order); INV.deduct(order); STORE.save(); CLOUD.pushOrder(order);
       if(take){
         // กลับบ้าน: พิมพ์ใบครัว (ถ้าเปิดไว้) + ใบรับออเดอร์ให้ลูกค้า ทันที
-        try{ const docs=[]; if(STORE.get().settings.kdsServeSlip) docs.push(...KDS.serveSlipDocs(order)); docs.push(unpaidBillHtml(order)); PAY.printDocs(docs,true); }catch(e){ console.error('print',e); }
+        try{ const _S=STORE.get().settings, docs=[]; if(_S.kdsServeSlip) docs.push(...KDS.serveSlipDocs(order)); if(_S.rcptMode==='auto') docs.push(unpaidBillHtml(order)); PAY.printDocs(docs,true); }catch(e){ console.error('print',e); }   // ⭐ v12.27 ใบรับออเดอร์ตามตั้งค่าใบเสร็จลูกค้า
       } else {
         try{ FLOOR.touchSeat(table); }catch(e){}
         try{ if(STORE.get().settings.kdsServeSlip) KDS.serveSlip(order); }catch(e){ console.error('kitchen',e); }
@@ -4371,7 +4407,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {noteLine,loadOrders,startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {sendMore,noteLine,loadOrders,startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -9152,7 +9188,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.27</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.28</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9385,7 +9421,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.27) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.28) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
