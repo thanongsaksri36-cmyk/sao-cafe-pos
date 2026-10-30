@@ -9190,7 +9190,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.31</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.32</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9424,7 +9424,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.31) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.32) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11075,7 +11075,7 @@ const PRINT = (()=>{
   }
   window.addEventListener('blur',_gotAway);
   document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') _gotAway(); });
-  function _click(h){ const a=document.createElement('a'); a.href=h; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); }
+  function _click(h){ window._rbLaunchAt=Date.now(); const a=document.createElement('a'); a.href=h; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); }
   function _fire(job,byTap){
     const rec=plog({what:job.m.what,no:job.m.no,kb:Math.round(job.h.length/1024),st:byTap?'ส่งใหม่ (แตะพิมพ์)':'ส่งเข้า RawBT'});
     const j={h:job.h,m:job.m,rec,at:Date.now()};
@@ -12357,7 +12357,8 @@ const APP = (()=>{
     BRANCH.renderChip();               // แสดงสาขาปัจจุบันบน header
     POS.restoreCart();                 // คืนตะกร้าที่ค้างไว้ (ถ้ามี)
     // เตือนก่อนรีเฟรช/ปิดหน้า ถ้ายังมีรายการในตะกร้า
-    window.addEventListener('beforeunload',(e)=>{ if(POS.hasCart()){ e.preventDefault(); e.returnValue=''; return ''; } });
+    window.addEventListener('beforeunload',(e)=>{ if(window._rbLaunchAt&&Date.now()-window._rbLaunchAt<5000) return;   // ⭐ v12.32 กำลังเปิด RawBT พิมพ์ ไม่ใช่ปิดหน้า -> ห้ามถาม
+      if(POS.hasCart()){ e.preventDefault(); e.returnValue=''; return ''; } });
     if(!AUTH.tryRestore()) AUTH.lock();  // รีเฟรชแล้วยังล็อกอินอยู่ (ไม่ต้องใส่ PIN ใหม่)
     if(needSetup()) setupShow();         // เครื่องใหม่ -> ให้ใส่รหัสสาขาก่อน
     // 🔒 ยังไม่ได้ล็อกอินบัญชีสาขา และไม่มีพนักงานในเครื่อง -> ต้องล็อกอินก่อน
