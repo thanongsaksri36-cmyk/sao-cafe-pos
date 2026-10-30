@@ -4103,7 +4103,7 @@ const POS = (()=>{
           ${tag}
         </div>
       </div>`;
-    }).join('');
+    }).join('');
     qtyBadges();                                   // ⭐ v12.11 ตัวเลขจำนวนที่กดแล้ว บนการ์ดเมนู
   }
   function tap(id){
@@ -4800,6 +4800,7 @@ const PAY = (()=>{
       try{ UI.toast('ส่งเข้า RawBT ไม่สำเร็จ — พิมพ์ผ่านเบราว์เซอร์แทน','err'); }catch(e){}
       // ส่งไม่ได้ -> ตกกลับไปใช้ทางเดิม ไม่ให้บิลหาย
     }
+    try{ if((STORE.get().settings||{}).printMethod!=='rawbt'){ const _w=String(inner); PRINT.plog({what:(/kslip/.test(_w)?'ใบครัว ':'')+(/class="receipt"/.test(_w)?'ใบเสร็จ ':'')+'(พิมพ์ผ่านเบราว์เซอร์)',no:((_w.match(/#[A-Z0-9]{1,6}-\d{2,5}/)||[''])[0]),st:'ส่งเข้าหน้าต่างพิมพ์'}); } }catch(e){}
     _pq.push(inner); _pnext();
   }
   function _pnext(){
@@ -9189,7 +9190,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.30</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.31</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9302,7 +9303,7 @@ const SETTINGS = (()=>{
             <button class="add-fab" style="width:100%;justify-content:center" onclick="SETTINGS.downloadBat()">⬇️ ดาวน์โหลดไฟล์เปิดร้าน (.bat)</button>
             <div style="font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5">ใช้กับคอม Windows เท่านั้น · เปิดร้านด้วยไฟล์นี้ทุกครั้ง แทนการเปิด Chrome ปกติ<br>ถ้า Chrome เตือนว่าไฟล์อาจไม่ปลอดภัย → กด <b>เก็บไว้ (Keep)</b></div>
           </div>
-          <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.printDiag()">🔍 ตรวจระบบพิมพ์</button></label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
+          <div class="field"><label>พิมพ์อัตโนมัติเมื่อขายเสร็จ <button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="SETTINGS.printDiag()">🔍 ตรวจระบบพิมพ์</button><button type="button" class="btn-ghost" style="padding:2px 8px;font-size:11px;margin-left:6px" onclick="PRINT.showLog()">📋 ประวัติการพิมพ์</button></label><select id="setAutoPrint"><option value="0" ${!s.autoPrint?'selected':''}>ปิด (กดพิมพ์เอง)</option><option value="1" ${s.autoPrint?'selected':''}>เปิด</option></select></div>
         </div>
         <div class="field"><label>🧾 ปุ่มใต้ตะกร้า (ปรับตามขนาดจอ)</label><select id="setCartStyle">${['full:ครบทุกปุ่ม','compact:ย่อ 3 แถว — แนะนำ','min:เหลือ ⋯ + ชำระเงิน'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.cartStyle||'compact')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
         <div class="field"><label>🖋️ ความหนาตัวอักษรใบเสร็จ (จาง=เพิ่มหนา · อ้วน=ลดหนา)</label><select id="setRcWeight">${['light:บาง','normal:ปกติ','bold:หนา','heavy:หนามาก'].map(v=>{const a=v.split(':');return '<option value="'+a[0]+'" '+((s.receiptWeight||'normal')===a[0]?'selected':'')+'>'+a[1]+'</option>'}).join('')}</select></div>
@@ -9423,7 +9424,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.30) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.31) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10997,8 +10998,13 @@ const PRINT = (()=>{
     else UI.toast('ส่ง '+real+' KB แล้ว — ดูว่ากระดาษออก+ตัดไหม','ok');
   }
   // ส่งเข้า RawBT — ใช้ <a> click แทน location.href กันหน้าแอปเด้งออก
+  function _what(html){ const h=String(html||''), w=[];
+    if(/class="receipt"/.test(h)) w.push(/ยังไม่ชำระเงิน/.test(h)?'ใบรับออเดอร์':'ใบเสร็จ');
+    if(/kslip/.test(h)) w.push('ใบครัว');
+    const no=[...new Set((h.match(/#[A-Z0-9]{1,6}-\d{2,5}/g)||[]))].slice(0,4).join(' + ');
+    return {what:w.join(' + ')||'งานพิมพ์',no}; }
   function rawbt(html,opt){
-    _lastHtml=html;
+    _lastHtml=html; _meta=_what(html);
     if(_imgMode()){                                       // ⭐ โหมดรูปภาพ — ไทยชัวร์
       if(opt&&opt.drawer) _pendingDrawer=true;
       // ⭐ v12.23 ส่งครั้งเดียวก่อนเสมอ (เชื่อถือได้สุด): ตัดกระดาษแยกใบ -> รูปภาพรวม -> ถ้ายังใหญ่ค่อยส่งทีละใบ
@@ -11018,17 +11024,123 @@ const PRINT = (()=>{
   // ส่งไบต์ดิบเข้า RawBT (ใช้เปิดลิ้นชัก / ทดสอบหน้ารหัส)
   // ⭐ v12.25 ส่งงานเข้า RawBT ทีละงาน ห่างกันอย่างน้อย 2.2 วิ
   //   เดิมสั่งเปิดแอป RawBT ติดกันในวินาทีเดียว (ลูกค้า 2 คนสแกนสั่งพร้อมกัน) -> Android รับแค่งานแรก ใบที่ 2 หาย
-  const _rbQ=[]; let _rbBusy=false, _rbLast=0;
-  function _rbOpen(href){ _rbQ.push(href); _rbPump(); return true; }
+  // ⭐ v12.31 Chrome ยอมให้หน้าเว็บ "เปิดแอป RawBT เอง" แบบจำกัด: เปิดติดกันหลายครั้ง = ขึ้นหน้าให้กดยืนยัน · จอดับ/สลับแอป = ถูกบล็อกเงียบ ๆ (บิลไม่ออก)
+  //   แก้: (1) งานที่ค้างในคิวรวมเป็นก้อนเดียว = เปิดแอปครั้งเดียว (2) จอดับ -> เก็บไว้ พิมพ์ทันทีที่เปิดจอ
+  //        (3) ตรวจว่าแอป RawBT เปิดขึ้นมาจริงไหม ไม่เปิด -> ขึ้นแถบ "ใบยังไม่ออก แตะพิมพ์" (แตะ = Chrome ไม่ถาม)  (4) บันทึกประวัติการพิมพ์ไว้หาสาเหตุ
+  const _rbQ=[]; let _rbBusy=false, _rbLast=0, _meta=null;
+  const _RBP='rawbt:base64,';
+  function _rbOpen(href){ _rbQ.push({h:href,m:_meta||{what:'อื่น ๆ'}}); _rbPump(); return true; }
+  function _rbMerge(list){                              // รวมงาน ESC/POS หลายงานเป็นงานเดียว (แต่ละงานมีคำสั่งตัดกระดาษของตัวเองอยู่แล้ว)
+    const out=[]; const lim=_rbLimit()*1024;
+    list.forEach(j=>{ const L=out[out.length-1];
+      if(L&&L.h.indexOf(_RBP)===0&&j.h.indexOf(_RBP)===0&&(L.h.length+j.h.length)<=lim+_RBP.length*2){
+        try{ L.h=_RBP+btoa(atob(L.h.slice(_RBP.length))+atob(j.h.slice(_RBP.length))); L.m=_mm(L.m,j.m); return; }catch(e){}
+      }
+      out.push({h:j.h,m:Object.assign({},j.m)}); });
+    return out;
+  }
+  function _mm(a,b){ const u=(x,y)=>[...new Set(String(x||'').split(' + ').concat(String(y||'').split(' + ')).filter(Boolean))].join(' + ');
+    return {what:u(a.what,b.what),no:u(a.no,b.no)}; }
+  //   ⭐ ใบถัดไปส่งเมื่อ "หน้า POS กลับมาอยู่หน้าสุด" แล้วเท่านั้น (ส่งตอนแอป RawBT ยังเปิดทับอยู่ = Chrome ถาม/บล็อก -> ใบที่ 2 ไม่ออก)
+  let _rbFw=0;
   function _rbPump(){
     if(_rbBusy||!_rbQ.length) return;
     _rbBusy=true;
     setTimeout(()=>{
-      const h=_rbQ.shift();
-      try{ const a=document.createElement('a'); a.href=h; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); }catch(e){ console.error('rawbt',e); }
-      _rbLast=Date.now(); _rbBusy=false; _rbPump();
-    }, Math.max(0,_rbLast+2200-Date.now()));
+      _rbBusy=false;
+      if(!_rbQ.length) return;
+      if(document.visibilityState==='hidden'){ if(!_rbQ._held){ _rbQ._held=1; plog({what:'คิวพิมพ์',st:'⏸️ จอดับ/สลับแอป — รอเปิดจอแล้วพิมพ์ ('+_rbQ.length+' งาน)'}); } return; }
+      _rbQ._held=0;
+      if(!document.hasFocus()){                           // RawBT ยังเปิดทับอยู่ / มีหน้าต่างอื่นทับ -> รอสูงสุด 12 วิ
+        if(!_rbFw) _rbFw=Date.now();
+        if(Date.now()-_rbFw<12000){ _rbBusy=true; setTimeout(()=>{ _rbBusy=false; _rbPump(); },500); return; }
+      }
+      _rbFw=0;
+      const jobs=_rbMerge(_rbQ.splice(0,_rbQ.length));
+      const first=jobs.shift(); _rbQ.unshift(...jobs);
+      _fire(first,false);
+      _rbLast=Date.now(); _rbPump();
+    }, Math.max(600,_rbLast+2500-Date.now()));          // รอ 0.6 วิ ให้งานที่เข้ามาพร้อมกันรวมเป็นก้อนเดียว
   }
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') setTimeout(_rbPump,400); });
+  window.addEventListener('focus',()=>setTimeout(_rbPump,300));
+  // ---- ตรวจว่าแอป RawBT เปิดขึ้นมาจริง (หน้าเว็บเสียโฟกัส/ถูกซ่อน) ----
+  const _await=[], _unconf=[];
+  let _blurSeen=(()=>{ try{ return localStorage.getItem('saocafe_rb_blur')==='1'; }catch(e){ return false; } })();
+  function _gotAway(){
+    const j=_await.shift(); if(!j) return;
+    clearTimeout(j.tm); j.rec.st='✅ RawBT รับงานแล้ว'+(j.late?' (หลังกดยืนยัน)':''); _plogSave();
+    const k=_unconf.indexOf(j); if(k>=0){ _unconf.splice(k,1); _bar(); }
+    if(!_blurSeen){ _blurSeen=true; try{ localStorage.setItem('saocafe_rb_blur','1'); }catch(e){} }
+  }
+  window.addEventListener('blur',_gotAway);
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') _gotAway(); });
+  function _click(h){ const a=document.createElement('a'); a.href=h; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{ a.remove(); }catch(e){} },1500); }
+  function _fire(job,byTap){
+    const rec=plog({what:job.m.what,no:job.m.no,kb:Math.round(job.h.length/1024),st:byTap?'ส่งใหม่ (แตะพิมพ์)':'ส่งเข้า RawBT'});
+    const j={h:job.h,m:job.m,rec,at:Date.now()};
+    _await.push(j);
+    try{ _click(job.h); }catch(e){ console.error('rawbt',e); rec.st='❌ เปิด RawBT ไม่ได้: '+e.message; _plogSave(); }
+    j.tm=setTimeout(()=>{                               // 4 วิแล้วหน้าเว็บยังไม่เสียโฟกัส = RawBT ไม่ได้เปิด (Chrome บล็อก/รอให้กดยืนยัน)
+      if(_await.indexOf(j)<0) return;
+      j.late=true; rec.st='⚠️ RawBT ไม่เปิด — Chrome บล็อก/รอกดยืนยัน'; _plogSave();
+      if((STORE.get().settings||{}).rbUnconfBar!==false) { _unconf.push(j); _bar(); }
+      setTimeout(()=>{ const k=_await.indexOf(j); if(k>=0) _await.splice(k,1); }, 120000);
+    }, 4000);
+  }
+  function _bar(){
+    let el=document.getElementById('rbBar');
+    const now=Date.now(); for(let i=_unconf.length-1;i>=0;i--) if(now-_unconf[i].at>15*60000) _unconf.splice(i,1);
+    if(!_unconf.length){ if(el) el.remove(); return; }
+    if(!el){ el=document.createElement('div'); el.id='rbBar';
+      el.style.cssText='position:fixed;left:10px;right:10px;bottom:12px;z-index:9998;background:#B3261E;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-weight:700';
+      document.body.appendChild(el); }
+    const list=_unconf.map(j=>esc((j.m.no||'')+' '+(j.m.what||''))+' · '+new Date(j.at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})).join('<br>');
+    el.innerHTML='<div style="flex:1 1 220px;font-size:15px;line-height:1.4">🖨️ ใบยังไม่ออก '+_unconf.length+' งาน<div style="font-size:13px;font-weight:600;opacity:.95">'+list+'</div></div>'
+      +'<button onclick="PRINT.retryUnconf()" style="padding:12px 18px;border-radius:12px;border:none;background:#fff;color:#B3261E;font-size:17px;font-weight:900">แตะพิมพ์'+(_unconf.length>1?' (ใบแรก)':'')+'</button>'
+      +'<button onclick="PRINT.dropUnconf()" style="padding:12px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.7);background:transparent;color:#fff;font-size:14px;font-weight:700">ออกแล้ว</button>';
+  }
+  function retryUnconf(){                               // เรียกจากการแตะ = มี user gesture -> Chrome เปิด RawBT ได้เลยไม่ถาม · แตะ 1 ครั้ง = 1 งาน (ชัวร์สุด)
+    const j=_unconf.shift(); _bar(); if(!j) return;
+    const k=_await.indexOf(j); if(k>=0){ clearTimeout(j.tm); _await.splice(k,1); }
+    j.rec.st='🔁 แตะพิมพ์ใหม่แล้ว'; _plogSave();
+    _fire({h:j.h,m:j.m},true); _rbLast=Date.now();
+  }
+  function dropUnconf(){
+    _unconf.splice(0,_unconf.length).forEach(j=>{ j.rec.st='☑️ พนักงานกด "ออกแล้ว"'; const k=_await.indexOf(j); if(k>=0){ clearTimeout(j.tm); _await.splice(k,1); } });
+    _plogSave(); _bar();
+  }
+  // ---- ประวัติการพิมพ์ (เก็บในเครื่อง 150 รายการล่าสุด) ----
+  let _plg=null;
+  function _plLoad(){ if(_plg) return _plg; try{ _plg=JSON.parse(localStorage.getItem('saocafe_printlog')||'[]'); }catch(e){ _plg=[]; } if(!Array.isArray(_plg)) _plg=[]; return _plg; }
+  function _plogSave(){ try{ localStorage.setItem('saocafe_printlog',JSON.stringify(_plLoad().slice(-150))); }catch(e){} }
+  function plog(e){ const r=Object.assign({t:Date.now(),dev:(STORE.deviceTag&&STORE.deviceTag())||'',vis:document.visibilityState==='visible'?1:0},e); _plLoad().push(r); if(_plg.length>170) _plg.splice(0,_plg.length-150); _plogSave(); return r; }
+  function _logText(){
+    return _plLoad().slice().reverse().map(r=>new Date(r.t).toLocaleString('th-TH',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})
+      +' ['+r.dev+(r.vis?'':' จอดับ')+'] '+(r.no?r.no+' ':'')+(r.what||'')+(r.kb?' '+r.kb+'KB':'')+' → '+(r.st||'')).join('\n');
+  }
+  function showLog(){
+    const st=STORE.get().settings||{};
+    $('#genModal').className='modal wide';
+    $('#genModal').innerHTML='<div class="modal-h"><h3>📋 ประวัติการพิมพ์ (เครื่องนี้)</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'
+      +'<div class="modal-b"><p style="font-size:13px;color:var(--muted);margin-bottom:8px">เครื่อง '+esc(STORE.deviceTag())+' · วิธีพิมพ์: '+esc(st.printMethod||'browser')+' · พิมพ์อัตโนมัติ: '+(st.autoPrint?'เปิด':'ปิด')+' · ตรวจการเปิด RawBT: '+(_blurSeen?'ใช้ได้':'ยังไม่เคยเห็น')+' · จอไม่ดับ: '+(_wl?'ทำงาน':'ไม่ทำงาน')+'</p>'
+      +'<textarea id="plogTxt" readonly style="width:100%;height:52vh;font-family:monospace;font-size:12.5px;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2);color:var(--text)">'+esc(_logText()||'— ยังไม่มีการพิมพ์ —')+'</textarea>'
+      +'<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn-gold" style="flex:1;padding:12px" onclick="PRINT.copyLog()">📋 คัดลอกส่งให้ผู้ดูแล</button><button class="btn-ghost" style="padding:12px" onclick="PRINT.clearLog()">ล้างประวัติ</button></div></div>';
+    UI.open('genOverlay');
+  }
+  function copyLog(){ const t='ประวัติการพิมพ์ SAO POS เครื่อง '+STORE.deviceTag()+'\n'+_logText(); try{ navigator.clipboard.writeText(t).then(()=>UI.toast('คัดลอกแล้ว — วางในไลน์ได้เลย','ok'),()=>{ const x=$('#plogTxt'); if(x){ x.select(); document.execCommand('copy'); UI.toast('คัดลอกแล้ว','ok'); } }); }catch(e){} }
+  function clearLog(){ _plg=[]; _plogSave(); showLog(); }
+  // ---- จอไม่ดับ ขณะเปิดพิมพ์อัตโนมัติ (จอดับ = Chrome หยุด/บล็อกการเปิด RawBT -> บิลไม่ออก) ----
+  let _wl=null;
+  async function keepAwake(){
+    try{ const st=STORE.get().settings||{};
+      if(!st.autoPrint||st.keepAwake===false||!('wakeLock' in navigator)||document.visibilityState!=='visible'||window._CUSTOMER_MODE) return;
+      if(_wl&&!_wl.released) return;
+      _wl=await navigator.wakeLock.request('screen'); _wl.addEventListener('release',()=>{ _wl=null; });
+    }catch(e){ _wl=null; }
+  }
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') keepAwake(); });
+  setTimeout(keepAwake,4000); document.addEventListener('click',()=>{ if(!_wl) keepAwake(); },{passive:true});
   function rawSend(bytes){
     let bin=''; for(let i=0;i<bytes.length;i++) bin+=String.fromCharCode(bytes[i]&0xFF);
     let b64=''; try{ b64=btoa(bin); }catch(e){ return false; }
@@ -11061,7 +11173,7 @@ const PRINT = (()=>{
     if(!ch) return false;
     try{ await ch.writeValue(new Uint8Array([0x1B,0x70,0x00,0x19,0xFA])); return true; }catch(e){ return false; }
   }
-  return {connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest,preview,warmLogo};
+  return {plog,showLog,copyLog,clearLog,retryUnconf,dropUnconf,keepAwake,connectBT,connected,statusText,escpos,build,tis620,kickDrawer,rawbt,rawbtImage,rawbtRaster,sizeProbe,rawSend,thaiTest,preview,warmLogo};
 })();
 
 /* ============================================================
@@ -11483,18 +11595,31 @@ const CLOUD = (()=>{
     if(_printedQR.has(o.id)) return;
     if(Math.abs(Date.now()-(o.createdAt||0))>3*3600000 && o.payStatus!=='paid') return;
     const me=STORE.deviceTag();
-    if(o.qrPrint&&o.qrPrint.dev&&o.qrPrint.dev!==me){ _printedQR.add(o.id); return; }   // ⭐ v12.30 เครื่องอื่นพิมพ์ไปแล้ว
+    if(o.qrPrint&&o.qrPrint.dev&&o.qrPrint.dev!==me){ _printedQR.add(o.id); _ql(o,'ข้าม — เครื่อง '+o.qrPrint.dev+' พิมพ์แล้ว'); return; }   // ⭐ v12.30 เครื่องอื่นพิมพ์ไปแล้ว
     _printedQR.add(o.id);
     const lead=_qrLead&&_qrLead.dev, h=_hashDev(me);
     const wait=(lead===me)?0:(!lead?(h%4)*1200:9000+(h%5)*1200);
-    setTimeout(()=>{
-      const cur=STORE.find('orders',o.id)||o;
-      if(cur.qrPrint&&cur.qrPrint.dev&&cur.qrPrint.dev!==me) return;            // ระหว่างรอ เครื่องอื่นพิมพ์แล้ว
+    if(wait) _ql(o,'รอเครื่องหลัก '+(lead||'?')+' '+Math.round(wait/1000)+' วิ');
+    setTimeout(()=>_qrGo(o.id,o,st), wait);
+  }
+  // ⭐ v12.31 เครื่องที่จอดับ/สลับไปแอปอื่น "ห้ามจอง" (Chrome ไม่ให้เปิด RawBT ตอนจอดับ -> จองแล้วไม่ออก เครื่องอื่นก็ข้าม = บิลหาย)
+  //   รอจนจอเปิด แล้วค่อยดูใหม่ว่ามีเครื่องอื่นพิมพ์ไปหรือยัง
+  const _qrDefer=new Map();
+  function _ql(o,st){ try{ PRINT.plog({what:'ออเดอร์สแกนสั่ง ('+(o.payStatus==='paid'?'จ่ายแล้ว':'จ่ายทีหลัง')+')',no:o.no||'',st}); }catch(e){} }
+  document.addEventListener('visibilitychange',()=>{ if(document.visibilityState!=='visible'||!_qrDefer.size) return;
+    const L=[..._qrDefer.entries()]; _qrDefer.clear(); setTimeout(()=>L.forEach(([id,a])=>_qrGo(id,a[0],a[1])),600); });
+  function _qrGo(id,o,st){
+    {
+      const me=STORE.deviceTag();
+      const cur=STORE.find('orders',id)||o;
+      if(cur.qrPrint&&cur.qrPrint.dev&&cur.qrPrint.dev!==me){ _ql(cur,'ข้าม — เครื่อง '+cur.qrPrint.dev+' พิมพ์แล้ว'); return; }   // ระหว่างรอ เครื่องอื่นพิมพ์แล้ว
       if(cur.status==='void'||cur.merged||cur.status==='wait_payment') return;
+      if(document.visibilityState==='hidden'){ _qrDefer.set(id,[o,st]); _ql(cur,'⏸️ จอดับ — ไม่จอง รอเปิดจอ'); return; }
+      _ql(cur,'เครื่องนี้พิมพ์');
       claimQR(cur);
       try{ STORE.save(); pushOrder(cur); }catch(e){}
       try{ if(cur.payStatus==='paid') PAY.autoPrint(cur); else if(st.kdsServeSlip) KDS.serveSlip(cur); }catch(e){ console.error('autoPrintQR',e); }
-    }, wait);
+    }
   }
   function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียว · ไม่เด้งของเก่า)
     if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
