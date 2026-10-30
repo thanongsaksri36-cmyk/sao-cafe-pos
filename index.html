@@ -6069,6 +6069,24 @@ const PENDING = (()=>{
     try{ UI.toast('🛎️ ออเดอร์ใหม่จากลูกค้าสแกนสั่ง!','ok'); }catch(e){}
     if(!sndTimer) sndTimer=setInterval(()=>{ if(waitList().length>0 && unseen>0 && rounds<3){ rounds++; ring(); } else seen(); },20000);  // ดังต่อเฉพาะมีออเดอร์ค้างจริง · สูงสุด 3 รอบ
   }
+  // ⭐ v12.34 Chrome ไม่ให้หน้าเว็บส่งเสียงจนกว่าจะมีคนแตะจอ 1 ครั้ง (หลังเปิด/รีเฟรช) -> ออเดอร์แรกเงียบ
+  function soundReady(){ try{ const ua=navigator.userActivation; if(ua&&!ua.hasBeenActive) return false; }catch(e){} return !ac||ac.state==='running'; }
+  function unlock(){
+    try{ ac=ac||new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume();
+      const o=ac.createOscillator(),g=ac.createGain(); g.gain.value=0.0001; o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.05); }catch(e){}
+    try{ if(window.speechSynthesis){ const u=new window.SpeechSynthesisUtterance(' '); u.volume=0; window.speechSynthesis.speak(u); } }catch(e){}
+    const b=document.getElementById('sndLockBar'); if(b) b.remove();
+  }
+  function _lockBar(){
+    if(window._CUSTOMER_MODE||STORE.get().settings.sndQR===false||soundReady()||document.getElementById('sndLockBar')) return;
+    const b=document.createElement('div'); b.id='sndLockBar';
+    b.style.cssText='position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:#8A5A00;color:#fff;padding:10px 18px;border-radius:24px;font-size:15px;font-weight:800;box-shadow:0 4px 16px rgba(0,0,0,.3);cursor:pointer;max-width:92vw;text-align:center';
+    b.textContent='🔇 แตะจอ 1 ครั้ง เพื่อเปิดเสียงแจ้งเตือนออเดอร์';
+    document.body.appendChild(b);
+  }
+  document.addEventListener('click',()=>{ if(!soundReady()||document.getElementById('sndLockBar')) unlock(); },true);
+  document.addEventListener('touchend',()=>{ if(document.getElementById('sndLockBar')) unlock(); },true);
+  setTimeout(_lockBar,5000); setInterval(_lockBar,30000);
   function seen(){
     unseen=0; rounds=0; if(sndTimer){ clearInterval(sndTimer); sndTimer=null; }
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
@@ -6219,7 +6237,7 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } if(waitList().length===0 && (unseen>0||sndTimer)) seen(); try{ UI.updateHamBadge(); }catch(e){} }
-  return {settleFull,render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
+  return {soundReady,unlock,settleFull,render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
 })();
 
 /* ============================================================
@@ -9190,7 +9208,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.33</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.34</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9424,7 +9442,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.33) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.34) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11591,9 +11609,9 @@ const CLOUD = (()=>{
   //   ไม่พิมพ์ย้อนออเดอร์ที่เกิดก่อนเปิดหน้านี้ (กันพิมพ์ซ้ำทั้งชุดตอนรีเฟรช) และเกิน 1 ชม.
   const _bootAt=Date.now(), _printedQR=new Set();
   function markPrinted(id){ if(id) _printedQR.add(id); }
-  let _primed=false;
+  let _primed=false; const _bootIds=new Set();
   function primeQR(){ if(_primed) return; _primed=true;
-    try{ (STORE.get().orders||[]).forEach(o=>{ if(o&&o.channel==='qr'){ _seeClaim(o.qrPrint); if(o.payStatus==='open'||o.payStatus==='paid'||o.status==='void'||o.status==='done') _printedQR.add(o.id); } }); }catch(e){} }
+    try{ (STORE.get().orders||[]).forEach(o=>{ if(o&&o.channel==='qr'){ _bootIds.add(o.id); _seeClaim(o.qrPrint); if(o.payStatus==='open'||o.payStatus==='paid'||o.status==='void'||o.status==='done') _printedQR.add(o.id); } }); }catch(e){} }
   let _qrLead=null;                                // เครื่องที่พิมพ์ออเดอร์ QR ล่าสุด {dev,at}
   function _seeClaim(c){ if(c&&typeof c==='object'&&c.dev&&(!_qrLead||(+c.at||0)>=(+_qrLead.at||0))) _qrLead={dev:String(c.dev).slice(0,12),at:+c.at||0}; }
   function claimQR(o){ if(!o||o.channel!=='qr') return; o.qrPrint={dev:STORE.deviceTag(),at:Date.now()}; _seeClaim(o.qrPrint); _printedQR.add(o.id); }
@@ -11638,18 +11656,21 @@ const CLOUD = (()=>{
     }
   }
   function noticeQR(o){                            // ออเดอร์ QR ใหม่ -> เสียง+ป้าย+Telegram (ครั้งเดียว · ไม่เด้งของเก่า)
-    if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid()) return;
-    if(o.qrNotified || _qrNoticed.has(o.id)) return;
-    _qrNoticed.add(o.id); o.qrNotified=true;
+    if(!o || o.channel!=='qr' || (o.branchId||'BR-001')!==STORE.bid() || window._CUSTOMER_MODE) return;
+    primeQR();
+    if(_qrNoticed.has(o.id) || _bootIds.has(o.id)) return;   // ⭐ v12.34 จำต่อเครื่อง (เดิมใช้ธงบน cloud -> เครื่องอื่นเงียบ)
+    _qrNoticed.add(o.id);
     const needs=(o.status!=='void'&&o.status!=='done');   // ออเดอร์ QR ใหม่ทุกสถานะที่ยังทำงาน -> แจ้งพนักงาน (รวมตรวจสลิปผ่านเข้าครัว)
-    const fresh=(Date.now()-(o.createdAt||0))<10*60000;   // เฉพาะออเดอร์เพิ่งเข้า กันเสียงเด้งตอน sync/reconnect ของเก่า
+    const fresh=Math.abs(Date.now()-(o.createdAt||0))<6*3600000;   // ⭐ v12.34 ไม่มีในเครื่องตอนเปิดหน้า = ใหม่ (เผื่อนาฬิกามือถือลูกค้าเพี้ยนได้ 6 ชม.)
     if(needs&&fresh){
       try{ PENDING.alertNew(); }catch(e){}
-      try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}
+      try{ PRINT.plog({what:'🔔 ออเดอร์สแกนสั่งเข้า (เสียงเตือน'+(PENDING.soundReady()?'':' — ⚠️ เสียงยังถูกล็อก รอแตะจอ')+')',no:o.no||'',st:'โต๊ะ '+(o.table||'-')}); }catch(e){}
+      const _first=!o.qrNotified; o.qrNotified=true;
+      if(_first) try{ LINEN.send(LINEN.qrMsg(o),'qr'); }catch(e){}   // LINE/Telegram ส่งครั้งเดียวทั้งร้าน
       try{ autoPrintQR(o);
            if((o.payStatus==='paid'||o.payStatus==='open') && authUser && !window._CUSTOMER_MODE){ try{ INV.deduct(o); }catch(e){} }   // ⭐ v11.5 ตัดสต็อกทันทีที่ออเดอร์ถึงเครื่องร้าน (เดิมรอครัวกดเปลี่ยนสถานะ ร้านที่ดูใบครัวอย่างเดียวจะไม่เคยตัด)   // ⭐ v11.3 โต๊ะ "จ่ายตอนกลับ": ของเข้าครัวเลย -> ใบครัวต้องออกทันที (เดิมพิมพ์เฉพาะบิลที่จ่ายแล้ว)
       }catch(e){}   // จ่ายแล้ว (ตรวจสลิปผ่าน) -> ปริ้นใบเสร็จ+ครัวอัตโนมัติ (ถ้าเปิด)
-      try{ pushOrder(o); }catch(e){}
+      if(_first) try{ pushOrder(o); }catch(e){}
     }
   }
   let _olPull=0;
