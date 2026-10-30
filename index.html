@@ -9190,7 +9190,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.32</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.33</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9424,7 +9424,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.32) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.33) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11057,6 +11057,10 @@ const PRINT = (()=>{
       }
       _rbFw=0;
       const jobs=_rbMerge(_rbQ.splice(0,_rbQ.length));
+      if(_needTap()){                                     // ไม่มีการแตะจอ = Chrome จะถาม -> เก็บไว้ให้แตะพิมพ์แทน
+        jobs.forEach(j=>_unconf.push({h:j.h,m:j.m,at:Date.now(),tm:0,rec:plog({what:j.m.what,no:j.m.no,kb:Math.round(j.h.length/1024),st:'👆 รอแตะพิมพ์ (Chrome ไม่ให้เปิด RawBT เองถ้าไม่มีการแตะจอ)'})}));
+        _bar(true); return;
+      }
       const first=jobs.shift(); _rbQ.unshift(...jobs);
       _fire(first,false);
       _rbLast=Date.now(); _rbPump();
@@ -11088,15 +11092,27 @@ const PRINT = (()=>{
       setTimeout(()=>{ const k=_await.indexOf(j); if(k>=0) _await.splice(k,1); }, 120000);
     }, 4000);
   }
-  function _bar(){
+  function _needTap(){ try{ const ua=navigator.userActivation; return !!ua && !ua.isActive && (STORE.get().settings||{}).rbTapMode!==false; }catch(e){ return false; } }
+  let _ding=null;
+  function _dingOn(on){                                 // เสียงเตือนทุก 15 วิ จนกว่าจะแตะพิมพ์ (สูงสุด 10 นาที)
+    if(!on){ if(_ding){ clearInterval(_ding.t); _ding=null; } return; }
+    if(_ding) return;
+    _ding={n:0,t:setInterval(()=>{ if(!_unconf.length||++_ding.n>40){ _dingOn(false); return; } try{ PENDING.beep(); }catch(e){} },15000)};
+    try{ PENDING.beep(); }catch(e){}
+  }
+  // แตะจอตรงไหนก็ได้ = พิมพ์ใบที่รออยู่ (การแตะให้สิทธิ์เปิดแอปโดย Chrome ไม่ถาม)
+  document.addEventListener('click',e=>{ if(!_unconf.length) return; try{ if(e.target&&e.target.closest&&e.target.closest('#rbBar')) return; }catch(x){} retryUnconf(); },true);
+  function _bar(isNew){
     let el=document.getElementById('rbBar');
+    if(isNew) _dingOn(true);
+    if(!_unconf.length) _dingOn(false);
     const now=Date.now(); for(let i=_unconf.length-1;i>=0;i--) if(now-_unconf[i].at>15*60000) _unconf.splice(i,1);
     if(!_unconf.length){ if(el) el.remove(); return; }
     if(!el){ el=document.createElement('div'); el.id='rbBar';
       el.style.cssText='position:fixed;left:10px;right:10px;bottom:12px;z-index:9998;background:#B3261E;color:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-weight:700';
       document.body.appendChild(el); }
     const list=_unconf.map(j=>esc((j.m.no||'')+' '+(j.m.what||''))+' · '+new Date(j.at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})).join('<br>');
-    el.innerHTML='<div style="flex:1 1 220px;font-size:15px;line-height:1.4">🖨️ ใบยังไม่ออก '+_unconf.length+' งาน<div style="font-size:13px;font-weight:600;opacity:.95">'+list+'</div></div>'
+    el.innerHTML='<div style="flex:1 1 220px;font-size:17px;line-height:1.4">🖨️ มีใบรอพิมพ์ '+_unconf.length+' งาน — แตะเพื่อพิมพ์<div style="font-size:12.5px;font-weight:600;opacity:.9">แตะปุ่ม หรือแตะจอตรงไหนก็ได้</div><div style="font-size:13px;font-weight:600;opacity:.95">'+list+'</div></div>'
       +'<button onclick="PRINT.retryUnconf()" style="padding:12px 18px;border-radius:12px;border:none;background:#fff;color:#B3261E;font-size:17px;font-weight:900">แตะพิมพ์'+(_unconf.length>1?' (ใบแรก)':'')+'</button>'
       +'<button onclick="PRINT.dropUnconf()" style="padding:12px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.7);background:transparent;color:#fff;font-size:14px;font-weight:700">ออกแล้ว</button>';
   }
