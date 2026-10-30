@@ -4604,7 +4604,6 @@ const PAY = (()=>{
       <div class="modal-b">
         <div class="opt-chips" style="margin-bottom:16px">
           <button class="opt-chip sel" data-m="cash" onclick="PAY.setMethod('cash')">💵 เงินสด</button>
-          <button class="opt-chip" data-m="promptpay" onclick="PAY.setMethod('promptpay')">📱 PromptPay</button>
           <button class="opt-chip" data-m="transfer" onclick="PAY.setMethod('transfer')">🏦 โอน</button>
           <button class="opt-chip" data-m="card" onclick="PAY.setMethod('card')">💳 บัตรเครดิต</button>
           <button class="opt-chip" data-m="thaichuay" onclick="PAY.setMethod('thaichuay')">🤝 ไทยช่วยไทย 60/40</button>
@@ -6155,7 +6154,6 @@ const PENDING = (()=>{
       <div class="modal-b"><p style="color:var(--muted);font-size:13px;margin-bottom:12px">เลือกวิธีรับชำระ</p>
       <div class="opt-chips">
         <button class="opt-chip" onclick="PENDING.settlePay('${o.id}','cash')">💵 เงินสด</button>
-        <button class="opt-chip" onclick="PENDING.settleQR('${o.id}','promptpay')">📱 PromptPay</button>
         <button class="opt-chip" onclick="PENDING.settleQR('${o.id}','transfer')">🏦 โอน</button>
       </div></div>`;
     UI.open('genOverlay');
@@ -7381,13 +7379,13 @@ const HISTORY = (()=>{
   function receipt(id){ const o=STORE.find('orders',id); if(o) PAY.receipt(o); }
   function voidIt(id){ voidOrder(id); }
   // ⭐ v12.24 แก้วิธีชำระของบิลที่จ่ายแล้ว (กดผิด เงินสด <-> โอน ฯลฯ) โดยไม่ต้องยกเลิกบิล · ปรับยอดเงินสดในลิ้นชักให้อัตโนมัติ
-  const PAYM=['cash','promptpay','transfer','card','thaichuay','grab','lineman','shopee'];
+  const PAYM=['cash','promptpay','transfer','card','thaichuay','grab','lineman','shopee'];   // promptpay คงไว้ให้แก้บิลเก่าได้ แต่ไม่ให้เลือกใหม่
   function changePay(id){
     const o=STORE.find('orders',id); if(!o||!isPaidOrder(o)){ UI.toast('เปลี่ยนได้เฉพาะบิลที่ชำระแล้ว','err'); return; }
     $('#genModal').className='modal';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>💳 เปลี่ยนวิธีชำระ · ${esc(o.no)} · ${STORE.baht(o.total)}</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><p style="font-size:14px;margin-bottom:10px">ตอนนี้: <b>${esc(payLabel(o.method))}</b> → เลือกวิธีที่ถูกต้อง</p>
-      <div class="opt-chips">${PAYM.filter(m=>m!==o.method).map(m=>`<button class="opt-chip" onclick="HISTORY.changePayTo('${o.id}','${m}')">${esc(payLabel(m))}</button>`).join('')}</div>
+      <div class="opt-chips">${PAYM.filter(m=>m!==o.method&&m!=='promptpay').map(m=>`<button class="opt-chip" onclick="HISTORY.changePayTo('${o.id}','${m}')">${esc(payLabel(m))}</button>`).join('')}</div>
       <p style="color:var(--muted);font-size:12.5px;margin-top:12px;line-height:1.6">• ยอดเงินสดในลิ้นชักของกะปรับให้อัตโนมัติ<br>• ระบบบันทึกไว้ว่าใครแก้ เมื่อไหร่</p></div>`;
     UI.open('genOverlay');
   }
@@ -9208,7 +9206,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.34</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.35</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9442,7 +9440,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.34) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.35) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9948,7 +9946,7 @@ const SPLIT = (()=>{
         <div style="margin-top:10px"><div style="font-size:13px;font-weight:600;margin-bottom:6px">วิธีชำระบิลนี้</div>
           <div class="opt-chips">
             <button class="opt-chip ${method==='cash'?'sel':''}" onclick="SPLIT.render('cash')">💵 เงินสด</button>
-            <button class="opt-chip ${method==='promptpay'?'sel':''}" onclick="SPLIT.render('promptpay')">📱 PromptPay</button>
+            <button class="opt-chip ${method==='transfer'?'sel':''}" onclick="SPLIT.render('transfer')">🏦 โอน</button>
           </div>
           ${method==='promptpay'?`<div style="text-align:center;margin-top:10px"><div class="qr-box" id="spQR"></div></div>`:''}
         </div>
