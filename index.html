@@ -6103,6 +6103,7 @@ const PENDING = (()=>{
          <button class="btn btn-ghost" style="flex:1;padding:11px" onclick="PAY.kitchenSlip('${o.id}')">🖨️ ใบครัว</button>
          <button class="btn btn-danger" style="flex:1;padding:11px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`
       : `<button class="btn btn-pay" style="flex:1 1 100%;padding:11px;background:var(--gold)" onclick="PENDING.settleFull('${o.id}')">💰 ปิดบิล · รับเงิน</button>
+         <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.editOrder('${o.id}')">✏️ แก้รายการ</button>
          <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PAY.kitchenSlip('${o.id}')">🖨️ ใบครัว</button>
          <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.moveTable('${o.id}')">🔀 ย้ายโต๊ะ</button>
          <button class="btn btn-danger" style="flex:1;padding:10px" onclick="PENDING.cancel('${o.id}')">ยกเลิก</button>`;
@@ -6144,7 +6145,7 @@ const PENDING = (()=>{
     const rounds=open?'<div style="margin:10px 0 4px;border-top:1px dashed var(--line);padding-top:8px">'+g.map((o,i)=>
         '<div style="padding:8px 0;border-bottom:1px dashed var(--line)"><div style="display:flex;justify-content:space-between;font-size:13px"><b>รอบ '+(i+1)+' · '+tm(o)+(o.guest?' · คุณ '+esc(o.guest):'')+'</b><b>'+STORE.baht(o.total)+'</b></div>'
         +'<div style="font-size:12.5px;color:var(--muted);margin:3px 0 6px">'+o.items.map(it=>esc(it.qty+'× '+it.name)).join(', ')+'</div>'
-        +'<div style="display:flex;gap:6px"><button class="btn btn-ghost" style="flex:1;padding:7px;font-size:12.5px" onclick="PAY.kitchenSlip(\''+o.id+'\')">🖨️ ใบครัวรอบนี้</button>'
+        +'<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost" style="flex:1;padding:7px;font-size:12.5px" onclick="PENDING.editOrder(\''+o.id+'\')">✏️ แก้รายการ</button><button class="btn btn-ghost" style="flex:1;padding:7px;font-size:12.5px" onclick="PAY.kitchenSlip(\''+o.id+'\')">🖨️ ใบครัวรอบนี้</button>'
         +'<button class="btn btn-danger" style="flex:1;padding:7px;font-size:12.5px" onclick="PENDING.cancel(\''+o.id+'\')">ยกเลิกรอบนี้</button></div></div>').join('')+'</div>':'';
     return `<div class="stat-card" style="border-left:5px solid var(--success)">
       <div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:17px">🪑 โต๊ะ ${esc(t)}</b><span class="pill lo">รวม ${g.length} บิล</span></div>
@@ -6152,7 +6153,7 @@ const PENDING = (()=>{
       <div class="sr tot" style="margin:6px 0 12px"><span>ยอดรวมทั้งโต๊ะ</span><span>${STORE.baht(total)}</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-pay" style="flex:1 1 100%;padding:11px;background:var(--gold)" onclick="PENDING.settleFull('${g[0].id}')">💰 ปิดบิลทั้งโต๊ะ · รับเงิน</button>
-        <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.toggleG('${tq}')">${open?'▲ ซ่อนรายรอบ':'📋 ดูแยกรอบ ('+g.length+')'}</button>
+        <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.toggleG('${tq}')">${open?'▲ ซ่อนรายรอบ':'📋 ดูแยกรอบ / แก้รายการ ('+g.length+')'}</button>
         <button class="btn btn-ghost" style="flex:1;padding:10px" onclick="PENDING.moveAll('${tq}')">🔀 ย้ายโต๊ะ</button>
       </div>${rounds}</div>`;
   }
@@ -6244,6 +6245,76 @@ const PENDING = (()=>{
       LINEN.send(LINEN.voidMsg(o,'ยกเลิก/ไม่ชำระ'),'voided');
     }),true);
   }
+  let _ed=null;                                       // {id, q:{line:จำนวนใหม่}, slip}
+  const _canEdit=o=>!!o&&o.status!=='void'&&(o.payStatus==='open'||o.payStatus==='wait_cash');
+  function editOrder(id){
+    const o=STORE.find('orders',id); if(!o) return;
+    if(!_canEdit(o)){ UI.toast('แก้ได้เฉพาะบิลที่ยังไม่ชำระเงิน','err'); return; }
+    (o.items||[]).forEach(it=>{ if(!it.line) it.line=STORE.uuid(); });
+    _ed={id,q:{},slip:(STORE.get().settings||{}).kdsServeSlip!==false};
+    o.items.forEach(it=>{ _ed.q[it.line]=+it.qty||0; });
+    _edRender(); UI.open('genOverlay');
+  }
+  function _edRender(){
+    const o=_ed&&STORE.find('orders',_ed.id); if(!o) return;
+    const rows=o.items.map(it=>{ const q=_ed.q[it.line], orig=+it.qty||0, ch=q!==orig, L=String(it.line).replace(/'/g,'');
+      const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+      return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px dashed var(--line);'+(q===0?'opacity:.55;':'')+'">'
+        +'<div style="flex:1;min-width:0"><b style="font-size:15px;'+(q===0?'text-decoration:line-through':'')+'">'+esc(it.name)+'</b>'
+        +(mt?'<div style="font-size:12.5px;color:var(--muted)">+ '+esc(mt)+'</div>':'')+(it.note?'<div style="font-size:12.5px;color:var(--warn)">📝 '+esc(it.note)+'</div>':'')
+        +(ch?'<div style="font-size:12.5px;color:var(--danger);font-weight:700">ลบออก '+(orig-q)+' ชิ้น</div>':'')+'</div>'
+        +'<button class="btn btn-ghost" style="width:44px;height:44px;padding:0;font-size:22px" onclick="PENDING.edStep(\''+L+'\',-1)">−</button>'
+        +'<b style="min-width:30px;text-align:center;font-size:18px">'+q+'</b>'
+        +'<button class="btn btn-ghost" style="width:44px;height:44px;padding:0;font-size:22px" '+(q>=orig?'disabled':'')+' onclick="PENDING.edStep(\''+L+'\',1)">+</button>'
+        +'<button class="btn btn-danger" style="width:44px;height:44px;padding:0;font-size:18px" onclick="PENDING.edStep(\''+L+'\',-999)">🗑️</button></div>'; }).join('');
+    const nItems=o.items.map(it=>Object.assign({},it,{qty:_ed.q[it.line]})).filter(it=>it.qty>0);
+    const sub=nItems.reduce((a,it)=>a+((+it.base||0)+(+it.modPrice||0))*it.qty,0);
+    const nt=POS.totals(sub,0,(STORE.curBranch()||{}).taxCfg||null).total;
+    const head=o.table?'โต๊ะ '+esc(o.table):esc(o.no);
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML='<div class="modal-h"><h3>✏️ แก้รายการ · '+head+'</h3><button class="x" onclick="UI.close(\'genOverlay\')">×</button></div>'
+      +'<div class="modal-b"><p style="font-size:12.5px;color:var(--muted);margin-bottom:4px">ลดจำนวน หรือ 🗑️ ลบ ได้อย่างเดียว (เพิ่มของใหม่ ให้สั่งเพิ่มที่หน้าขาย) · ต้องมีสิทธิ์ยกเลิกบิล หรือผู้จัดการอนุมัติ</p>'+rows
+      +'<div class="sr" style="margin-top:10px"><span>ยอดเดิม</span><span>'+STORE.baht(o.total)+'</span></div>'
+      +'<div class="sr tot"><span>ยอดใหม่</span><span>'+STORE.baht(nt)+'</span></div>'
+      +'<label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;cursor:pointer"><input type="checkbox" '+(_ed.slip?'checked':'')+' onchange="PENDING.edSlip(this.checked)" style="width:20px;height:20px"> 🖨️ พิมพ์ใบ "❌ ยกเลิกรายการ" เข้าครัว</label></div>'
+      +'<div class="modal-f"><button class="btn-ghost" onclick="UI.close(\'genOverlay\')">ปิด</button><button class="btn-gold" onclick="PENDING.edSave()">💾 บันทึกการแก้ไข</button></div>';
+  }
+  function edStep(line,d){ const o=_ed&&STORE.find('orders',_ed.id); if(!o) return; const it=o.items.find(x=>String(x.line)===String(line)); if(!it) return;
+    _ed.q[it.line]=Math.max(0,Math.min(+it.qty||0,(_ed.q[it.line]||0)+d)); _edRender(); }
+  function edSlip(v){ if(_ed) _ed.slip=!!v; }
+  function edSave(){
+    const ed=_ed, o=ed&&STORE.find('orders',ed.id); if(!o) return;
+    const removed=o.items.map(it=>({it,n:(+it.qty||0)-(ed.q[it.line]||0)})).filter(x=>x.n>0);
+    if(!removed.length){ UI.close('genOverlay'); return; }
+    const what=removed.map(x=>x.n+'× '+x.it.name).join(', ');
+    const head=o.table?'โต๊ะ '+o.table:o.no;
+    UI.close('genOverlay');
+    AUTH.requireApproval('แก้รายการบิล '+head+' (ลบ '+what+')',()=>{
+      const cur=STORE.find('orders',ed.id);
+      if(!_canEdit(cur)){ UI.toast('บิลนี้ถูกปิด/ชำระไปแล้ว แก้ไม่ได้','err'); render(); return; }
+      // คืนสต็อกเฉพาะส่วนที่ลบ (ถ้าบิลนี้ตัดสต็อกไปแล้ว)
+      if(cur.stockDeducted){ const touched=new Map();
+        removed.forEach(x=>{ const agg=INV.linesOf(x.it); Object.keys(agg).forEach(id=>{ const amt=agg[id]*x.n; const ig=STORE.find('ingredients',id); if(!ig||!amt) return;
+          let back=amt; if(cur.stockUsed&&typeof cur.stockUsed==='object'&&cur.stockUsed[id]!=null){ back=Math.min(amt,+cur.stockUsed[id]||0); cur.stockUsed[id]=Math.max(0,(+cur.stockUsed[id]||0)-back); }
+          if(back>0){ ig.stock+=back; touched.set(ig.id,ig); } }); });
+        touched.forEach(ig=>{ try{ CLOUD.pushItem('ingredients',ig); }catch(e){} }); }
+      cur.items=cur.items.map(it=>Object.assign({},it,{qty:ed.q[it.line]!=null?ed.q[it.line]:it.qty})).filter(it=>(+it.qty||0)>0);
+      const me=(AUTH.get&&AUTH.get())||{};
+      (cur.edits||(cur.edits=[])).push({at:STORE.now(),by:me.name||'',removed:removed.map(x=>({name:x.it.name,qty:x.n,price:(+x.it.base||0)+(+x.it.modPrice||0)})),before:cur.total});
+      if(!cur.items.length){                          // ลบหมดทุกรายการ = ยกเลิกทั้งบิล
+        cur.status='void'; cur.payStatus='void'; cur.voidReason='ลบรายการออกหมด'; cur.closedAt=STORE.now();
+      } else {
+        cur.subtotal=cur.items.reduce((a,it)=>a+((+it.base||0)+(+it.modPrice||0))*(+it.qty||0),0);
+        const _t=POS.totals(cur.subtotal,0,(STORE.curBranch()||{}).taxCfg||null); cur.vat=_t.vat; cur.service=_t.service; cur.discount=0; cur.total=_t.total;
+      }
+      STORE.save(); CLOUD.pushOrder(cur); KDS.updateBadge(); updateBadge(); render();
+      try{ FLOOR.render&&NAV.cur&&NAV.cur()==='floor'&&FLOOR.render(true); }catch(e){}
+      if(ed.slip){ try{ const pseudo=Object.assign({},cur,{note:'❌ ยกเลิกรายการ — ไม่ต้องทำ',items:removed.map(x=>Object.assign({},x.it,{qty:x.n,name:'❌ ยกเลิก '+x.it.name,note:''}))});
+        PAY.printDocs(KDS.serveSlipDocs(pseudo),true); }catch(e){ console.error('cancel slip',e); } }
+      try{ LINEN.send('✏️ แก้รายการบิล!\n'+LINEN.SEP+'\n🧾 บิล: '+(cur.no||'-')+(cur.table?' · โต๊ะ '+cur.table:'')+'\n❌ ลบ: '+what+'\n💸 ยอด: '+STORE.baht(cur.edits[cur.edits.length-1].before)+' → '+(cur.status==='void'?'ยกเลิกทั้งบิล':STORE.baht(cur.total))+'\n👤 พนักงาน: '+(me.name||'-')+'\n🕐 '+LINEN.thDT(Date.now()),'voided'); }catch(e){}
+      UI.toast(cur.status==='void'?'ลบรายการหมด — ยกเลิกบิลแล้ว':'แก้รายการแล้ว · ยอดใหม่ '+STORE.baht(cur.total),'ok');
+    },'void');
+  }
   function moveTable(id){
     const o=STORE.find('orders',id); if(!o) return;
     const tables=STORE.scoped('tables').filter(t=>t.active&&!t.deletedAt&&t.kind!=='deco'&&t.name!==o.table);
@@ -6278,7 +6349,7 @@ const PENDING = (()=>{
     STORE.save(); CLOUD.pushOrder(target); CLOUD.pushOrder(src); KDS.updateBadge(); updateBadge();
   }
   function updateBadge(){ const b=$('#pendingBdg'); if(b){ const nn=waitList().length+openTabs().length; b.textContent=nn; b.classList.toggle('hidden',nn===0); } if(waitList().length===0 && (unseen>0||sndTimer)) seen(); try{ UI.updateHamBadge(); }catch(e){} }
-  return {toggleG,moveAll,moveAllTo,soundReady,unlock,settleFull,render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
+  return {editOrder,edStep,edSlip,edSave,toggleG,moveAll,moveAllTo,soundReady,unlock,settleFull,render,confirm,settle,settleQR,settlePay,cancel,moveTable,moveTo,updateBadge,waitList,openTabs,alertNew,seen,beep,testVoice,voiceInfo,viewSlip};
 })();
 
 /* ============================================================
@@ -9249,7 +9320,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.36</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.37</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9483,7 +9554,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.36) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.37) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
