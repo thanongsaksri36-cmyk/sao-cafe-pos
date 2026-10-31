@@ -9320,7 +9320,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.37</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.38</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9554,7 +9554,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.37) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.38) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -9763,7 +9763,7 @@ const SETTINGS = (()=>{
     const e=($('#cloudEmail')||{}).value||'', p=($('#cloudPw')||{}).value||'';
     if(!e||!p){ UI.toast('กรอกอีเมล + รหัสผ่าน','err'); return; }
     const {error}=await CLOUD.signIn(e,p);
-    if(!error){ const b=await CLOUD.myBranch(); if(b && AUTH.isHQ&&!AUTH.isHQ()){ STORE.setBid(b); BRANCH.renderChip(); } render(); }
+    if(!error){ await CLOUD.acctScope(); const a=CLOUD.acct(); if(!(a&&a.hq===false)){ const b=await CLOUD.myBranch(); if(b && AUTH.isHQ&&!AUTH.isHQ()){ STORE.setBid(b); BRANCH.renderChip(); } } render(); }
   }
   async function cloudSignOut(){ await CLOUD.signOut(); render(); }
   // สร้างไฟล์ .bat เปิด Chrome โหมด kiosk-printing ให้ลูกค้าดาวน์โหลดเอง (URL ดึงจากหน้าที่เปิดอยู่จริง)
@@ -10250,9 +10250,11 @@ const LINEN = (()=>{   // แจ้งเตือน Telegram (บอทเด�
 const BRANCH = (()=>{
   function list(){ return STORE.get().branches||[]; }
   function cur(){ return STORE.curBranch(); }
-  function renderChip(){ try{ SETTINGS.applyBrandColor(); }catch(e){} const b=cur(); const el=$('#branchName'); if(el) el.textContent=b?b.name:(STORE.bid()+' (กำลังโหลด…)'); const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
+  function renderChip(){ try{ SETTINGS.applyBrandColor(); }catch(e){} const b=cur(); const el=$('#branchName'); if(el) el.textContent=(b?b.name:(STORE.bid()+' (กำลังโหลด…)'))+(CLOUD.branchLocked&&CLOUD.branchLocked()?' 🔒':''); const chip=$('#branchChip'); if(chip){ const hq=AUTH.isHQ&&AUTH.isHQ(); chip.style.cursor=hq?'pointer':'default'; chip.style.opacity=hq?'1':'0.85'; chip.title=hq?'สลับสาขา':'สาขาของคุณ (สลับได้เฉพาะ HQ)'; } }
   function typeTh(t){ return t==='franchise'?'แฟรนไชส์':'เจ้าของเอง'; }
+  function _lockMsg(){ const a=CLOUD.acct()||{}; UI.toast('🔒 เครื่องนี้ล็อกอินบัญชีสาขา '+(a.email||'')+' — ใช้ได้เฉพาะ '+(((list().find(x=>x.id===a.branch)||{}).name)||a.branch)+' · จะสลับสาขาต้องล็อกอินบัญชี HQ','err'); }
   function switcher(){
+    if(CLOUD.branchLocked()){ _lockMsg(); return; }
     if(!AUTH.isHQ()){ UI.toast('สลับสาขาได้เฉพาะผู้ดูแลระบบ (HQ) — ตั้งได้ที่ พนักงาน → ดูได้ทุกสาขา','err'); return; }
     const curId=STORE.bid(), isOwner=AUTH.isHQ();
     $('#genModal').className='modal';
@@ -10269,12 +10271,14 @@ const BRANCH = (()=>{
     UI.open('genOverlay');
   }
   function setCurrent(id){
+    if(CLOUD.branchLocked()&&id!==(CLOUD.acct()||{}).branch){ _lockMsg(); return; }
     STORE.setBid(id); renderChip(); UI.close('genOverlay');
     UI.toast('สลับเป็น '+((cur()||{}).name||'')+' แล้ว','ok');
     if(typeof NAV!=='undefined'&&NAV.cur) NAV.go(NAV.cur()); // รีเฟรชหน้าปัจจุบัน
   }
   // ด่านเดียวใช้ร่วมกันทุกปุ่มที่แก้โครงสร้างสาขา
   function gateHQ(){
+    if(CLOUD.branchLocked()){ _lockMsg(); return false; }
     if(!AUTH.isHQ()){ UI.toast('เฉพาะผู้ดูแลระบบ (HQ)','err'); return false; }
     if(STORE.atHQ()) return true;
     const h=list().find(b=>b.id===STORE.hqBid());
@@ -11367,7 +11371,30 @@ const CLOUD = (()=>{
       return {data,error};
     }catch(e){ UI.toast('ผิดพลาด: '+(e.message||e),'err'); return {error:{message:e.message||String(e)}}; }
   }
-  async function signOut(){ try{ if(client&&client.auth) await client.auth.signOut(); }catch(e){} authUser=null; UI.toast('ออกจากระบบ cloud แล้ว','ok'); refresh(); }
+  async function signOut(){ try{ if(client&&client.auth) await client.auth.signOut(); }catch(e){} authUser=null; _acct=null; try{ localStorage.removeItem('saocafe_acct'); }catch(e){} UI.toast('ออกจากระบบ cloud แล้ว','ok'); refresh(); }
+  // สิทธิ์ของบัญชีที่ล็อกอิน: สาขาที่ผูก + เป็น HQ ไหม (อ่านจากแถวของตัวเองใน branch_users)
+  let _acct=null;
+  function acct(){ if(_acct) return _acct; try{ return JSON.parse(localStorage.getItem('saocafe_acct')||'null'); }catch(e){ return null; } }
+  function branchLocked(){ const a=acct(); return !!(a&&a.branch&&a.hq===false); }
+  async function acctScope(){
+    if(!client||!authUser||window._CUSTOMER_MODE) return acct();
+    let br=null, hq=null;
+    try{ const r=await client.from('branch_users').select('branch_id,is_hq').eq('user_id',authUser.id).limit(1);
+      if(!r.error&&r.data&&r.data.length){ br=r.data[0].branch_id||null; hq=r.data[0].is_hq===true; } }catch(e){}
+    if(!br){ try{ const r=await client.rpc('my_branch'); if(!r.error&&r.data) br=r.data; }catch(e){} }
+    if(hq===null){ try{ const r=await client.rpc('am_hq'); if(!r.error) hq=r.data===true; }catch(e){} }
+    if(!br||hq===null) return acct();                   // อ่านสิทธิ์ไม่ได้ -> ไม่ล็อก (ไม่เดา)
+    _acct={branch:br,hq,email:authUser.email||''};
+    try{ localStorage.setItem('saocafe_acct',JSON.stringify(_acct)); }catch(e){}
+    enforceBranch(); return _acct;
+  }
+  function enforceBranch(){
+    const a=acct(); if(!a||!a.branch||a.hq!==false||STORE.bid()===a.branch) return;
+    STORE.setBid(a.branch);
+    try{ BRANCH.renderChip(); }catch(e){}
+    try{ if(typeof NAV!=='undefined'&&NAV.cur) NAV.go(NAV.cur()); }catch(e){}
+    try{ UI.toast('บัญชี '+a.email+' ใช้ได้เฉพาะสาขา '+a.branch+' — ตั้งเครื่องเป็นสาขานี้ให้แล้ว','ok'); }catch(e){}
+  }
   // ดึงสาขาที่บัญชีนี้ผูกไว้ (จากตาราง branch_users) — ใช้ตั้งสาขาให้ตรงกับสิทธิ์ DB
   async function myBranch(){
     if(!client||!authUser) return null;
@@ -11383,7 +11410,7 @@ const CLOUD = (()=>{
       if(error){ status='error'; if(!silent) UI.toast('เชื่อมต่อไม่ได้: '+error.message,'err'); }
       else { status='online'; if(!silent) UI.toast('เชื่อมต่อ Supabase สำเร็จ ✅','ok');
              if(window._CUSTOMER_MODE){ flushQ(); }                       // ⭐ v11.2 มือถือลูกค้า: ส่งออเดอร์ที่ค้างอย่างเดียว ไม่ subscribe/ไม่ดึงตารางหลังร้าน
-             else { subscribeAll(); flushQ(); pullSync(); } }
+             else { subscribeAll(); flushQ(); pullSync(); acctScope(); } }
     }catch(e){ status='error'; if(!silent) UI.toast('ผิดพลาด: '+(e.message||e),'err'); }
     refresh();
   }
@@ -11967,7 +11994,7 @@ const CLOUD = (()=>{
   function getClient(){ return client; }
   function statusText(){ return ({off:'⚪ ไม่ได้เชื่อม (ออฟไลน์)',ready:'🟡 พร้อมเชื่อม — กดทดสอบ',connecting:'🟡 กำลังเชื่อม...',online:'🟢 ออนไลน์',error:'🔴 เชื่อมต่อไม่ได้'})[status]||'-'; }
   async function invokeFn(name,body){ if(!client) init(); if(!client||!client.functions) throw new Error('cloud ไม่พร้อม'); const {data,error}=await client.functions.invoke(name,{body}); if(error){ let m=error.message||'เรียกไม่สำเร็จ'; try{ const c=await error.context.json(); if(c&&c.reason) m=c.reason; }catch(e){} throw new Error(m); } return data; }
-  return {claimQR,markPrinted,sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
+  return {acct,acctScope,branchLocked,enforceBranch,claimQR,markPrinted,sendCall,pullMenuImages,init,test,connect,pushOrder,pushItem,nextNo,flushQ,pendingCount,pushAll,pullAll,pullSync,repairSync,pullMenu,subscribeAll,getStatus,getClient,statusText,available,signIn,signOut,isAuthed,authEmail,myBranch,rtStatusText,pushMeta,pullOrdersLite,fetchArchive,orderStatus,refreshMember,archCount,ensureRange,archFrom,lastQError,queueDump,queueClearNonOrders,invokeFn,hasShopCol};
 })();
 
 /* ============================================================
