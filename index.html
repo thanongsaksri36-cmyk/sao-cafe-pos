@@ -9336,7 +9336,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.39</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.41</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9552,7 +9552,7 @@ const SETTINGS = (()=>{
               <div style="font-size:13px;font-weight:600;margin-bottom:6px">🔐 เข้าสู่ระบบบัญชีสาขา (สำหรับกั้นข้อมูลแฟรนไชส์ · ทำหลังตั้งค่า RLS)</div>
               <div class="row2"><div class="field"><label>อีเมล</label><input id="cloudEmail" type="email" placeholder="branch@saocafe.com" autocomplete="off"></div><div class="field"><label>รหัสผ่าน</label><input id="cloudPw" type="password" autocomplete="off"></div></div>
               <button class="add-fab" onclick="SETTINGS.cloudSignIn()">🔐 เข้าสู่ระบบ cloud</button>
-              <p style="color:var(--muted);font-size:11px;margin-top:6px">ยังไม่ตั้ง RLS ก็ใช้งานได้ปกติ (ไม่ต้องล็อกอินช่องนี้) · ช่องนี้ใช้ตอนเปิดกั้นแฟรนไชส์</p>
+              <p style="color:var(--danger);font-size:12px;margin-top:6px;font-weight:600">⚠️ เครื่องร้านต้องล็อกอินช่องนี้ ไม่งั้นออเดอร์สแกนสั่งไม่เข้า บิลไม่ขึ้น cloud</p>
             </div>`}
         <button class="add-fab" onclick="CLOUD.test()">🔌 ทดสอบเชื่อมต่อ</button>
         <button class="add-fab" onclick="CLOUD.pushAll()">⬆️ อัปขึ้น cloud</button>
@@ -9570,7 +9570,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.39) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.41) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -11387,7 +11387,7 @@ const CLOUD = (()=>{
       return {data,error};
     }catch(e){ UI.toast('ผิดพลาด: '+(e.message||e),'err'); return {error:{message:e.message||String(e)}}; }
   }
-  async function signOut(){ try{ if(client&&client.auth) await client.auth.signOut(); }catch(e){} authUser=null; _acct=null; try{ localStorage.removeItem('saocafe_acct'); }catch(e){} UI.toast('ออกจากระบบ cloud แล้ว','ok'); refresh(); }
+  async function signOut(){ try{ if(client&&client.auth) await client.auth.signOut({scope:'local'}); }catch(e){} authUser=null; _acct=null; try{ localStorage.removeItem('saocafe_acct'); }catch(e){} UI.toast('ออกจากระบบ cloud แล้ว','ok'); refresh(); }
   // สิทธิ์ของบัญชีที่ล็อกอิน: สาขาที่ผูก + เป็น HQ ไหม (อ่านจากแถวของตัวเองใน branch_users)
   let _acct=null;
   function acct(){ if(_acct) return _acct; try{ return JSON.parse(localStorage.getItem('saocafe_acct')||'null'); }catch(e){ return null; } }
@@ -12112,7 +12112,7 @@ const LOYAL = (()=>{
     try{ if(NAV.cur()==='settings') SETTINGS.render(); }catch(e){}
   }
   async function disconnect(){
-    try{ const cl=client(); if(cl) await cl.auth.signOut(); }catch(e){}
+    try{ const cl=client(); if(cl) await cl.auth.signOut({scope:'local'}); }catch(e){}
     saveCfg(Object.assign({},cfg(),{on:false})); me=null;
     UI.toast('ปิดการเชื่อมระบบสมาชิกแล้ว (กลับไปใช้สมาชิกในตัว POS)','ok'); status();
   }
@@ -12577,11 +12577,27 @@ const APP = (()=>{
     let st='off',q=0; try{ st=CLOUD.getStatus(); q=CLOUD.pendingCount?CLOUD.pendingCount():0; }catch(e){}
     let txt,cls='';
     if(q>0){ txt='🟠 รอซิงค์ '+q; cls='warn'; }
+    else if(st==='online'&&!window._CUSTOMER_MODE&&CLOUD.isAuthed&&!CLOUD.isAuthed()){ txt='🔴 ยังไม่ล็อกอิน cloud'; cls='no'; }
     else if(st==='online'){ txt='🟢 ซิงค์ครบ'; cls='ok'; }
     else if(st==='connecting'){ txt='🟡 กำลังเชื่อม'; }
     else if(st==='error'){ txt='🔴 เชื่อมไม่ได้'; cls='no'; }
     else { txt='⚪ ออฟไลน์'; }
     el.textContent=txt; el.className='sync-chip '+cls;
+    authBar(st);
+  }
+  let _noAuthN=0;
+  function authBar(st){                              // แถบเตือนเครื่องร้านไม่ได้ล็อกอิน cloud (เช็คซ้ำ 2 รอบ กันแว้บตอนกำลังกู้ session)
+    let off=false; try{ off=!window._CUSTOMER_MODE&&st==='online'&&CLOUD.isAuthed&&!CLOUD.isAuthed(); }catch(e){}
+    _noAuthN=off?_noAuthN+1:0;
+    let b=document.getElementById('cloudAuthBar');
+    if(_noAuthN<2){ if(b) b.remove(); return; }
+    if(b){ if(_noAuthN%40===0) try{ PENDING.beep(); }catch(e){} return; }   // เช็คทุก 3 วิ -> 40 รอบ = 2 นาที
+    try{ PENDING.beep(); }catch(e){}
+    b=document.createElement('div'); b.id='cloudAuthBar';
+    b.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:99998;background:#B3261E;color:#fff;padding:11px 18px;border-radius:16px;font-size:15px;font-weight:800;box-shadow:0 4px 16px rgba(0,0,0,.35);cursor:pointer;max-width:94vw;text-align:center;line-height:1.45';
+    b.innerHTML='🔴 เครื่องนี้หลุดจากบัญชี cloud — ออเดอร์สแกนสั่งจะไม่เข้า / ไม่ปริ้น<br><span style="font-weight:600;font-size:13px">แตะที่นี่ → เข้าสู่ระบบด้วยอีเมลสาขา</span>';
+    b.onclick=()=>{ try{ NAV.go('settings'); setTimeout(()=>{ const e=document.getElementById('cloudEmail'); if(e){ e.scrollIntoView({block:'center'}); e.focus(); } },400); }catch(e){} };
+    document.body.appendChild(b);
   }
   function applyBrand(){
     const m=(function(){ try{ return STORE.binfo(); }catch(e){ return (STORE.get()||{}).meta||{}; } })();
