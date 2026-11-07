@@ -3190,18 +3190,27 @@ const isDelivery=(k)=> ['grab','lineman','shopee','delivery'].includes(k);
 // ⭐ v12.44 โปรประจำเดือน "แก้วที่ 2 ราคาพิเศษ" — ตั้งครั้งเดียวที่สาขา (branch.p2) ระบบคิดเองทั้งหน้าร้าน + ลูกค้าสแกนสั่ง
 //   นับเฉพาะเมนูที่ร้านเลือก · เรียงราคาแพง→ถูก แก้วที่ 2,4,6… เหลือราคาโปร · ท็อปปิ้ง/ตัวเลือก/แบบปั่น คิดราคาเต็ม
 //   ไม่จำกัดคู่ · ไม่ใช้กับ Grab/LINE MAN/Shopee · ใส่ส่วนลดอื่นในบิล = แทนโปรนี้ (ไม่รวมกัน)
-//   ⚠️ สูตรเดียวกับ trigger qr_order_guard (SQL 23) — แก้ที่นี่ต้องแก้ที่นั่นด้วย
+//   ⚠️ สูตรเดียวกับ trigger qr_order_guard (SQL 24) — แก้ที่นี่ต้องแก้ที่นั่นด้วย
 const _ymdNow=()=>{ const d=new Date(), p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); };
 function p2Cfg(b){ const p=b&&b.p2; if(!p||!p.on||!Array.isArray(p.ids)||!p.ids.length) return null;
   const t=_ymdNow(); if(p.from&&t<p.from) return null; if(p.to&&t>p.to) return null; return p; }
-function p2Calc(items,b,type){ const p=p2Cfg(b), z={disc:0,n:0,units:0,label:'',price:0};
+function p2Calc(items,b,type){ const p=p2Cfg(b), z={disc:0,n:0,units:0,label:'',price:0,hint:''};
+  // ⭐ v12.45 แยก 2 รายการ: ids1 = เมนู "แก้วแรก" (ซื้อแล้วได้สิทธิ์) · ids = เมนู "แก้วที่ 2" (ได้ราคาโปร) · ไม่ตั้ง ids1 = ใช้รายการเดียวกับ ids
+  //   เรียงราคาแพง→ถูก (ราคาเท่ากัน: ①อย่างเดียว ก่อน ①② ก่อน ②อย่างเดียว) แล้วจับคู่ทีละตัว — สูตรเดียวกับ SQL 24 ห้ามแก้ข้างเดียว
   if(!p||isDelivery(type)) return z;
-  const pr=Math.max(0,Math.round(+p.price||0)), ids=new Set(p.ids), u=[];
-  (items||[]).forEach(c=>{ if(!c||!ids.has(c.productId)) return; const bs=+(c.base!=null?c.base:c.price)||0, q=Math.max(0,Math.floor(+c.qty||0));
-    for(let i=0;i<q&&u.length<600;i++) u.push(bs); });
-  u.sort((a,b)=>b-a); let disc=0,n=0;
-  for(let i=1;i<u.length;i+=2){ const d=Math.max(0,u[i]-pr); if(d>0){ disc+=d; n++; } }
-  return {disc,n,units:u.length,price:pr,label:disc>0?((p.name||'แก้วที่ 2')+' x'+n):''}; }
+  const pr=Math.max(0,Math.round(+p.price||0)), B=new Set(p.ids), A=new Set((Array.isArray(p.ids1)&&p.ids1.length)?p.ids1:p.ids), u=[];
+  (items||[]).forEach(c=>{ if(!c) return; const ia=A.has(c.productId), ib=B.has(c.productId); if(!ia&&!ib) return;
+    const bs=+(c.base!=null?c.base:c.price)||0, q=Math.max(0,Math.floor(+c.qty||0)), rk=ia&&ib?1:(ia?0:2);
+    for(let i=0;i<q&&u.length<600;i++) u.push({b:bs,ia,ib,rk}); });
+  u.sort((x,y)=>(y.b-x.b)||(x.rk-y.rk));
+  let payers=0, disc=0, n=0; const wait=[];
+  const take=x=>{ const d=Math.max(0,x.b-pr); if(d>0){ disc+=d; n++; } };
+  for(const x of u){ if(x.ib&&payers>0){ payers--; take(x); } else if(x.ia) payers++; else wait.push(x); }
+  let i=0; while(payers>0&&i<wait.length){ take(wait[i++]); payers--; }
+  const wb=wait.length-i;
+  const hint=payers>0?('🎁 สั่งเมนูแก้วที่ 2 เพิ่มได้อีก '+payers+' แก้ว ราคา '+STORE.baht(pr))
+           :wb>0?('🎁 สั่งเมนูแก้วแรกอีก '+wb+' แก้ว → แก้วที่ 2 ที่สั่งไว้เหลือ '+STORE.baht(pr)):'';
+  return {disc,n,units:u.length,price:pr,hint,label:disc>0?((p.name||'แก้วที่ 2')+' x'+n):''}; }
 // บิลนี้ "รับเงินจริงแล้ว" หรือยัง — ใช้ร่วมกันทุกรายงาน (กันนับบิลรอชำระเป็นยอดขาย)
 // ⭐ v12.16 ชื่อช่องทางชำระ (ใบเสร็จ/รายงาน)
 const PAYNAMES={cash:'เงินสด',promptpay:'พร้อมเพย์',transfer:'โอน',card:'บัตรเครดิต',thaichuay:'ไทยช่วยไทย 60/40',grab:'Grab',lineman:'LINE MAN',shopee:'ShopeeFood',mixed:'แบ่งจ่าย'};
@@ -4171,7 +4180,7 @@ const POS = (()=>{
     } else {                                     // ⭐ v12.44 ไม่มีส่วนลดอื่น -> โปรแก้วที่ 2 คิดให้เอง
       const pr=p2Calc(cart,STORE.curBranch(),orderType);
       if(pr.disc>0){ disc=Math.min(pr.disc,sub); dlabel=pr.label; }
-      if(pr.units%2===1) p2hint='🎁 เพิ่มเมนูโปรอีก 1 แก้ว → แก้วถัดไป '+STORE.baht(pr.price);
+      if(pr.hint) p2hint=pr.hint;
     }
     const r=totals(sub,disc); r.dlabel=dlabel; r.p2hint=p2hint; return r;
   }
@@ -5512,15 +5521,21 @@ const QR = (()=>{
     const cfg=b.taxCfg || (window._CUSTOMER_MODE ? {vatRate:0,vatIncluded:true,serviceCharge:0} : null);   // มือถือลูกค้า + ร้านยังไม่เคยกดบันทึกตั้งค่า -> เหมือนเดิม (ไม่เดา)
     const pr=p2On()?p2Calc(qcart,b,'dine-in'):{disc:0,label:'',units:0,price:0};   // ⭐ v12.44 โปรแก้วที่ 2
     const r=POS.totals(s0,Math.min(pr.disc,s0),cfg); r.dlabel=pr.disc>0?pr.label:''; r.p2=pr; return r; }
-  // มือถือลูกค้า: ใช้โปรได้เมื่อ server พร้อม (รัน SQL 23 แล้ว) — ไม่งั้นออเดอร์จะถูก trigger ปัดตก
+  // มือถือลูกค้า: ใช้โปรได้เมื่อ server พร้อม (รัน SQL 24 แล้ว) — ไม่งั้นออเดอร์จะถูก trigger ปัดตก
   function p2On(){ return !!p2Cfg(STORE.curBranch()) && (!window._CUSTOMER_MODE || CLOUD.p2Ok()); }
-  function p2Tag(p){ if(!p2On()) return ''; const c=p2Cfg(STORE.curBranch()); if(!c.ids.includes(p.id)) return '';
-    return `<div style="font-size:11px;font-weight:700;color:#c0392b;margin-top:2px">🎁 แก้วที่ 2 ${STORE.baht(c.price||0)}</div>`; }
-  function p2Banner(){ if(!p2On()) return ''; const c=p2Cfg(STORE.curBranch());
-    const nm=c.ids.map(id=>STORE.find('products',id)).filter(p=>p&&!p.deletedAt&&p.available!==false).map(p=>p.name);
-    if(!nm.length) return '';
-    return `<div style="margin:10px 16px 0;padding:10px 14px;border-radius:14px;background:#fff4e5;border:1px solid #f5c98b;color:#7a4b00;font-size:13.5px;line-height:1.5">
-      <b>🎁 ${esc(c.name||'โปรแก้วที่ 2')}</b> — แก้วที่ 2 เหลือ <b>${STORE.baht(c.price||0)}</b> (ท็อปปิ้งคิดเพิ่มตามปกติ)<br><span style="font-size:12.5px">เมนูที่ร่วม: ${esc(nm.join(' · '))}</span></div>`; }
+  function p2Sets(c){ const B=c.ids, A=(Array.isArray(c.ids1)&&c.ids1.length)?c.ids1:c.ids; return {A,B,same:A.length===B.length&&A.every(x=>B.includes(x))}; }
+  function p2Tag(p){ if(!p2On()) return ''; const c=p2Cfg(STORE.curBranch()), S=p2Sets(c), st='font-size:11px;font-weight:700;color:#c0392b;margin-top:2px';
+    if(S.B.includes(p.id)) return `<div style="${st}">🎁 แก้วที่ 2 ${STORE.baht(c.price||0)}</div>`;
+    if(S.A.includes(p.id)) return `<div style="${st}">🎁 ซื้อแล้ว แก้วที่ 2 ${STORE.baht(c.price||0)}</div>`;
+    return ''; }
+  function p2Banner(){ if(!p2On()) return ''; const c=p2Cfg(STORE.curBranch()), S=p2Sets(c);
+    const names=ids=>{ const a=ids.map(id=>STORE.find('products',id)).filter(p=>p&&!p.deletedAt&&p.available!==false).map(p=>p.name);
+      return a.length>12?a.slice(0,12).join(' · ')+' และอีก '+(a.length-12)+' เมนู':a.join(' · '); };
+    const nb=names(S.B); if(!nb) return '';
+    const box='margin:10px 16px 0;padding:10px 14px;border-radius:14px;background:#fff4e5;border:1px solid #f5c98b;color:#7a4b00;font-size:13.5px;line-height:1.5';
+    if(S.same) return `<div style="${box}"><b>🎁 ${esc(c.name||'โปรแก้วที่ 2')}</b> — แก้วที่ 2 เหลือ <b>${STORE.baht(c.price||0)}</b> (ท็อปปิ้งคิดเพิ่มตามปกติ)<br><span style="font-size:12.5px">เมนูที่ร่วม: ${esc(nb)}</span></div>`;
+    return `<div style="${box}"><b>🎁 ${esc(c.name||'โปรแก้วที่ 2')}</b> — สั่งเมนูแก้วแรก 1 แก้ว รับแก้วที่ 2 เหลือ <b>${STORE.baht(c.price||0)}</b> (ท็อปปิ้งคิดเพิ่มตามปกติ)
+      <div style="font-size:12.5px;margin-top:4px">① แก้วแรก: ${esc(names(S.A))}</div><div style="font-size:12.5px">② แก้วที่ 2 (${STORE.baht(c.price||0)}): ${esc(nb)}</div></div>`; }
   // ⭐ v12.8 รูปเมนูมาถึงทีหลัง -> เติมในการ์ดที่แสดงอยู่ (ไม่วาดหน้าใหม่ ลูกค้าเลื่อนอยู่ไม่สะดุด)
   function setImg(id,src){ const el=document.getElementById('qph_'+id); if(!el) return; const em=el.querySelector('.em'); if(!em) return;
     const im=document.createElement('img'); im.decoding='async'; im.src=src; em.replaceWith(im); }
@@ -5756,7 +5771,7 @@ const QR = (()=>{
       </div>
       <div class="qrc-bar" style="max-width:520px;margin:0 auto;width:100%">
         ${_t.disc>0?`<div class="sr" style="margin-bottom:6px;color:var(--success);font-weight:600"><span>🎁 ${esc(_t.dlabel)}</span><span>-${STORE.baht(_t.disc)}</span></div>`:''}
-        ${(_t.p2&&_t.p2.units%2===1)?`<div style="margin-bottom:8px;font-size:12.5px;color:var(--success)">🎁 สั่งเมนูโปรเพิ่มอีก 1 แก้ว → แก้วถัดไป ${STORE.baht(_t.p2.price)}</div>`:''}
+        ${(_t.p2&&_t.p2.hint)?`<div style="margin-bottom:8px;font-size:12.5px;color:var(--success)">${esc(_t.p2.hint)}</div>`:''}
         <div class="sr tot" style="margin-bottom:10px"><span>รวม</span><span>${STORE.baht(sub)}</span></div>
         <div style="display:flex;gap:10px">
           <button class="btn btn-ghost" style="flex:1" onclick="QR.render()">← เพิ่มเมนู</button>
@@ -8768,14 +8783,17 @@ const BO = (()=>{
       </tr>`).join('')}
       </tbody></table>`;
   }
-  // ⭐ v12.44 โปรแก้วที่ 2 (ตั้งต่อสาขา)
+  // ⭐ v12.44/45 โปรแก้วที่ 2 (ตั้งต่อสาขา) · ① เมนูแก้วแรก ② เมนูแก้วที่ 2
   function p2Card(){
-    const b=STORE.curBranch()||{}, p=b.p2||{}, ids=new Set(p.ids||[]);
-    const prods=STORE.scoped('products').filter(x=>!x.deletedAt).sort((a,c)=>(ids.has(c.id)?1:0)-(ids.has(a.id)?1:0)||String(a.name).localeCompare(String(c.name),'th'));
+    const b=STORE.curBranch()||{}, p=b.p2||{}, idsB=new Set(p.ids||[]), idsA=new Set((Array.isArray(p.ids1)&&p.ids1.length)?p.ids1:(p.ids||[]));
+    const cats=STORE.scoped('categories').filter(c=>!c.deletedAt).sort((a,c)=>(a.sort||0)-(c.sort||0));
+    const sel=x=>(idsA.has(x.id)||idsB.has(x.id))?1:0;
+    const prods=STORE.scoped('products').filter(x=>!x.deletedAt).sort((a,c)=>sel(c)-sel(a)||String(a.name).localeCompare(String(c.name),'th'));
     const live=!!p2Cfg(b), _ip='padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text);width:100%';
+    const _sb='padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text);font-size:12.5px;cursor:pointer';
     return `<div style="background:var(--surface);border:2px solid var(--gold);border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:var(--shadow)">
       <h3 style="font-size:15px;margin-bottom:4px">🎁 โปรแก้วที่ 2 ราคาพิเศษ · ${esc(b.name||'สาขานี้')} ${live?'<span class="pill ok">ใช้อยู่วันนี้</span>':(p.on?'<span class="pill no">เปิดไว้ แต่ไม่อยู่ในช่วงวันที่</span>':'<span class="pill no">ปิด</span>')}</h3>
-      <p style="color:var(--muted);font-size:12.5px;margin-bottom:12px">ตั้งครั้งเดียว ระบบลดให้เองทั้งหน้าร้านและลูกค้าสแกนสั่ง · แก้วที่ 2,4,6… (ตัวที่ถูกกว่าในแต่ละคู่) เหลือราคาโปร · ท็อปปิ้ง/ตัวเลือกคิดเต็ม · ไม่จำกัดคู่ · ไม่ใช้กับ Grab/LINE MAN/Shopee · ใส่ส่วนลดอื่น = แทนโปรนี้</p>
+      <p style="color:var(--muted);font-size:12.5px;margin-bottom:12px">ตั้งครั้งเดียว ระบบลดให้เองทั้งหน้าร้านและลูกค้าสแกนสั่ง · ซื้อเมนู ① 1 แก้ว → เมนู ② 1 แก้ว เหลือราคาโปร · ท็อปปิ้ง/ตัวเลือกคิดเต็ม · ไม่จำกัดคู่ · ไม่ใช้กับ Grab/LINE MAN/Shopee · ใส่ส่วนลดอื่น = แทนโปรนี้</p>
       <label style="display:flex;gap:8px;align-items:center;font-weight:600;margin-bottom:10px"><input type="checkbox" id="p2On" ${p.on?'checked':''} style="width:20px;height:20px"> เปิดใช้โปร</label>
       <div class="row2">
         <div class="field" style="margin:0"><label>ชื่อโปร (โชว์ในบิล)</label><input id="p2Name" maxlength="40" value="${esc(p.name||'แก้วที่ 2 ราคา 11 บาท')}" style="${_ip}"></div>
@@ -8783,31 +8801,45 @@ const BO = (()=>{
         <div class="field" style="margin:0"><label>เริ่มวันที่</label><input id="p2From" type="date" value="${esc(p.from||'')}" style="${_ip}"></div>
         <div class="field" style="margin:0"><label>ถึงวันที่ (รวมวันนั้น)</label><input id="p2To" type="date" value="${esc(p.to||'')}" style="${_ip}"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin:12px 0 6px"><b style="font-size:13px">เมนูที่ร่วมโปร</b><span id="p2Cnt" style="font-size:12.5px;color:var(--gold);font-weight:700">เลือกแล้ว ${ids.size} เมนู</span>
-        <input id="p2Q" placeholder="🔍 ค้นหาเมนู" oninput="BO.p2Filter(this.value)" style="margin-left:auto;max-width:220px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)"></div>
-      <div id="p2List" style="max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:4px 10px">
-        ${prods.map(x=>`<label class="p2row" data-n="${esc(String(x.name||'').toLowerCase())}" style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;cursor:pointer">
-          <input type="checkbox" class="p2chk" value="${esc(x.id)}" ${ids.has(x.id)?'checked':''} onchange="BO.p2Count()" style="width:18px;height:18px">
-          <span style="flex:1">${esc(x.name)}</span><small style="color:var(--muted)">${STORE.baht(x.price||0)}</small></label>`).join('')||'<div style="padding:14px;color:var(--muted)">ยังไม่มีเมนู</div>'}
-      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0 6px">
+        <b style="font-size:13px">เมนูที่ร่วมโปร</b>
+        <span id="p2Cnt" style="font-size:12.5px;color:var(--gold);font-weight:700"></span>
+        <select id="p2Cat" onchange="BO.p2Filter()" style="margin-left:auto;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)"><option value="">ทุกหมวด</option>${cats.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('')}</select>
+        <input id="p2Q" placeholder="🔍 ค้นหาเมนู" oninput="BO.p2Filter()" style="max-width:200px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--text)"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;font-size:12px;color:var(--muted);align-items:center">ติ๊กทั้งหมดที่แสดงอยู่:
+        <button style="${_sb}" onclick="BO.p2All('a',true)">✓ ① ทั้งหมด</button><button style="${_sb}" onclick="BO.p2All('a',false)">✕ ①</button>
+        <button style="${_sb}" onclick="BO.p2All('b',true)">✓ ② ทั้งหมด</button><button style="${_sb}" onclick="BO.p2All('b',false)">✕ ②</button></div>
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+        <div style="display:flex;gap:10px;align-items:center;padding:8px 10px;background:var(--surface-2,rgba(0,0,0,.04));font-size:12px;font-weight:700;color:var(--muted)">
+          <span style="flex:1">เมนู</span><span style="width:70px;text-align:center">① แก้วแรก</span><span style="width:84px;text-align:center">② แก้วที่ 2</span></div>
+        <div id="p2List" style="max-height:300px;overflow:auto;padding:0 10px">
+        ${prods.map(x=>`<div class="p2row" data-n="${esc(String(x.name||'').toLowerCase())}" data-c="${esc(x.cat||'')}" style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px">
+          <span style="flex:1">${esc(x.name)} <small style="color:var(--muted)">${STORE.baht(x.price||0)}</small></span>
+          <label style="width:70px;text-align:center;cursor:pointer"><input type="checkbox" class="p2a" value="${esc(x.id)}" ${idsA.has(x.id)?'checked':''} onchange="BO.p2Count()" style="width:20px;height:20px"></label>
+          <label style="width:84px;text-align:center;cursor:pointer"><input type="checkbox" class="p2b" value="${esc(x.id)}" ${idsB.has(x.id)?'checked':''} onchange="BO.p2Count()" style="width:20px;height:20px"></label></div>`).join('')||'<div style="padding:14px;color:var(--muted)">ยังไม่มีเมนู</div>'}
+        </div></div>
       <button class="btn-gold" style="margin-top:12px;padding:10px 18px;border-radius:10px" onclick="BO.saveP2()">💾 บันทึกโปรแก้วที่ 2</button>
-      <p style="color:var(--muted);font-size:12px;margin-top:8px">เดือนหน้าเปลี่ยนโปร: แก้วันที่ + ติ๊กเมนูใหม่ แล้วกดบันทึก · ตั้งที่สาขาไหนก็ใช้เฉพาะสาขานั้น · ลูกค้าสแกนสั่งจะเห็นป้าย 🎁 หลังรัน SQL ไฟล์ 23 แล้ว</p>
+      <p style="color:var(--muted);font-size:12px;margin-top:8px">① = ซื้อเมนูนี้เป็นแก้วแรกแล้วได้สิทธิ์ · ② = เมนูที่ได้ราคาโปรเป็นแก้วที่ 2 · เมนูเดียวกันติ๊กทั้งสองช่องได้ · เดือนหน้าเปลี่ยนโปร: แก้วันที่ + ติ๊กเมนูใหม่ แล้วกดบันทึก · ตั้งที่สาขาไหนก็ใช้เฉพาะสาขานั้น</p>
     </div>`;
   }
-  function p2Filter(v){ const q=String(v||'').trim().toLowerCase(); document.querySelectorAll('#p2List .p2row').forEach(r=>{ r.style.display=(!q||r.dataset.n.includes(q))?'':'none'; }); }
-  function p2Count(){ const c=$('#p2Cnt'); if(c) c.textContent='เลือกแล้ว '+document.querySelectorAll('.p2chk:checked').length+' เมนู'; }
+  function p2Filter(){ const q=String(($('#p2Q')||{}).value||'').trim().toLowerCase(), c=($('#p2Cat')||{}).value||'';
+    document.querySelectorAll('#p2List .p2row').forEach(r=>{ r.style.display=((!q||r.dataset.n.includes(q))&&(!c||r.dataset.c===c))?'flex':'none'; }); }
+  function p2All(k,on){ document.querySelectorAll('#p2List .p2row').forEach(r=>{ if(r.style.display==='none') return; const x=r.querySelector('.p2'+k); if(x) x.checked=on; }); p2Count(); }
+  function p2Count(){ const c=$('#p2Cnt'); if(c) c.textContent='① แก้วแรก '+document.querySelectorAll('.p2a:checked').length+' เมนู · ② แก้วที่ 2 '+document.querySelectorAll('.p2b:checked').length+' เมนู'; }
   function saveP2(){
     const b=STORE.curBranch(); if(!b){ UI.toast('ไม่พบข้อมูลสาขา','err'); return; }
-    const ids=[...document.querySelectorAll('.p2chk:checked')].map(x=>x.value);
+    const ids1=[...document.querySelectorAll('.p2a:checked')].map(x=>x.value);
+    const ids=[...document.querySelectorAll('.p2b:checked')].map(x=>x.value);
     const on=!!($('#p2On')||{}).checked, from=($('#p2From')||{}).value||'', to=($('#p2To')||{}).value||'';
     const pv=parseFloat(($('#p2Price')||{}).value);
     const name=String(($('#p2Name')||{}).value||'').replace(/[<>"'`&\\]/g,'').trim().slice(0,40)||'แก้วที่ 2';
     if(!(pv>=0)){ UI.toast('ใส่ราคาแก้วที่ 2','err'); return; }
-    if(on&&!ids.length){ UI.toast('ติ๊กเมนูที่ร่วมโปรอย่างน้อย 1 เมนู','err'); return; }
+    if(on&&!ids1.length){ UI.toast('ติ๊กช่อง ① เมนูแก้วแรก อย่างน้อย 1 เมนู','err'); return; }
+    if(on&&!ids.length){ UI.toast('ติ๊กช่อง ② เมนูแก้วที่ 2 อย่างน้อย 1 เมนู','err'); return; }
     if(from&&to&&from>to){ UI.toast('วันที่เริ่มต้องไม่เกินวันสิ้นสุด','err'); return; }
-    b.p2={on,name,price:STORE.toSatang(pv),from,to,ids,updatedAt:STORE.now()};
+    b.p2={on,name,price:STORE.toSatang(pv),from,to,ids,ids1,updatedAt:STORE.now()};
     STORE.save(); try{ CLOUD.pushItem('branches',b); }catch(e){}
-    render(); UI.toast(on?('บันทึกโปรแล้ว · '+ids.length+' เมนู'):'ปิดโปรแก้วที่ 2 แล้ว','ok');
+    render(); UI.toast(on?('บันทึกโปรแล้ว · ① '+ids1.length+' เมนู · ② '+ids.length+' เมนู'):'ปิดโปรแก้วที่ 2 แล้ว','ok');
   }
   function saveBdayPromo(){
     const s=STORE.get().settings;
@@ -8973,7 +9005,7 @@ const BO = (()=>{
       STORE.save(); CLOUD.pushItem('staff',_st); render(); UI.toast('บันทึกแล้ว','ok');
     });
   }
-  return {menuFilter,menuCat,menuSt,menuClear,catTop,catQR,catStation,render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveP2,p2Filter,p2Count,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
+  return {menuFilter,menuCat,menuSt,menuClear,catTop,catQR,catStation,render,setTab,togglePin,delMember,editProduct,uploadImg,toggleAvail,delProduct,delIng,restock,editIng,editMember,renderPromo,saveP2,p2Filter,p2Count,p2All,saveBdayPromo,togglePromo,editPromo,editStaff,delStaff,renderTables,editTable,toggleTable,delTable,manageCats,addCat,editCat,delCat,moveCat,manageMods,editMod,renderEditMod,modSet,modOpt,modAddOpt,modDelOpt,modSave,delMod,prodMods,prodModToggle,clearMenu,importMenu,applyImport,exportMenu,
           recipe,recQty,recRemove,recAdd,recSave,variants,varEdit,varDel,modOptRecipe,modRecQty,modRecRemove,modRecAdd,modRecBack,renderRewards,editReward,delReward,toggleFeatured,toggleHideFeatured,dedupeMenu,dlvPrice,dlvSet,dlvApply,dlvClear,rolePerms,saveRolePerms,renderExpenses,editExpense,delExpense,
           recvStock,wasteStock,countStock,renderSuppliers,editSupplier,delSupplier,supplierPO,lowStockPO,poCalc,poPrint,tableQR,allTableQR,undoMove,movePhoto,viewPhoto,delPhoto,aiBill,reviewBill,aiSave};
 })();
@@ -9487,7 +9519,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.44</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.45</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9721,7 +9753,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.44) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.45) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -12010,10 +12042,10 @@ const CLOUD = (()=>{
       return hit;
     }catch(e){ return null; }
   }
-  // ⭐ v12.44 server รองรับโปรแก้วที่ 2 แล้วหรือยัง (รัน SQL 23) — ถ้ายัง มือถือลูกค้าจะไม่ลดราคา (กันออเดอร์ถูกปัดตก)
+  // ⭐ v12.44 server รองรับโปรแก้วที่ 2 แล้วหรือยัง (รัน SQL 24) — ถ้ายัง มือถือลูกค้าจะไม่ลดราคา (กันออเดอร์ถูกปัดตก)
   let _p2ok=null, _p2try=0;
   async function p2Check(){ if(_p2ok!==null||!client||_p2try>=3) return _p2ok===true; _p2try++;
-    try{ const r=await Promise.race([client.rpc('qr_promo2_ready'),new Promise(res=>setTimeout(()=>res({error:{message:'timeout'}}),6000))]);
+    try{ const r=await Promise.race([client.rpc('qr_promo2_v2'),new Promise(res=>setTimeout(()=>res({error:{message:'timeout'}}),6000))]);
       if(!r.error) _p2ok=r.data===true; else if(!/timeout|fetch|network/i.test(String(r.error.message||''))) _p2ok=false; }catch(e){}
     return _p2ok===true; }
   const p2Ok=()=>_p2ok===true;
