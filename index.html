@@ -3221,7 +3221,7 @@ function bundleList(b){ const t=_ymdNow();
   return (Array.isArray(b&&b.bundles)?b.bundles:[]).filter(x=>x&&x.on&&Array.isArray(x.slots)&&x.slots.length>=2&&x.slots.every(s=>Array.isArray(s)&&s.length)
     &&(!x.from||t>=x.from)&&(!x.to||t<=x.to)); }
 function promoCalc(items,b,type,isMem){
-  const out={disc:0,label:'',hint:'',ev:[]}; if(isDelivery(type)) return out;
+  const out={disc:0,label:'',hint:'',ev:[],parts:[]}; if(isDelivery(type)) return out;
   const L=bundleList(b), labs=[], hints=[]; let rest=items||[];
   if(L.length){
     const u=[]; rest.forEach((c,ci)=>{ if(!c) return; const bs=+(c.base!=null?c.base:c.price)||0, q=Math.max(0,Math.floor(+c.qty||0));
@@ -3236,9 +3236,9 @@ function promoCalc(items,b,type,isMem){
       let k=0, save=0;
       for(;k<100;k++){ const got=pick1(order); if(got.some(x=>!x)) break;
         const sum=got.reduce((a,x)=>a+x.b,0); if(sum<=pr) break;
-        if(B.member&&!isMem){ hints.push('👤 ใส่เบอร์สมาชิก → ได้ราคาเซต '+nm+' '+STORE.baht(pr)); if(pop!=='off') out.ev.push({k:'mem',id:B.id,nm,pr,norm:sum}); k=-1; break; }
+        if(B.member&&!isMem){ out.ev.push({k:'mem',id:B.id,nm,pr,norm:sum,pop}); k=-1; break; }   // ⭐ v12.52 ตะกร้ามีปุ่ม ✅ ใช่สมาชิก แทนข้อความ
         got.forEach(x=>x.used=true); save+=sum-pr; }
-      if(k>0){ out.disc+=save; labs.push(nm+' x'+k); if(pop!=='off') out.ev.push({k:'ok',id:B.id,nm,pr,n:k,save}); }
+      if(k>0){ out.disc+=save; labs.push(nm+' x'+k); out.parts.push({name:nm,kind:'set',n:k,disc:save}); if(pop!=='off') out.ev.push({k:'ok',id:B.id,nm,pr,n:k,save}); }
       else if(k===0) miss.push({order,nm,pr,id:B.id,m:!!B.member,pop});
     }
     // ชวนสั่งเพิ่ม (ดูจากของที่ยังไม่เข้าเซต) — บรรทัดในตะกร้าโชว์แค่เซตแรกที่ขาดอีก 1 ชิ้น
@@ -3250,8 +3250,31 @@ function promoCalc(items,b,type,isMem){
     const left={}; u.forEach(x=>{ if(!x.used) left[x.ci]=(left[x.ci]||0)+1; });
     rest=rest.map((c,ci)=>left[ci]?Object.assign({},c,{qty:left[ci]}):null).filter(Boolean);
   }
-  const p=p2Calc(rest,b,type); if(p.disc>0){ out.disc+=p.disc; labs.push(p.label); } if(p.hint) hints.push(p.hint);
+  const p=p2Calc(rest,b,type); if(p.disc>0){ out.disc+=p.disc; labs.push(p.label); out.parts.push({name:String(p.label).replace(/ x\d+$/,''),kind:'p2',n:p.n,disc:p.disc}); } if(p.hint) hints.push(p.hint);
   out.label=labs.join(' · '); out.hint=hints.join(' · '); return out; }
+// ⭐ v12.52 สรุปส่วนลด/โปรโมชั่นจากบิล — บิลใหม่มี o.promos (แยกทีละโปร) · บิลเก่าใช้ชื่อส่วนลด (discountLabel)
+const PROMO_KIND={set:'โปรเซต',p2:'แก้วที่ 2',percent:'ส่วนลด %',amount:'ส่วนลดบาท',happyhour:'Happy Hour',points:'แลกแต้ม',item:'ลดเฉพาะเมนู',bogo:'ซื้อ 1 แถม 1'};
+function promoParts(o){ if(!o||!((+o.discount||0)>0)) return [];
+  if(Array.isArray(o.promos)&&o.promos.length) return o.promos.map(p=>({name:String((p&&p.name)||'-'),kind:(p&&p.kind)||'',n:+(p&&p.n)||1,disc:+(p&&p.disc)||0}));
+  const lb=String(o.discountLabel||'').trim(), m=lb.match(/^(.*?)\s+x(\d+)$/);
+  return [{name:m?m[1]:(lb||'ส่วนลด (ไม่ระบุชื่อ)'),kind:/แก้วที่ ?2/.test(lb)?'p2':'',n:m?+m[2]:1,disc:+o.discount}]; }
+function promoAgg(orders){ const m={}; (orders||[]).forEach(o=>promoParts(o).forEach(p=>{ const k=p.name+'\u0001'+p.kind, r=m[k]||(m[k]={name:p.name,kind:p.kind,bills:0,n:0,disc:0}); r.bills++; r.n+=p.n; r.disc+=p.disc; }));
+  return Object.values(m).sort((a,b)=>b.disc-a.disc); }
+// ⭐ v12.53 ใบกำกับภาษี — ข้อมูลผู้ขายตั้งต้น (เติมให้ในหน้าตั้งค่า ต้องกดบันทึกก่อนถึงใช้จริง)
+const TAX_DEF={legalName:'บริษัท ไชยจันลา จำกัด',taxId:'0105567121929',taxBranch:'00000',address:'966 ถนนประชาราษฎร์ 1 แขวงบางซื่อ เขตบางซื่อ กรุงเทพมหานคร 10800'};
+function taxBrTxt(v){ v=String(v==null?'':v).replace(/\D/g,''); return (!v||+v===0)?'สำนักงานใหญ่':'สาขาที่ '+v.padStart(5,'0'); }
+function bahtText(satang){
+  satang=Math.abs(Math.round(+satang||0));
+  const N=['ศูนย์','หนึ่ง','สอง','สาม','สี่','ห้า','หก','เจ็ด','แปด','เก้า'], P=['','สิบ','ร้อย','พัน','หมื่น','แสน'];
+  const rd=(n,hi)=>{ const s=String(n), L=s.length; let o='';
+    for(let i=0;i<L;i++){ const d=+s[i], p=L-i-1; if(!d) continue;
+      if(p===1&&d===1) o+='สิบ'; else if(p===1&&d===2) o+='ยี่สิบ'; else if(p===0&&d===1&&(L>1||hi)) o+='เอ็ด'; else o+=N[d]+P[p]; }
+    return o; };
+  const num=n=>{ if(!n) return ''; const mil=Math.floor(n/1e6), r=n%1e6; return (mil?num(mil)+'ล้าน':'')+(r?rd(r,mil>0):''); };
+  const b=Math.floor(satang/100), st=satang%100;
+  if(!b&&!st) return 'ศูนย์บาทถ้วน';
+  return (b?num(b)+'บาท':'')+(st?rd(st,false)+'สตางค์':'ถ้วน');
+}
 // บิลนี้ "รับเงินจริงแล้ว" หรือยัง — ใช้ร่วมกันทุกรายงาน (กันนับบิลรอชำระเป็นยอดขาย)
 // ⭐ v12.16 ชื่อช่องทางชำระ (ใบเสร็จ/รายงาน)
 const PAYNAMES={cash:'เงินสด',promptpay:'พร้อมเพย์',transfer:'โอน',card:'บัตรเครดิต',thaichuay:'ไทยช่วยไทย 60/40',grab:'Grab',lineman:'LINE MAN',shopee:'ShopeeFood',mixed:'แบ่งจ่าย'};
@@ -3604,7 +3627,7 @@ const STORE = (()=>{
     // ⭐ แบรนด์ระดับสาขา — ว่าง = ใช้ของส่วนกลาง (ไม่ต้อง migrate ข้อมูลเดิม)
     if(b.brandName) m.shopName=b.brandName;
     if(b.brandSub)  m.brandSub=b.brandSub;
-    if(b.logo)      m.logo=b.logo; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
+    if(b.logo)      m.logo=b.logo; m.promptpayId=b.promptpayId||''; m.taxId=b.taxId||''; m.address=b.address||''; m.legalName=b.legalName||''; m.taxBranch=b.taxBranch||''; m.promptpayQrImg=b.promptpayQrImg||((DB.settings||{}).promptpayQrImg)||''; { let _sv=(b.slipVerify!=null?b.slipVerify:((DB.settings||{}).slipVerify)); m.slipVerify=(_sv===true||_sv==='true'||_sv===1||_sv==='1'); } return m; }
   function ensureHQ(data){
     try{
       const alive=(data.staff||[]).filter(x=>!x.deletedAt&&x.active!==false);
@@ -4263,18 +4286,20 @@ const POS = (()=>{
   function lineTotal(c){ return (c.base+c.modPrice)*c.qty; }
   // ⭐ v12.51 ป๊อปอัพโปรเซตบนหน้าขาย — เด้งครั้งเดียวต่อเซตต่อบิล (ตะกร้าว่าง = เริ่มนับใหม่) · ไม่ทับหน้าต่างอื่น
   const _bdSeen=new Set();
+  let memOk=false;   // ⭐ v12.52 ยืนยันสมาชิกแบบกดปุ่ม (ล้างเองเมื่อตะกร้าว่าง/จ่ายเสร็จ/พักบิล)
+  function memConfirm(v){ memOk=!!v; renderCart(); if(v) UI.toast('✅ ยืนยันลูกค้าเป็นสมาชิกแล้ว','ok'); }
   function bdPop(ev){
-    if(!cart.length){ _bdSeen.clear(); return; }
+    if(!cart.length){ _bdSeen.clear(); memOk=false; return; }
     if(!ev||!ev.length||document.querySelector('.overlay.show')) return;
     const vp=document.getElementById('v-pos'); if(vp&&!vp.getClientRects().length) return;   // ไม่ได้อยู่หน้าขาย
-    const e=ev.find(x=>!_bdSeen.has(x.k+':'+x.id)); if(!e) return; _bdSeen.add(e.k+':'+e.id);
+    const e=ev.find(x=>x.pop!=='off'&&!_bdSeen.has(x.k+':'+x.id)); if(!e) return; _bdSeen.add(e.k+':'+e.id);
     const B=STORE.baht, x=`<button class="x" onclick="UI.close('genOverlay')">×</button>`, big='font-size:40px;font-weight:800;color:var(--gold);line-height:1.25';
     let h='';
     if(e.k==='mem') h=`<div class="modal-h"><h3>🍱 ครบเซต ${esc(e.nm)}</h3>${x}</div>
       <div class="modal-b" style="text-align:center"><div style="font-size:14px;color:var(--muted)">👤 ราคาสมาชิก</div><div style="${big}">${B(e.pr)}</div>
         <div style="font-size:14px">ปกติ <s>${B(e.norm)}</s> · ประหยัด <b style="color:var(--success)">${B(e.norm-e.pr)}</b></div>
-        <div style="margin-top:12px;font-size:14px;background:#fff4e5;border:1px solid #f5c98b;border-radius:10px;padding:10px;color:#7a4b00">ถามลูกค้า: <b>เป็นสมาชิก SAO ไหม?</b><br>ยังไม่เป็น สมัครฟรีได้เลย แล้วได้ราคาเซตทันที</div></div>
-      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ไม่ใช่สมาชิก</button><button class="btn-gold" onclick="UI.close('genOverlay');MEMBER.open()">👤 ใส่เบอร์สมาชิก</button></div>`;
+        <div style="margin-top:12px;font-size:14px;background:#fff4e5;border:1px solid #f5c98b;border-radius:10px;padding:10px;color:#7a4b00">ถามลูกค้า: <b>เป็นสมาชิก SAO ไหม?</b><br>เช็คในแอปสมาชิก แล้วกดยืนยันด้านล่าง</div></div>
+      <div class="modal-f"><button class="btn-ghost" style="flex:1" onclick="UI.close('genOverlay')">❌ ไม่ใช่สมาชิก</button><button class="btn-gold" style="flex:1" onclick="UI.close('genOverlay');POS.memConfirm(true)">✅ ใช่สมาชิก</button></div>`;
     else if(e.k==='ok') h=`<div class="modal-h"><h3>🎉 ครบเซต ${esc(e.nm)}${e.n>1?' x'+e.n:''}</h3>${x}</div>
       <div class="modal-b" id="bdPopOk" style="text-align:center"><div style="font-size:14px;color:var(--muted)">ราคาเซต</div><div style="${big}">${B(e.pr)}</div>
         <div style="font-size:15px">ลดให้ในบิลแล้ว <b style="color:var(--success)">${B(e.save)}</b></div></div>
@@ -4293,7 +4318,7 @@ const POS = (()=>{
   }
   function calc(){
     const sub=cart.reduce((s,c)=>s+lineTotal(c),0);
-    let disc=0, dlabel='', p2hint='', bev=[];
+    let disc=0, dlabel='', p2hint='', bev=[], promos=[], memEv=null;
     if(discount){ dlabel=discount.label||'';
       if(discount.type==='percent'||discount.type==='happyhour') disc=Math.round(sub*discount.value/100);
       else if(discount.type==='amount') disc=discount.value;
@@ -4301,13 +4326,15 @@ const POS = (()=>{
       else if(discount.type==='item'){ const c=cart.find(x=>x.line===discount.line), lt=c?lineTotal(c):0;   // ⭐ v12.42 ลดเฉพาะเมนู
         disc=discount.mode==='percent'?Math.round(lt*discount.value/100):Math.min(discount.value,lt); }
       disc=Math.max(0,Math.min(disc,sub));       // ⭐ v11.2 คุมขาล่างด้วย (ส่วนลดติดลบทำยอดบวม)
+      if(disc>0) promos=[{name:dlabel||'ส่วนลด',kind:discount.type||'',n:1,disc}];   // ⭐ v12.52
     } else {                                     // ⭐ v12.44 ไม่มีส่วนลดอื่น -> โปรคิดให้เอง · v12.50 โปรเซต ก่อน แล้วโปรแก้วที่ 2 กับของที่เหลือ
-      const pr=promoCalc(cart,STORE.curBranch(),orderType,!!member);
+      const pr=promoCalc(cart,STORE.curBranch(),orderType,!!member||memOk);   // ⭐ v12.52 memOk = พนักงานกดยืนยันว่าเป็นสมาชิก (แอปภายนอก)
       if(pr.disc>0){ disc=Math.min(pr.disc,sub); dlabel=pr.label; }
       if(pr.hint) p2hint=pr.hint;
-      bev=pr.ev||[];
+      bev=pr.ev||[]; memEv=bev.find(e=>e.k==='mem')||null;
+      if(disc>0){ promos=(pr.parts||[]).slice(); if(pr.disc>sub&&promos.length){ let over=pr.disc-sub; for(let i=promos.length-1;i>=0&&over>0;i--){ const c=Math.min(over,promos[i].disc); promos[i]=Object.assign({},promos[i],{disc:promos[i].disc-c}); over-=c; } } }
     }
-    const r=totals(sub,disc); r.dlabel=dlabel; r.p2hint=p2hint; r.bev=bev; return r;
+    const r=totals(sub,disc); r.dlabel=dlabel; r.p2hint=p2hint; r.bev=bev; r.promos=promos; r.memEv=memEv; r.memOk=memOk&&!member; return r;
   }
   // ⭐ v11.2 สูตร service/VAT ตัวเดียวใช้ทั้งหน้าร้านและออเดอร์ QR · cfg = ค่าที่เผยแพร่ไว้ที่สาขา (มือถือลูกค้าไม่มี meta ของร้าน)
   function totals(sub,disc,cfg){
@@ -4362,7 +4389,7 @@ const POS = (()=>{
     const _ca2=$('#cartActions');
     if(!cart.length){
       $('#cartItems').innerHTML=`<div class="empty"><div class="ic">🛒</div>ยังไม่มีรายการ<br><small>แตะเมนูเพื่อเพิ่ม</small></div>`;
-      $('#summary').innerHTML=''; $('#payBtn').disabled=true; if(_ca2)_ca2.classList.add('empty'); _bdSeen.clear(); return;
+      $('#summary').innerHTML=''; $('#payBtn').disabled=true; if(_ca2)_ca2.classList.add('empty'); _bdSeen.clear(); memOk=false; return;
     }
     if(_ca2)_ca2.classList.remove('empty');
     $('#payBtn').disabled=false;
@@ -4387,6 +4414,8 @@ const POS = (()=>{
     let html=`<div class="sr"><span>ยอดรวม</span><span>${STORE.baht(s.sub)}</span></div>`;
     if(s.disc>0) html+=`<div class="sr disc"><span>ส่วนลด${s.dlabel?' ('+esc(s.dlabel)+')':''}</span><span>-${STORE.baht(s.disc)}</span></div>`;
     setTimeout(()=>{ try{ bdPop(s.bev); }catch(e){} },60);   // ⭐ v12.51
+    if(s.memEv) html+=`<div class="sr" style="align-items:center;gap:8px;background:#fff4e5;border:1px solid #f5c98b;border-radius:10px;padding:6px 8px;margin:4px 0"><span style="font-size:12.5px;color:#7a4b00;font-weight:600">👤 ${esc(s.memEv.nm)} ราคาสมาชิก ${STORE.baht(s.memEv.pr)}</span><button class="btn-gold" style="padding:6px 10px;border-radius:8px;font-size:12.5px;white-space:nowrap" onclick="POS.memConfirm(true)">✅ ใช่สมาชิก</button></div>`;
+    else if(s.memOk) html+=`<div class="sr" style="align-items:center;font-size:12.5px;color:var(--success);font-weight:600"><span>✅ ลูกค้าสมาชิก (ยืนยันแล้ว)</span><button class="btn-ghost" style="padding:4px 10px;border-radius:8px;font-size:12px" onclick="POS.memConfirm(false)">ยกเลิก</button></div>`;   // ⭐ v12.52
     if(s.p2hint) html+=`<div class="sr" style="color:var(--success);font-size:12.5px;font-weight:600"><span>${esc(s.p2hint)}</span><span></span></div>`;
     if(member) html+=`<div class="sr" style="color:var(--gold)"><span>👤 ${esc(member.name)}</span><span>${member.points} แต้ม</span></div>`;
     if(s.service>0) html+=`<div class="sr"><span>Service ${m.serviceCharge}%</span><span>${STORE.baht(s.service)}</span></div>`;
@@ -4502,7 +4531,7 @@ const POS = (()=>{
       if(!(n>0)||n<_lb) n=_lb; if(_c.orderNo<=n) _c.orderNo=n+1;
       const order={id:STORE.uuid(),no:'#'+STORE.deviceTag()+'-'+String(n).padStart(3,'0'),receiptNo:'',branchId:STORE.bid(),
         type:orderType,table:take?'':table,guest:take?(guestName||''):'',items:JSON.parse(JSON.stringify(cart)),
-        subtotal:s.sub,discount:s.disc,discountLabel:s.dlabel||'',vat:s.vat,service:s.service,total:s.total,method:'unpaid',paid:0,change:0,
+        subtotal:s.sub,discount:s.disc,discountLabel:s.dlabel||'',promos:s.promos||[],memberOk:!!s.memOk,vat:s.vat,service:s.service,total:s.total,method:'unpaid',paid:0,change:0,
         status:'preparing',payStatus:'open',memberId:null,tabMember:member||null,
         staffId:st?st.id:null,staffName:st?st.name:'',channel:'pos',createdAt:STORE.now(),closedAt:null};
       STORE.get().orders.push(order); INV.deduct(order); STORE.save(); CLOUD.pushOrder(order);
@@ -4567,7 +4596,7 @@ const POS = (()=>{
   function getMember(){ return member; }
   function getDiscount(){ return discount; }
   function getType(){ return orderType; }
-  return {arrange,arrSave,sendMore,noteLine,loadOrders,startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
+  return {memConfirm,arrange,arrSave,sendMore,noteLine,loadOrders,startTable,loadTab,cancelTab,sendTab,getTabCtx,totals,render,setType,setCat,search,tap,addToCart,chQty,rmItem,hold,resume,calc,clearAfterPay,priceOf,vDeltaOf,pickTable,setTable,getTable,moreActions,applyCartStyle,
           setDiscount,setMember,getCart,getMember,getDiscount,getType,getState,newOrderNo,renderCart,restoreCart,hasCart};
 })();
 
@@ -4903,7 +4932,7 @@ const PAY = (()=>{
       id:STORE.uuid(), no:_noUse, receiptNo:_rno, branchId:STORE.bid(),
       type:POS.getType(), table:POS.getTable()||'',
       items:JSON.parse(JSON.stringify(cart)).map(it=>{ delete it.tab; return it; }),
-      subtotal:s.sub, discount:s.disc, discountLabel:s.dlabel||(discount?discount.label:''), vat:s.vat, service:s.service, total:s.total,
+      subtotal:s.sub, discount:s.disc, discountLabel:s.dlabel||(discount?discount.label:''), promos:s.promos||[], memberOk:!!s.memOk, vat:s.vat, service:s.service, total:s.total,
       method, paid:method==='cash'?cashIn:(mx?mx.paid:s.total), change:method==='cash'?cashIn-s.total:(mx?mx.change:0), coPay, payRef, payParts:mx?mx.parts:undefined,
       status:'preparing', payStatus:'paid', memberId:(member&&!member.ext)?member.id:null, staffId:st?st.id:null, staffName:st?st.name:'',
       channel:'pos', createdAt:STORE.now(), closedAt:null
@@ -4964,7 +4993,7 @@ const PAY = (()=>{
     $('#genModal').innerHTML=`
       <div class="modal-h"><h3>🧾 ใบเสร็จ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
       <div class="modal-b"><div class="receipt" id="rcptPrint">
-        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
+        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`${m.legalName?`<div>${esc(m.legalName)}</div>`:''}<div>เลขผู้เสียภาษี ${esc(m.taxId)} (${esc(taxBrTxt(m.taxBranch))})</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
         <div class="rdiv"></div>
         <div>${otypeName(order.type)}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
         <div>พนักงาน: ${esc(order.staffName)} · ${new Date(order.createdAt).toLocaleString('th-TH')}</div>
@@ -4990,7 +5019,7 @@ const PAY = (()=>{
       <div class="modal-f">
         <button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button>
         <button class="btn-ghost" onclick="PAY.kitchenSlip('${order.id}')">🍽️ ใบครัว</button>
-        <button class="btn-ghost" onclick="PAY.fullTaxInvoice('${order.id}')">🧾 ใบกำกับภาษีเต็มรูป</button>
+        <button class="btn-ghost" onclick="PAY.fullTaxInvoice('${order.id}')">${(order.taxInv&&order.taxInv.name)?'🧾 ใบกำกับภาษี (ออกแล้ว)':'🧾 ใบกำกับภาษีเต็มรูป'}</button>
         <button class="btn-gold" style="flex:1 1 100%;min-height:64px;font-size:19px;font-weight:800;letter-spacing:.5px" onclick="PAY.print()">🖨️ พิมพ์ใบเสร็จ</button>
       </div>`;
     UI.open('genOverlay');
@@ -5096,34 +5125,100 @@ const PAY = (()=>{
     return `<svg width="200" height="200" viewBox="0 0 ${n*cell} ${n*cell}" xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
   }
   function kitchenSlip(orderId){ const o=STORE.find('orders',orderId)||_lastOrd; if(o) KDS.serveSlip(o,true); }
+  // ⭐ v12.53 ใบกำกับภาษีเต็มรูป — เก็บข้อมูลผู้ซื้อไว้ในบิล (พิมพ์ซ้ำ/สำเนาได้ · ลูกค้าประจำเลือกจากรายชื่อเดิม)
   function fullTaxInvoice(orderId){
     const o=STORE.find('orders',orderId); if(!o) return;
-    UI.ask('ใบกำกับภาษีเต็มรูป — ข้อมูลผู้ซื้อ',[
-      {key:'name',label:'ชื่อผู้ซื้อ / บริษัท'},
-      {key:'taxid',label:'เลขประจำตัวผู้เสียภาษีผู้ซื้อ'},
-      {key:'addr',label:'ที่อยู่ผู้ซื้อ'}
-    ],(b)=>renderFullTax(o,b));
+    const m=STORE.binfo();
+    if(!m.taxId||!m.legalName){ UI.toast('ยังไม่ได้บันทึกข้อมูลบริษัท → ตั้งค่า › ข้อมูลร้าน › 🧾 ข้อมูลผู้ขายบนใบกำกับภาษี แล้วกดบันทึก','err'); return; }
+    if(!isPaidOrder(o)){ UI.toast('บิลนี้ยังไม่ได้รับเงิน — ยังออกใบกำกับภาษีไม่ได้','err'); return; }
+    const t=(o.taxInv&&typeof o.taxInv==='object'&&o.taxInv.name)?o.taxInv:null;
+    if(t) renderFullTax(o,t); else taxForm(o,{});
   }
-  function renderFullTax(o,buyer){
-    const m=STORE.binfo(); const preVat=o.total-o.vat;
-    const rows=o.items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); const line=(it.base+it.modPrice)*it.qty; return `<tr><td>${esc(it.name)}${mt?' ('+esc(mt)+')':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht(line)}</td></tr>`; }).join('');
+  let _txO=null, _txB=[];
+  function taxBuyers(){ const seen=new Set(), out=[];
+    (STORE.get().orders||[]).filter(x=>x&&x.taxInv&&typeof x.taxInv==='object'&&x.taxInv.name).sort((a,c)=>(+c.taxInv.at||0)-(+a.taxInv.at||0))
+      .forEach(x=>{ const t=x.taxInv, k=(t.taxid||'')+'|'+t.name; if(seen.has(k)||out.length>=60) return; seen.add(k); out.push(t); });
+    return out; }
+  function taxForm(o,t){
+    _txO=o; _txB=taxBuyers(); t=t||{};
+    const brK=(t.br==null||t.br==='')?(t.taxid?'hq':'none'):(+t.br===0?'hq':'br');
+    const ip='width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:15px;box-sizing:border-box';
+    $('#genModal').className='modal';
+    $('#genModal').innerHTML=`<div class="modal-h"><h3>🧾 ใบกำกับภาษีเต็มรูป — ข้อมูลผู้ซื้อ</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
+      <div class="modal-b">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:10px">บิล ${esc(o.no)} · เลขที่ ${esc(o.receiptNo)} · ยอด <b style="color:var(--text)">${STORE.baht(o.total)}</b></div>
+        ${_txB.length?`<div class="field"><label>👥 ลูกค้าที่เคยขอ (เลือกแล้วเติมให้เลย)</label><select id="txPick" onchange="PAY.taxPick(this.value)" style="${ip}"><option value="">— เลือก หรือกรอกใหม่ด้านล่าง —</option>${_txB.map((b,i)=>`<option value="${i}">${esc(b.name)}${b.taxid?' · '+esc(b.taxid):''}</option>`).join('')}</select></div>`:''}
+        <div class="field"><label>ชื่อผู้ซื้อ / บริษัท *</label><input id="txName" value="${esc(t.name||'')}" style="${ip}" placeholder="เช่น บริษัท ตัวอย่าง จำกัด"></div>
+        <div class="field"><label>เลขประจำตัวผู้เสียภาษี (13 หลัก)</label><input id="txTax" inputmode="numeric" maxlength="17" value="${esc(t.taxid||'')}" style="${ip}" placeholder="บริษัท/ร้านที่จด VAT ต้องใส่"></div>
+        <div class="field"><label>สำนักงานใหญ่ / สาขา</label><div style="display:flex;gap:8px">
+          <select id="txBrK" onchange="PAY.taxBrUI()" style="${ip};flex:1">
+            <option value="hq" ${brK==='hq'?'selected':''}>สำนักงานใหญ่</option><option value="br" ${brK==='br'?'selected':''}>สาขาที่</option><option value="none" ${brK==='none'?'selected':''}>ไม่ระบุ (บุคคลธรรมดา)</option></select>
+          <input id="txBrNo" inputmode="numeric" maxlength="5" placeholder="00001" value="${brK==='br'?esc(t.br):''}" style="${ip};width:110px;${brK==='br'?'':'display:none'}"></div></div>
+        <div class="field" style="margin-bottom:0"><label>ที่อยู่ผู้ซื้อ *</label><textarea id="txAddr" rows="3" style="${ip};resize:vertical;font-family:inherit">${esc(t.addr||'')}</textarea></div>
+      </div>
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ยกเลิก</button><button class="btn-gold" style="flex:1" onclick="PAY.taxSave()">🧾 ออกใบกำกับภาษี</button></div>`;
+    UI.open('genOverlay');
+  }
+  function taxBrUI(){ const k=$('#txBrK'), n=$('#txBrNo'); if(k&&n) n.style.display=k.value==='br'?'':'none'; }
+  function taxPick(i){ const b=_txB[+i]; if(i===''||!b) return;
+    $('#txName').value=b.name||''; $('#txTax').value=b.taxid||''; $('#txAddr').value=b.addr||'';
+    const br=String(b.br==null?'':b.br); $('#txBrK').value=br===''?(b.taxid?'hq':'none'):(+br===0?'hq':'br'); $('#txBrNo').value=(+br>0)?br:''; taxBrUI(); }
+  function taxSave(){
+    const o=_txO; if(!o) return; const g=id=>(($('#'+id)||{}).value||'');
+    const name=g('txName').trim(), addr=g('txAddr').trim(), taxid=g('txTax').replace(/\D/g,''), k=g('txBrK');
+    if(!name){ UI.toast('ใส่ชื่อผู้ซื้อก่อน','err'); return; }
+    if(!addr){ UI.toast('ใส่ที่อยู่ผู้ซื้อก่อน (ใบกำกับภาษีเต็มรูปต้องมี)','err'); return; }
+    if(taxid&&taxid.length!==13){ UI.toast('เลขผู้เสียภาษีต้องมี 13 หลัก (ตอนนี้ '+taxid.length+' หลัก)','err'); return; }
+    let br='';
+    if(k==='hq') br='00000';
+    else if(k==='br'){ br=g('txBrNo').replace(/\D/g,''); if(!br||+br===0){ UI.toast('ใส่เลขสาขาของผู้ซื้อ เช่น 00001','err'); return; } br=br.padStart(5,'0'); }
+    const old=(o.taxInv&&typeof o.taxInv==='object')?o.taxInv:null;
+    o.taxInv={name,taxid,br,addr,at:(old&&+old.at)||Date.now(),by:(old&&old.by)||((AUTH.get()||{}).name||'')};
+    if(old) o.taxInv.edited=Date.now();
+    try{ STORE.save(); }catch(e){} try{ CLOUD.pushOrder(o); }catch(e){}
+    renderFullTax(o,o.taxInv);
+  }
+  function taxEdit(id){ const o=STORE.find('orders',id); if(o) taxForm(o,o.taxInv); }
+  function taxPrint(copy){ const e=$('#txKind'); if(e) e.textContent=copy?'สำเนา':'ต้นฉบับ'; print(); }
+  function renderFullTax(o,t){
+    const m=STORE.binfo(), B=v=>(Math.round(+v||0)/100).toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2}), vat=+o.vat||0, tot=+o.total||0, pre=tot-vat;
+    const br2=s=>esc(s).replace(/\n/g,'<br>');
+    let gross=0;
+    const rows=(o.items||[]).map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', ');
+      const unit=(+it.base||0)+(+it.modPrice||0), line=unit*(+it.qty||0); gross+=line;
+      return `<tr><td style="padding:2px 0">${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}</td><td style="text-align:center;vertical-align:top">${esc(it.qty)}</td><td style="text-align:right;vertical-align:top">${B(unit)}</td><td style="text-align:right;vertical-align:top">${B(line)}</td></tr>`; }).join('');
+    const d=new Date(o.createdAt||Date.now()), dTxt=d.toLocaleDateString('th-TH',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const tr=(l,v,b)=>`<tr${b?' style="font-weight:800;font-size:1.1em"':''}><td>${l}</td><td style="text-align:right">${v}</td></tr>`;
+    const th='border-bottom:1px solid #000;padding:3px 0';
     $('#genModal').className='modal wide';
     $('#genModal').innerHTML=`<div class="modal-h"><h3>🧾 ใบกำกับภาษีเต็มรูป</h3><button class="x" onclick="UI.close('genOverlay')">×</button></div>
-      <div class="modal-b"><div id="rcptPrint" style="background:#fff;color:#000;padding:18px;font-size:13px;line-height:1.5">
-        <div style="text-align:center"><b style="font-size:18px">${esc(m.shopName)}</b><br>ใบกำกับภาษี / ใบเสร็จรับเงิน (ต้นฉบับ)</div>
-        <div style="margin-top:10px;border-top:1px solid #000;padding-top:8px"><b>ผู้ขาย:</b> ${esc(m.shopName)} ${esc(m.branchName||'')}<br>${m.address?esc(m.address)+'<br>':''}เลขผู้เสียภาษี: ${esc(m.taxId||'-')}</div>
-        <div style="margin-top:8px"><b>ผู้ซื้อ:</b> ${esc(buyer.name||'-')}<br>${buyer.addr?esc(buyer.addr)+'<br>':''}เลขผู้เสียภาษี: ${esc(buyer.taxid||'-')}</div>
-        <div style="margin-top:8px">เลขที่: ${esc(o.no)} (#${o.receiptNo}) · วันที่ ${new Date(o.createdAt).toLocaleString('th-TH')}</div>
-        <table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr><th style="text-align:left;border-bottom:1px solid #000">รายการ</th><th style="border-bottom:1px solid #000">จำนวน</th><th style="text-align:right;border-bottom:1px solid #000">จำนวนเงิน</th></tr></thead><tbody>${rows}</tbody></table>
-        <table style="width:100%;border-collapse:collapse;margin-top:8px">
-          ${o.discount>0?`<tr><td>ส่วนลด</td><td style="text-align:right">-${STORE.baht(o.discount)}</td></tr>`:''}
-          <tr><td>มูลค่าสินค้า (ก่อน VAT)</td><td style="text-align:right">${STORE.baht(preVat)}</td></tr>
-          <tr><td>ภาษีมูลค่าเพิ่ม ${m.vatRate}%</td><td style="text-align:right">${STORE.baht(o.vat)}</td></tr>
-          <tr style="font-weight:700"><td>รวมทั้งสิ้น</td><td style="text-align:right">${STORE.baht(o.total)}</td></tr>
-        </table>
-        <div style="margin-top:26px;display:flex;justify-content:space-between"><div>...................<br>ผู้รับเงิน</div><div>...................<br>ผู้ซื้อ</div></div>
-      </div></div>
-      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-gold" onclick="PAY.print()">🖨️ พิมพ์</button></div>`;
+      <div class="modal-b">
+        ${vat>0?'':`<div style="font-size:13px;background:#fff4e5;border:1px solid #f5c98b;color:#7a4b00;border-radius:8px;padding:8px;margin-bottom:8px">⚠️ บิลนี้ไม่มียอด VAT (ภาษี 0) — ตรวจการตั้งค่า VAT ก่อนให้ลูกค้า</div>`}
+        <div id="rcptPrint" style="background:#fff;color:#000;padding:14px;font-size:12.5px;line-height:1.5">
+          <div style="text-align:center">
+            <div style="font-size:17px;font-weight:800">${esc(m.legalName||m.shopName)}</div>
+            ${m.legalName?`<div>(${esc(m.shopName)}${m.branchName?' '+esc(m.branchName):''})</div>`:''}
+            ${m.address?`<div>${br2(m.address)}</div>`:''}
+            <div>เลขประจำตัวผู้เสียภาษี ${esc(m.taxId||'-')} · ${esc(taxBrTxt(m.taxBranch))}</div>
+            <div style="margin:8px 0 4px;font-size:16px;font-weight:800;border:1.5px solid #000;padding:4px">ใบกำกับภาษี / ใบเสร็จรับเงิน<div id="txKind" style="font-size:13px;font-weight:600">ต้นฉบับ</div></div>
+          </div>
+          <table style="width:100%;border-collapse:collapse"><tr><td>เลขที่ <b>${esc(o.receiptNo)}</b></td><td style="text-align:right">วันที่ ${esc(dTxt)}</td></tr><tr><td colspan="2">อ้างอิงบิล ${esc(o.no)}</td></tr></table>
+          <div style="margin-top:6px;border-top:1px solid #000;padding-top:6px"><b>ผู้ซื้อ:</b> ${esc(t.name)}<br>${br2(t.addr||'')}${t.taxid?`<br>เลขประจำตัวผู้เสียภาษี ${esc(t.taxid)}${t.br!==''&&t.br!=null?' · '+esc(taxBrTxt(t.br)):''}`:''}</div>
+          <table style="width:100%;border-collapse:collapse;margin-top:8px"><thead><tr><th style="text-align:left;${th}">รายการ</th><th style="${th}">จำนวน</th><th style="text-align:right;${th}">ราคา/หน่วย</th><th style="text-align:right;${th}">จำนวนเงิน (บาท)</th></tr></thead><tbody>${rows}</tbody></table>
+          <table style="width:100%;border-collapse:collapse;margin-top:6px;border-top:1px solid #000">
+            ${tr('รวมเป็นเงิน',B(gross))}
+            ${(+o.discount||0)>0?tr('ส่วนลด'+(o.discountLabel?' ('+esc(o.discountLabel)+')':''),'-'+B(o.discount)):''}
+            ${(+o.service||0)>0?tr('ค่าบริการ',B(o.service)):''}
+            ${tr('มูลค่าสินค้า/บริการ (ไม่รวม VAT)',B(pre))}
+            ${tr('ภาษีมูลค่าเพิ่ม '+esc(m.vatRate)+'%',B(vat))}
+            ${tr('จำนวนเงินรวมทั้งสิ้น',B(tot),1)}
+          </table>
+          <div style="text-align:center;margin-top:4px">(${bahtText(tot)})</div>
+          <div style="margin-top:28px;display:flex;justify-content:space-between;text-align:center"><div>....................<br>ผู้รับเงิน</div><div>....................<br>ผู้รับสินค้า/บริการ</div></div>
+          <div style="font-size:11px;margin-top:8px">ออกเอกสาร ${esc(new Date(+t.at||Date.now()).toLocaleString('th-TH'))}${t.by?' · โดย '+esc(t.by):''}</div>
+        </div>
+      </div>
+      <div class="modal-f"><button class="btn-ghost" onclick="UI.close('genOverlay')">ปิด</button><button class="btn-ghost" onclick="PAY.taxEdit('${esc(o.id)}')">✏️ แก้ข้อมูลผู้ซื้อ</button><button class="btn-ghost" onclick="PAY.taxPrint(1)">🖨️ พิมพ์สำเนา</button><button class="btn-gold" style="flex:1" onclick="PAY.taxPrint(0)">🖨️ พิมพ์ต้นฉบับ</button></div>`;
     UI.open('genOverlay');
   }
   // พิมพ์หลายใบในครั้งเดียว (เลี่ยงเบราว์เซอร์บล็อกหน้าต่างที่ 2)
@@ -5146,7 +5241,7 @@ const PAY = (()=>{
     const m=STORE.binfo(), items=order.items||[];
     const rows=items.map(it=>{ const mt=(it.mods||[]).filter(x=>x.name!=='ปกติ').map(x=>x.name).join(', '); return `<tr><td>${esc(it.name)}${mt?'<br><small>+ '+esc(mt)+'</small>':''}${it.note?'<br><small>📝 '+esc(it.note)+'</small>':''}</td><td style="text-align:center">${esc(it.qty)}</td><td style="text-align:right">${STORE.baht((it.base+it.modPrice)*it.qty)}</td></tr>`; }).join('');
     return `<div class="receipt">
-        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`<div>เลขผู้เสียภาษี ${esc(m.taxId)}</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
+        <div class="rc">${m.logo?`<img src="${m.logo}" style="max-width:60%;max-height:90px;margin:0 auto 4px;display:block">`:''}<div style="font-size:1.9em;font-weight:900;line-height:1.15;letter-spacing:.5px;margin:2px 0 3px">${esc(order.no)}</div><h3>${esc(m.shopName)}</h3><div>${esc(m.branchName)}</div>${m.taxId?`${m.legalName?`<div>${esc(m.legalName)}</div>`:''}<div>เลขผู้เสียภาษี ${esc(m.taxId)} (${esc(taxBrTxt(m.taxBranch))})</div>`:''}${m.address?`<div style="font-size:11px">${esc(m.address)}</div>`:''}<div>${(m.taxId&&m.vatRate>0)?'ใบเสร็จรับเงิน/ใบกำกับภาษีอย่างย่อ':'ใบเสร็จรับเงิน'} #${order.receiptNo}</div></div>
         <div class="rdiv"></div>
         <div>${otypeName(order.type)}${order.table?' · โต๊ะ '+esc(order.table):''}</div>
         <div>พนักงาน: ${esc(order.staffName||'')} · ${new Date(order.createdAt).toLocaleString('th-TH')}</div>
@@ -5182,7 +5277,7 @@ const PAY = (()=>{
     if(_kit) docs.push(...KDS.serveSlipDocs(order));   // + ใบครัว (แยกบาร์/ครัวถ้าเปิดไว้)
     setTimeout(()=>printDocs(docs),200);
   }
-  return {mxCalc,tcCalc,open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,kitchenSlip,autoPrint};
+  return {mxCalc,tcCalc,open,setMethod,resetBdayAsk,cash,quickCash,complete,print,printDocs,receipt,rcptHtml,qrSvg,promptpayQR,fullTaxInvoice,taxPick,taxBrUI,taxSave,taxPrint,taxEdit,kitchenSlip,autoPrint};
 })();
 
 /* ============================================================
@@ -7316,6 +7411,7 @@ const REPORT = (()=>{
         <div class="stat-card"><div class="lbl">ยอดขาย</div><div class="val">${STORE.baht(revenue)}</div></div>
         <div class="stat-card"><div class="lbl">จำนวนบิล</div><div class="val">${count} <small>บิล</small></div></div>
         <div class="stat-card"><div class="lbl">เฉลี่ย/บิล</div><div class="val">${STORE.baht(avg)}</div></div>
+        <div class="stat-card" style="cursor:pointer" onclick="REPORT.setRType('promo')" title="ดูรายละเอียดแต่ละโปร"><div class="lbl">🎁 ส่วนลด / โปรโมชั่น</div><div class="val" style="color:var(--danger)">${STORE.baht(orders.reduce((a,o)=>a+(+o.discount||0),0))}</div><div class="trend">${orders.filter(o=>(+o.discount||0)>0).length} บิล · กดดูแยกโปร</div></div>
         <div class="stat-card"><div class="lbl">กำไรขั้นต้น</div><div class="val" style="color:var(--success)">${STORE.baht(profit)}</div><div class="trend">ต้นทุน ${STORE.baht(cost)}</div></div>
         ${fixedMonthly>0?`<div class="stat-card" style="border-left:4px solid ${netProfit>=0?'var(--success)':'var(--danger)'}"><div class="lbl">กำไรสุทธิ (ประมาณ)</div><div class="val" style="color:${netProfit>=0?'var(--success)':'var(--danger)'}">${STORE.baht(netProfit)}</div><div class="trend">หักค่าใช้จ่ายคงที่ ${STORE.baht(fixedShare)} (${days} วัน)</div></div>`:''}
         <div class="stat-card"><div class="lbl">⏱️ เวลาทำเฉลี่ย</div><div class="val">${avgPrep!=null?fmtDur(avgPrep):'-'}<small> นาที</small></div></div>
@@ -7329,6 +7425,10 @@ const REPORT = (()=>{
           </div>
         </div>
         <div>
+          <h3 style="margin-bottom:12px;font-size:16px">🎁 โปรโมชั่นที่ใช้</h3>
+          <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-bottom:16px">
+            ${(()=>{ const pa=promoAgg(orders); return pa.length?pa.slice(0,8).map(r=>`<div class="sr" style="margin-bottom:8px"><span>${esc(r.name)} <small style="color:var(--muted)">${r.bills} บิล${r.kind==='set'?' · '+r.n+' เซต':r.kind==='p2'?' · '+r.n+' แก้ว':''}</small></span><b style="color:var(--danger)">-${STORE.baht(r.disc)}</b></div>`).join('')+(pa.length>8?'<div style="font-size:12px;color:var(--muted)">ดูทั้งหมด: รายงาน "ส่วนลด / โปรโมชั่น"</div>':''):'<div class="empty">ยังไม่มีบิลที่ใช้โปร</div>'; })()}
+          </div>
           <h3 style="margin-bottom:12px;font-size:16px">💳 ตามวิธีชำระ</h3>
           <div style="background:var(--surface);padding:16px;border-radius:var(--r-card);box-shadow:var(--shadow);margin-bottom:16px">
             ${Object.entries(byMethod).map(([k,v])=>`<div class="sr" style="margin-bottom:8px"><span>${({cash:'💵 เงินสด',promptpay:'📱 PromptPay',transfer:'🏦 โอน',card:'💳 บัตรเครดิต',thaichuay:'🤝 ไทยช่วยไทย 60/40',grab:'🟢 Grab',lineman:'🟩 LINE MAN',shopee:'🟠 Shopee'})[k]||k}</span><b>${STORE.baht(v)}</b></div>`).join('')||'<div class="empty">—</div>'}
@@ -7410,7 +7510,7 @@ const REPORT = (()=>{
   let rtype='day';
   const RT=[['day','ยอดขายรวมตามวัน'],['month','ยอดขายรวมตามเดือน'],['bill','ยอดขายตามบิล'],['billd','ยอดขายตามรายละเอียดบิล'],
     ['prod','ยอดขายตามสินค้า'],['prodday','ยอดขายสินค้าตามวัน'],['prodmonth','ยอดขายสินค้าตามเดือน'],['prodhour','ยอดขายตามสินค้ารายชั่วโมง'],
-    ['cat','ยอดขายตามหมวด'],['type','ยอดขายตามช่องทางการขาย'],['pay','ยอดขายตามการชำระเงิน'],['mod','ยอดขายตามตัวเลือก'],
+    ['cat','ยอดขายตามหมวด'],['type','ยอดขายตามช่องทางการขาย'],['pay','ยอดขายตามการชำระเงิน'],['promo','ส่วนลด / โปรโมชั่น'],['mod','ยอดขายตามตัวเลือก'],
     ['hour','ยอดขายรายชั่วโมง'],['shift','ยอดขายตามรอบการขาย (กะ)']];
   const _p2=n=>String(n).padStart(2,'0');
   const tsOf=o=>(isPaidOrder(o)&&o.paidAt)||o.createdAt;
@@ -7474,6 +7574,13 @@ const REPORT = (()=>{
       const m={}; itemsAll.forEach(({it})=>{ const k=catOf(it), r=m[k]||(m[k]={q:0,v:0}); r.q+=(+it.qty||0); r.v+=lineAmt(it); });
       const rows=Object.entries(m).sort((a,b)=>b[1].v-a[1].v).map(([k,r])=>[k,r.q,bt(r.v),Math.round(r.v/totalSales*1000)/10]);
       return {cols:[['หมวด','t'],['จำนวน','n'],['ยอดขาย','b'],['% ของยอด','p']],rows,total:['รวม',sum(rows,r=>r[1]),bt(totalSales),100]};
+    }
+    if(type==='promo'){                      // ⭐ v12.52 ใช้โปร/ส่วนลดไปเท่าไหร่
+      const rows=promoAgg(os).map(r=>[r.name,PROMO_KIND[r.kind]||'ส่วนลด',r.bills,r.n,bt(r.disc),bt(r.bills?r.disc/r.bills:0)]);
+      const dsum=sum(os,o=>o.discount), gross=sum(os,o=>o.subtotal), nb=os.filter(o=>(+o.discount||0)>0).length;
+      return {cols:[['โปรโมชั่น / ส่วนลด','t'],['ประเภท','t'],['บิล','n'],['จำนวนที่ใช้ (เซต/แก้ว/ครั้ง)','n'],['ยอดที่ลด','b'],['ลดเฉลี่ย/บิล','b']],rows,
+        total:['รวม','',nb,'',bt(dsum),bt(nb?dsum/nb:0)],
+        note:'ยอดก่อนลด '+STORE.baht(gross)+' · ลดไปรวม '+STORE.baht(dsum)+' ('+(gross?Math.round(dsum/gross*1000)/10:0)+'%) · บิลที่ใช้โปร '+nb+' จาก '+os.length+' บิล'};
     }
     if(type==='pay'){                        // ⭐ v12.46 บิลแบ่งจ่าย กระจายยอดเข้าแต่ละวิธีชำระ (ไม่แยกเป็นแถว "แบ่งจ่าย")
       const tot=sum(os,o=>o.total)||1, m={};
@@ -7602,9 +7709,9 @@ const REPORT = (()=>{
   }
   function exportAccounting(){
     const orders=sales();
-    let csv='วันที่,เลขที่เอกสาร,ลูกค้า,รายละเอียด,มูลค่าก่อนภาษี,ภาษีมูลค่าเพิ่ม,ยอดรวม,วิธีชำระ\n';
-    orders.forEach(o=>{ const pre=((o.total-o.vat)/100).toFixed(2), vat=(o.vat/100).toFixed(2), tot=(o.total/100).toFixed(2); const desc=o.items.map(it=>it.qty+'x'+it.name).join(' / ').replace(/[,"]/g,' ');
-      csv+=`${new Date(o.createdAt).toLocaleDateString('th-TH')},${o.no}#${o.receiptNo},${(o.staffName||'').replace(/,/g,' ')},"${desc}",${pre},${vat},${tot},${o.method}\n`; });
+    let csv='วันที่,เลขที่เอกสาร,ลูกค้า,รายละเอียด,มูลค่าก่อนภาษี,ภาษีมูลค่าเพิ่ม,ยอดรวม,วิธีชำระ,ผู้ซื้อ (ใบกำกับเต็มรูป),เลขผู้เสียภาษีผู้ซื้อ,สาขาผู้ซื้อ\n';
+    orders.forEach(o=>{ const _t=(o.taxInv&&typeof o.taxInv==='object')?o.taxInv:{}, _q=v=>'"'+String(v||'').replace(/"/g,'""')+'"'; const pre=((o.total-o.vat)/100).toFixed(2), vat=(o.vat/100).toFixed(2), tot=(o.total/100).toFixed(2); const desc=o.items.map(it=>it.qty+'x'+it.name).join(' / ').replace(/[,"]/g,' ');
+      csv+=`${new Date(o.createdAt).toLocaleDateString('th-TH')},${o.no}#${o.receiptNo},${(o.staffName||'').replace(/,/g,' ')},"${desc}",${pre},${vat},${tot},${o.method},${_q(_t.name)},${_q(_t.taxid?'\t'+_t.taxid:'')},${_q(_t.name&&_t.taxid?taxBrTxt(_t.br):'')}\n`; });
     const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sao_accounting_'+period+'_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
     UI.toast('ดาวน์โหลดไฟล์บัญชีแล้ว (เปิดใน Excel/FlowAccount ได้)','ok');
@@ -9782,7 +9889,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.51</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.53</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9791,8 +9898,18 @@ const SETTINGS = (()=>{
           ${brOwn}
           <div class="field"><label>ชื่อสาขานี้</label><input id="setBranch" value="${esc(cb.name||'')}"></div>
           <div class="field"><label>PromptPay ID ของสาขานี้ (เบอร์/เลขบัตร)</label><input id="setPP" value="${esc(cb.promptpayId||'')}"></div>
-          <div class="field"><label>เลขผู้เสียภาษีของสาขานี้ (สำหรับใบกำกับภาษี)</label><input id="setTaxId" value="${esc(cb.taxId||'')}" placeholder="0-0000-00000-00-0"></div>
-          <div class="field"><label>ที่อยู่สาขานี้ (พิมพ์บนใบกำกับภาษี)</label><input id="setAddr" value="${esc(cb.address||'')}" placeholder="เลขที่ ถนน ตำบล อำเภอ จังหวัด รหัสไปรษณีย์"></div>
+          ${(()=>{ const D=TAX_DEF, useD=!cb.taxId&&!cb.legalName, sameCo=useD||String(cb.taxId||'').replace(/\D/g,'')===D.taxId;   // ⭐ v12.53
+            const v={legal:cb.legalName||(sameCo?D.legalName:''), tax:cb.taxId||(useD?D.taxId:''), br:(cb.taxBranch!=null&&cb.taxBranch!=='')?cb.taxBranch:(sameCo?D.taxBranch:'00000'), addr:cb.address||(useD?D.address:'')};
+            const isBr=+String(v.br).replace(/\D/g,'')>0, note=useD||(sameCo&&!cb.legalName);
+            return `<div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin:0 0 12px;background:var(--bg)">
+              <div style="font-weight:700;margin-bottom:6px">🧾 ข้อมูลผู้ขายบนใบกำกับภาษี (สาขานี้)</div>
+              ${note?`<div style="font-size:12px;background:#fff4e5;border:1px solid #f5c98b;color:#7a4b00;border-radius:8px;padding:8px;margin-bottom:8px">✍️ เติมข้อมูล <b>${esc(D.legalName)}</b> ไว้ให้แล้ว — ตรวจให้ถูก แล้วกด <b>💾 บันทึกการตั้งค่า</b> ด้านล่าง (ถ้าสาขานี้เป็นบริษัทอื่น แก้ได้เลย)</div>`:''}
+              <div class="field"><label>ชื่อผู้ประกอบการ (ตามที่จด VAT)</label><input id="setLegal" value="${esc(v.legal)}" placeholder="บริษัท ... จำกัด"></div>
+              <div class="field"><label>เลขประจำตัวผู้เสียภาษี (13 หลัก)</label><input id="setTaxId" inputmode="numeric" value="${esc(v.tax)}" placeholder="0000000000000"></div>
+              <div class="field"><label>สถานประกอบการ</label><div style="display:flex;gap:8px"><select id="setTaxBrK" onchange="var n=document.getElementById('setTaxBrNo');if(n)n.style.display=this.value==='br'?'':'none'" style="flex:1"><option value="hq" ${isBr?'':'selected'}>สำนักงานใหญ่</option><option value="br" ${isBr?'selected':''}>สาขาที่</option></select><input id="setTaxBrNo" inputmode="numeric" maxlength="5" placeholder="00001" value="${isBr?esc(v.br):''}" style="width:110px;${isBr?'':'display:none'}"></div></div>
+              <div class="field" style="margin-bottom:0"><label>ที่อยู่ (ตามที่จด VAT · พิมพ์บนใบกำกับภาษี)</label><input id="setAddr" value="${esc(v.addr)}" placeholder="เลขที่ ถนน แขวง/ตำบล เขต/อำเภอ จังหวัด รหัสไปรษณีย์"></div>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px">ใส่เลขผู้เสียภาษีแล้ว ใบเสร็จปกติจะขึ้นเป็น "ใบกำกับภาษีอย่างย่อ" · ลูกค้าขอเต็มรูป: หน้าใบเสร็จ → 🧾 ใบกำกับภาษีเต็มรูป</div>
+            </div>`; })()}
           <div class="field"><label>URL หน้าสั่งอาหาร (สำหรับ QR ต่อโต๊ะ · ได้หลัง deploy)</label><input id="setOrderUrl" value="${esc(m.orderBaseUrl||'')}" placeholder="https://xxxx.vercel.app"></div>
           <div class="field"><label>🤖 ผู้ช่วย AI — ผู้ให้บริการ</label><select id="setAiProvider"><option value="gemini" ${(s.aiProvider||'gemini')==='gemini'?'selected':''}>Google Gemini (มี free tier)</option><option value="openai" ${s.aiProvider==='openai'?'selected':''}>OpenAI (ChatGPT) — เสียเงิน</option><option value="claude" ${s.aiProvider==='claude'?'selected':''}>Anthropic Claude — เสียเงิน</option></select><div class="hint" style="font-size:11px;color:var(--muted);margin-top:4px">เลือกเจ้าที่จะใช้ · ใส่ key ของเจ้านั้นด้านล่าง (key เก็บในเครื่องนี้เท่านั้น)</div></div>
           <div class="field"><label>🔑 Gemini API Key <span style="color:var(--success)">(ฟรี · aistudio.google.com/apikey)</span></label><div style="display:flex;gap:8px"><input id="setGemini" type="password" value="${esc(s.geminiKey||'')}" placeholder="AIza..." autocomplete="off" style="flex:1"><button class="add-fab" type="button" onclick="SETTINGS.toggleKey()">👁️</button></div></div>
@@ -10017,7 +10134,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.51) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.53) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
@@ -10027,7 +10144,7 @@ const SETTINGS = (()=>{
     const cb=STORE.curBranch(); if(cb){ cb.name=$('#setBranch').value;
       { const _bn=$('#setBrandNameB'); if(_bn) cb.brandName=_bn.value.trim();
         const _bs=$('#setBrandSubB');  if(_bs) cb.brandSub=_bs.value.trim(); }
-      cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.trim(); cb.address=$('#setAddr').value.trim(); const tc=$('#setTgChat'); if(tc&&AUTH.isHQ()) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt&&AUTH.isHQ()) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
+      cb.promptpayId=$('#setPP').value.trim(); cb.taxId=$('#setTaxId').value.replace(/\D/g,''); cb.address=$('#setAddr').value.trim(); { const _lg=$('#setLegal'); if(_lg) cb.legalName=_lg.value.trim(); const _bk=$('#setTaxBrK'); if(_bk){ const _n=(($('#setTaxBrNo')||{}).value||'').replace(/\D/g,''); cb.taxBranch=(_bk.value==='br'&&+_n>0)?_n.padStart(5,'0'):'00000'; } if(cb.taxId&&cb.taxId.length!==13){ const _l=cb.taxId.length; setTimeout(()=>UI.toast('⚠️ เลขผู้เสียภาษีควรมี 13 หลัก (ตอนนี้ '+_l+' หลัก)','err'),1500); } } const tc=$('#setTgChat'); if(tc&&AUTH.isHQ()) cb.tgChat=tc.value.trim(); CLOUD.pushItem('branches',cb); } { const to_=$('#setTgOn'); if(to_) s.tgNotify=to_.value==='1'; const tt=$('#setTgToken'); if(tt&&AUTH.isHQ()) s.tgToken=tt.value.trim(); const ck=id=>{const e=$('#'+id);return e?!!e.checked:true;}; if($('#tgEvShift')) s.tgEvents={sale:ck('tgEvSale'),shift:ck('tgEvShift'),count:ck('tgEvCount'),cashout:ck('tgEvCashout'),qr:ck('tgEvQr'),slow:ck('tgEvSlow'),open:ck('tgEvOpen'),voided:ck('tgEvVoid'),payqr:ck('tgEvPayQr'),paytransfer:ck('tgEvPayTr'),lowstock:ck('tgEvLow')}; const sm=$('#tgSlowMin'); if(sm) s.tgSlowMin=Math.max(1,parseInt(sm.value)||10); } BRANCH.renderChip();
     m.vatRate=parseFloat($('#setVat').value)||0; m.serviceCharge=parseFloat($('#setSvc').value)||0;
     m.vatIncluded=$('#setVatInc').value==='1';
     s.receiptFooter=$('#setFoot').value; s.theme=$('#setTheme').value; s.qrPayPolicy=$('#setQrPolicy').value;
@@ -11210,7 +11327,7 @@ const PRINT = (()=>{
     const row=(l,r)=>{ const sp=Math.max(1,W-l.length-r.length); ln(l+' '.repeat(sp)+r); };
     const dash=()=>ln('-'.repeat(W));
     center(); b.push(ESC,0x21,0x10); ln(m.shopName); b.push(ESC,0x21,0x00); // หัวตัวใหญ่
-    ln(m.branchName||''); if(m.taxId) ln('เลขภาษี '+m.taxId);
+    ln(m.branchName||''); if(m.taxId){ if(m.legalName) ln(m.legalName); ln('เลขภาษี '+m.taxId+' '+taxBrTxt(m.taxBranch)); }
     left(); dash();
     ln('เลขที่ '+order.no+(order.table?' โต๊ะ '+order.table:''));
     ln(new Date(order.createdAt).toLocaleString('th-TH'));
@@ -12182,6 +12299,7 @@ const CLOUD = (()=>{
     if(key!=='orders') return o;
     ['no','receiptNo','method','status','payStatus','type','channel','branchId','memberId','staffId','slipRef'].forEach(k=>{ if(o[k]!=null) o[k]=_code(o[k]); });
     ['subtotal','discount','vat','service','total','paid','change','createdAt'].forEach(k=>{ if(o[k]!=null) o[k]=_num(o[k]); });
+    if(o.taxInv!=null){ const t=o.taxInv; if(t&&typeof t==='object'&&!Array.isArray(t)){ const S=(v,n)=>String(v==null||typeof v==='object'?'':v).slice(0,n); o.taxInv={name:S(t.name,200),taxid:S(t.taxid,20).replace(/\D/g,''),br:S(t.br,8).replace(/\D/g,''),addr:S(t.addr,500),at:_num(t.at),by:S(t.by,60)}; if(t.edited) o.taxInv.edited=_num(t.edited); } else delete o.taxInv; }   // ⭐ v12.53
     o.items=(Array.isArray(o.items)?o.items:[]).filter(it=>it&&typeof it==='object');
     o.items.forEach(it=>{
       it.qty=_num(it.qty);
