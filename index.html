@@ -3220,6 +3220,7 @@ const isPaidOrder=(o)=> !!o && o.status!=='void' && o.status!=='wait_payment'
   && o.payStatus!=='open' && o.payStatus!=='wait_cash' && o.payStatus!=='wait_verify'
   && !!o.method && o.method!=='unpaid';
 // ⭐ v12.42 ยอดที่จ่ายด้วยวิธี m ของบิล o — บิลแบ่งจ่าย (mixed) นับเฉพาะส่วนของวิธีนั้น (เงินสดในลิ้นชัก/รายงานจะได้ถูก)
+window.SAOERR=(where,e)=>{ try{ console.error(where,e); const a=JSON.parse(localStorage.getItem('saocafe_errlog')||'[]'); a.push({t:new Date().toLocaleString('th-TH'),w:String(where),m:String((e&&e.message)||e).slice(0,200),s:String((e&&e.stack)||'').slice(0,400)}); localStorage.setItem('saocafe_errlog',JSON.stringify(a.slice(-40))); }catch(_){} };   // ⭐ v12.48
 const payPart=(o,m)=> !o ? 0 : o.method==='mixed' ? (+((o.payParts||{})[m])||0) : (o.method===m ? (+o.total||0) : 0);
 // คืนสต็อกได้ไหม — เฉพาะบิลที่เคยตัดสต็อกจริง และยังไม่เคยคืน (กันสต็อกงอก)
 // คืนสต็อกจริง — ใช้จำนวนที่หักได้จริง (stockUsed) ถ้ามี · ส่งขึ้น cloud ด้วย
@@ -4041,8 +4042,8 @@ const POS = (()=>{
 
   function render(){
     restoreCart();
-    renderTypes(); renderTabs(); renderGrid(); renderCart();
-    if(!orderNo) newOrderNo();
+    [renderTypes,renderTabs,renderGrid,renderCart].forEach(f=>{ try{ f(); }catch(e){ SAOERR('POS.'+f.name,e); } });   // ⭐ v12.48
+    if(!orderNo) newOrderNo(); else { const _on=$('#orderNo'); if(_on) _on.textContent=orderNo; }
   }
   // เซฟตะกร้าที่กำลังทำลง localStorage (กันรีเฟรช/ปิดพลาด แล้วของหาย)
   function persistCart(){ try{ localStorage.setItem('saocafe_cart',JSON.stringify({cart,orderType,discount,member,table,orderNo,tabCtx})); }catch(e){} }
@@ -4470,7 +4471,7 @@ const POS = (()=>{
   }
   // ---- แยกบิล (split) ----
   function getState(){ return {cart,orderType,discount,member,orderNo,calc}; }
-  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; tabCtx=null; STORE.save(); newOrderNo(); renderTypes(); renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
+  function clearAfterPay(){ cart=[]; discount=null; member=null; table=null; orderNo=null; tabCtx=null; try{ persistCart(); }catch(e){} try{ STORE.save(); }catch(e){ SAOERR('clear/save',e); } try{ newOrderNo(); }catch(e){ SAOERR('clear/no',e); } try{ renderTypes(); }catch(e){ SAOERR('clear/types',e); } renderCart(); }   // เลขบิลถูกจองตอนสร้างออเดอร์แล้ว
   function setDiscount(d){ discount=d; renderCart(); }
   // แถบ 🎂 เตือนพนักงาน — โผล่ทันทีที่ผูกสมาชิกที่เข้าเงื่อนไข
   function bdayBanner(){
@@ -4792,7 +4793,7 @@ const PAY = (()=>{
     _payBusy=true;
     const _b0=document.getElementById('payConfirm'); if(_b0) _b0.disabled=true;
     try{ await _complete(); }
-    catch(e){ console.error('pay complete',e); try{ UI.toast('บันทึกบิลไม่สำเร็จ ลองใหม่','err'); }catch(_){} }
+    catch(e){ SAOERR('pay complete',e); try{ UI.toast('บันทึกบิลไม่สำเร็จ: '+String((e&&e.message)||e).slice(0,90)+' — เช็คประวัติบิลก่อนกดจ่ายซ้ำ','err'); }catch(_){} }
     finally{ _payBusy=false; const _b1=document.getElementById('payConfirm'); if(_b1) _b1.disabled=false; }
   }
   async function _complete(){
@@ -4835,8 +4836,9 @@ const PAY = (()=>{
       channel:'pos', createdAt:STORE.now(), closedAt:null
     };
     STORE.get().orders.push(order);
-    let _fresh=null;
-    if(_tab){   // ⭐ v12.0 ของที่ส่งครัวแล้วตัดสต็อกไปแล้ว -> ตัดเฉพาะที่เพิ่มตอนปิดบิล แล้วรวมประวัติการตัดมาไว้บิลนี้ (ยกเลิกทีหลังคืนได้ครบ)
+    let _fresh=null; const _bad=[];   // ⭐ v12.48 ขั้นตอนเสริมหลังบันทึกบิล — พังได้ แต่ต้องไม่ขวางการปิดบิล
+    const _safe=(nm,f)=>{ try{ f(); }catch(e){ _bad.push(nm+': '+String((e&&e.message)||e).slice(0,80)); SAOERR('pay/'+nm,e); } };
+    if(_tab) _safe('ปิดบิลโต๊ะ',()=>{   // ⭐ v12.0 ของที่ส่งครัวแล้วตัดสต็อกไปแล้ว -> ตัดเฉพาะที่เพิ่มตอนปิดบิล แล้วรวมประวัติการตัดมาไว้บิลนี้ (ยกเลิกทีหลังคืนได้ครบ)
       _srcs.forEach(o=>{ try{ INV.deduct(o); }catch(e){} });
       _fresh={items:order.items.filter(it=>!_tab.lines.includes(it.line)),channel:'pos'};
       if(_fresh.items.length) INV.deduct(_fresh);
@@ -4844,25 +4846,26 @@ const PAY = (()=>{
       _srcs.forEach(o=>{ if(o.stockUsed&&typeof o.stockUsed==='object') Object.keys(o.stockUsed).forEach(k=>{ _u[k]=(_u[k]||0)+(+o.stockUsed[k]||0); }); });
       order.stockUsed=_u; order.stockDeducted=true; order.tabOf=_tab.ids.slice();
       if(!_fresh.items.length){ order.status='done'; order.closedAt=STORE.now(); }   // ของออกจากครัวไปแล้ว ไม่ต้องขึ้นจอครัวซ้ำ
-    } else INV.deduct(order);                 // ตัดสต็อกตามสูตร
-    try{ MEMBER.consume(order,discount); }catch(e){ console.error('consume',e); }   // ⭐ v11.2 ตัดแต้มที่แลกตอนจ่ายจริง
-    if(member&&member.ext){ LOYAL.earn(order,member); }   // ⭐ v11.4 ให้แต้มในระบบสมาชิก SAO (ทำงานเบื้องหลัง ไม่หน่วงการขาย)
-    else if(member) MEMBER.earn(member,order); // สะสมแต้ม
+    }); else _safe('ตัดสต็อก',()=>INV.deduct(order));                 // ตัดสต็อกตามสูตร
+    _safe('ตัดแต้มที่แลก',()=>MEMBER.consume(order,discount));   // ⭐ v11.2 ตัดแต้มที่แลกตอนจ่ายจริง
+    _safe('สะสมแต้ม',()=>{ if(member&&member.ext){ LOYAL.earn(order,member); }   // ⭐ v11.4 ให้แต้มในระบบสมาชิก SAO (ทำงานเบื้องหลัง ไม่หน่วงการขาย)
+    else if(member) MEMBER.earn(member,order); }); // สะสมแต้ม
     try{ if(discount && discount.bdayTier) MEMBER.markBirthdayUsed(discount.bdayMemberId||(member&&member.id), discount.bdayTier); }catch(e){}   // ⭐ v11.2 ปักว่าใช้สิทธิ์ที่ "เจ้าของสิทธิ์" ไม่ใช่สมาชิกที่สลับมาทีหลัง
     try{ PAY.resetBdayAsk(); }catch(e){}
     if(st){ st.sales=(st.sales||0)+s.total; } // ยอดต่อพนักงาน
-    SHIFT.recordSale(order);           // บันทึกเข้ากะ
-    if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(order),'sale');
+    _safe('บันทึกเข้ากะ',()=>SHIFT.recordSale(order));           // บันทึกเข้ากะ
+    _safe('Telegram',()=>{ if((STORE.get().settings.tgEvents||{}).sale!==false) LINEN.send(LINEN.saleMsg(order),'sale');
     else if(order.method==='promptpay') LINEN.send(LINEN.saleMsg(order),'payqr');
-    else if(order.method==='transfer') LINEN.send(LINEN.saleMsg(order),'paytransfer');
-    CLOUD.pushOrder(order);
-    if(_tab){   // บิลค้างของโต๊ะ -> ปิดเป็น "รวมบิล" (ไม่นับเป็นบิลยกเลิก · ไม่คืนสต็อก เพราะย้ายมาอยู่บิลนี้แล้ว)
+    else if(order.method==='transfer') LINEN.send(LINEN.saleMsg(order),'paytransfer'); });
+    _safe('ส่งขึ้น cloud',()=>CLOUD.pushOrder(order));
+    if(_tab) _safe('ปิดบิลค้างของโต๊ะ',()=>{   // บิลค้างของโต๊ะ -> ปิดเป็น "รวมบิล" (ไม่นับเป็นบิลยกเลิก · ไม่คืนสต็อก เพราะย้ายมาอยู่บิลนี้แล้ว)
       _srcs.forEach(o=>{ o.status='void'; o.merged=true; o.stockReturned=true; o.mergedInto=order.id; o.voidReason='ปิดบิลรวมเป็น '+order.no; o.closedAt=STORE.now(); CLOUD.pushOrder(o); });
       try{ FLOOR.afterSettle(order.table); }catch(e){} try{ PENDING.updateBadge(); }catch(e){}
-    }
+    });
     STORE.save();
     POS.clearAfterPay();               // ⭐ ล้างตะกร้า/ออกเลขใหม่ก่อน — พิมพ์พังต้องไม่ค้างที่บิลเดิม
     UI.close('payOverlay');
+    if(_bad.length) setTimeout(()=>{ try{ UI.toast('✅ บันทึกบิล '+order.no+' แล้ว · ⚠️ มีขั้นตอนเสริมผิดพลาด: '+_bad.join(' / '),'err'); }catch(e){} },1200);   // ⭐ v12.48 บอกสาเหตุ (ถ่ายรูปส่งผู้ดูแลได้)
     if(isAppPay(order.method)){
       try{ const _S=STORE.get().settings; if(_S.autoPrint&&_S.kdsServeSlip&&!(_tab&&!(_fresh&&_fresh.items.length))) KDS.serveSlip(_tab&&_fresh?Object.assign({},order,{items:_fresh.items}):order); }catch(e){ console.error('kitchen',e); }
       KDS.updateBadge(); UI.toast('บันทึกยอด '+payLabel(order.method)+' '+STORE.baht(s.total)+' แล้ว','ok');
@@ -9588,7 +9591,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.47</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.48</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -9822,7 +9825,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.47) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.48) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
