@@ -5197,7 +5197,6 @@ const PAY = (()=>{
         <div id="rcptPrint" style="background:#fff;color:#000;padding:14px;font-size:12.5px;line-height:1.5">
           <div style="text-align:center">
             <div style="font-size:17px;font-weight:800">${esc(m.legalName||m.shopName)}</div>
-            ${m.legalName?`<div>(${esc(m.shopName)}${m.branchName?' '+esc(m.branchName):''})</div>`:''}
             ${m.address?`<div>${br2(m.address)}</div>`:''}
             <div>เลขประจำตัวผู้เสียภาษี ${esc(m.taxId||'-')} · ${esc(taxBrTxt(m.taxBranch))}</div>
             <div style="margin:8px 0 4px;font-size:16px;font-weight:800;border:1.5px solid #000;padding:4px">ใบกำกับภาษี / ใบเสร็จรับเงิน<div id="txKind" style="font-size:13px;font-weight:600">ต้นฉบับ</div></div>
@@ -9889,7 +9888,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.53</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.54</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -10134,7 +10133,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.53) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.54) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
