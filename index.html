@@ -4969,7 +4969,11 @@ const PAY = (()=>{
     UI.close('payOverlay');
     if(_bad.length) setTimeout(()=>{ try{ UI.toast('✅ บันทึกบิล '+order.no+' แล้ว · ⚠️ มีขั้นตอนเสริมผิดพลาด: '+_bad.join(' / '),'err'); }catch(e){} },1200);   // ⭐ v12.48 บอกสาเหตุ (ถ่ายรูปส่งผู้ดูแลได้)
     if(isAppPay(order.method)){
-      try{ const _S=STORE.get().settings; if(_S.autoPrint&&_S.kdsServeSlip&&!(_tab&&!(_fresh&&_fresh.items.length))) KDS.serveSlip(_tab&&_fresh?Object.assign({},order,{items:_fresh.items}):order); }catch(e){ console.error('kitchen',e); }
+      try{ const _S=STORE.get().settings;
+        if(_S.autoPrint&&_S.rcptDelivery!=='none'){   // ⭐ v12.56 ใบเสร็จ + ใบครัว
+          if(_tab){ autoPrint(order,{noKitchen:true}); if(_fresh&&_fresh.items.length&&_S.kdsServeSlip) setTimeout(()=>KDS.serveSlip(Object.assign({},order,{items:_fresh.items})),900); }
+          else autoPrint(order);
+        } else if(_S.autoPrint&&_S.kdsServeSlip&&!(_tab&&!(_fresh&&_fresh.items.length))) KDS.serveSlip(_tab&&_fresh?Object.assign({},order,{items:_fresh.items}):order); }catch(e){ console.error('kitchen',e); }
       KDS.updateBadge(); UI.toast('บันทึกยอด '+payLabel(order.method)+' '+STORE.baht(s.total)+' แล้ว','ok');
       return;
     }
@@ -5267,7 +5271,7 @@ const PAY = (()=>{
   function autoPrint(order,opt){                          // opt.noKitchen = ใบเสร็จอย่างเดียว (ตอนปิดบิลโต๊ะ — ใบครัวออกไปแล้วตอนสั่ง)
     const st=STORE.get().settings; if(!st.autoPrint) return;
     const _kit=st.kdsServeSlip && !(opt&&opt.noKitchen);
-    const _rc=st.rcptPrint!=='none' || (isDelivery(order&&order.type) && st.rcptDelivery!=='none');   // ⭐ v12.55 ออเดอร์ออนไลน์พิมพ์ใบเสร็จแยกได้                        // ⭐ v12.27 ใบเสร็จลูกค้าไม่พิมพ์อัตโนมัติ (ค่าเริ่มต้น) · ลูกค้าขอค่อยกดพิมพ์จากหน้าใบเสร็จ/ประวัติ
+    const _rc=st.rcptPrint!=='none' || ((isDelivery(order&&order.type)||isAppPay(order&&order.method)) && st.rcptDelivery!=='none');   // ⭐ v12.55 ออเดอร์ออนไลน์พิมพ์ใบเสร็จแยกได้                        // ⭐ v12.27 ใบเสร็จลูกค้าไม่พิมพ์อัตโนมัติ (ค่าเริ่มต้น) · ลูกค้าขอค่อยกดพิมพ์จากหน้าใบเสร็จ/ประวัติ
     if(!_rc){ if(_kit) setTimeout(()=>printDocs(KDS.serveSlipDocs(order)),200); return; }
     if(st.printMethod==='bluetooth' && PRINT.connected()){ PRINT.escpos(order);
       if(_kit) setTimeout(()=>printDocs(KDS.serveSlipDocs(order)),300);   // ⭐ บลูทูธพิมพ์ใบเสร็จ · ใบครัวออกทางเครื่องพิมพ์ระบบ
@@ -9921,7 +9925,7 @@ const SETTINGS = (()=>{
       + '</div>';
 
     $('#setPanel').innerHTML=`
-      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.55</span></div>
+      <div class="panel-head"><h2>🔧 ตั้งค่าระบบ</h2><span style="margin-left:auto;font-size:12px;color:var(--muted)">build v12.56</span></div>
       <div class="row2">
         <div style="background:var(--surface);padding:20px;border-radius:var(--r-card);box-shadow:var(--shadow)">
           <h3 style="margin-bottom:14px;font-size:16px">ข้อมูลร้าน</h3>
@@ -10167,7 +10171,7 @@ const SETTINGS = (()=>{
           <input type="file" id="restoreFile" accept=".json" style="display:none" onchange="SETTINGS.restore(this)">
           <button class="add-fab" style="background:var(--danger)" onclick="SETTINGS.confirmReset()">🗑️ ล้างข้อมูลทั้งหมด</button>
         </div>
-        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.55) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px">เวอร์ชัน 2.6 (build v12.56) · ข้อมูลเก็บในเครื่องนี้ (localStorage) · สำรองไฟล์ไว้สม่ำเสมอ</p>
       </div>`;
   }
   function save(){
